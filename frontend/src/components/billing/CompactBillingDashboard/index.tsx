@@ -109,7 +109,7 @@ const CompactBillingDashboard: React.FC<CompactBillingDashboardProps> = ({
 
   if (!dashboardData) return null;
 
-  const { current_usage, limits, alerts } = dashboardData;
+  const { total_usage: current_usage, current_period_usage, limits, alerts } = dashboardData;
 
   const mainCardStyles = terminalTheme
     ? {
@@ -187,6 +187,7 @@ const CompactBillingDashboard: React.FC<CompactBillingDashboardProps> = ({
           {/* Usage Limit Rings */}
           <UsageLimitRings
             currentUsage={current_usage}
+            currentPeriodUsage={current_period_usage}
             limits={limits}
             terminalTheme={terminalTheme}
             TypographyComponent={TypographyComponent}

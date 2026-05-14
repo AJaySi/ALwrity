@@ -130,6 +130,13 @@ export const usePhaseNavigation = (
     if (currentPhase === '') {
       return; // Don't validate empty phase - it's intentional for landing page
     }
+
+    // If user manually selected this phase, respect their choice even if data
+    // hasn't been restored yet (e.g., on page load before cache restoration).
+    // The data restoration effects will populate the necessary state shortly.
+    if (userSelectedPhase) {
+      return;
+    }
     
     const current = phases.find(p => p.id === currentPhase);
     if (!current) {
@@ -146,7 +153,7 @@ export const usePhaseNavigation = (
         setCurrentPhase(fallback.id);
       }
     }
-  }, [phases, currentPhase, research]);
+  }, [phases, currentPhase, research, userSelectedPhase]);
 
   // Auto-update current phase based on completion status (only if user hasn't manually selected a phase)
   useEffect(() => {

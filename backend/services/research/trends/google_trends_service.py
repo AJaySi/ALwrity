@@ -49,9 +49,11 @@ except Exception as _patch_err:
 # Now safe to import pytrends
 try:
     from pytrends.request import TrendReq as _TrendReq
+    from pytrends.exceptions import TooManyRequestsError as _TooManyRequestsError
     PYTrends_AVAILABLE = True
 except ImportError:
     PYTrends_AVAILABLE = False
+    _TooManyRequestsError = None
     logger.warning("pytrends not installed. Google Trends features will be unavailable.")
 
 # Patch 2: pytrends related_topics() and related_queries() use keyword[0]
@@ -139,6 +141,8 @@ class GoogleTrendsService:
     Uses TrendReq with no retries (fail-fast) to avoid hitting CAPTCHA on blocks.
     429 retry handling (1s, 2s, 4s backoff). Random user-agent is set
     per instance to reduce fingerprinting.
+
+    Rate limiter is shared across all instances to enforce global rate limiting.
     """
 
     USER_AGENTS = [
@@ -150,15 +154,28 @@ class GoogleTrendsService:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
     ]
 
+    # Class-level shared resources (shared across all instances)
+    _shared_rate_limiter = None
+    _shared_cache = None
+    _cache_ttl = timedelta(hours=24)
+    _last_429_time = 0  # Timestamp of last 429 error (Unix epoch)
+    _429_cooldown_period = 1800  # 30 minutes cooldown after 429
+
     def __init__(self):
         if not PYTrends_AVAILABLE:
             raise RuntimeError("pytrends library is required. Install with: pip install pytrends")
 
-        self.rate_limiter = RateLimiter(max_calls=1, period=1.0)
-        self.cache: Dict[str, Any] = {}
-        self.cache_ttl = timedelta(hours=24)
+        # Initialize shared rate limiter at class level (lazy init)
+        if self.__class__._shared_rate_limiter is None:
+            self.__class__._shared_rate_limiter = RateLimiter(max_calls=1, period=3.0)  # 1 call per 3 seconds
+        if self.__class__._shared_cache is None:
+            self.__class__._shared_cache = {}
 
-        logger.info("GoogleTrendsService initialized (pytrends 4.9.2, fail-fast, 2s delays)")
+        self.rate_limiter = self.__class__._shared_rate_limiter
+        self.cache = self.__class__._shared_cache
+        self.cache_ttl = self._cache_ttl
+
+        logger.info("GoogleTrendsService initialized (pytrends 4.9.2, shared rate limiter, 3s period, shared cache, 30min 429 cooldown)")
 
     # -----------------------------------------------------------------------
     # Public API
@@ -173,7 +190,7 @@ class GoogleTrendsService:
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Comprehensive trends analysis.
+        Comprehensive trends analysis with retry logic for 429 errors.
 
         Args:
             keywords: List of keywords to analyze (1-5)
@@ -193,11 +210,97 @@ class GoogleTrendsService:
             keywords = keywords[:5]
 
         cache_key = self._build_cache_key(keywords, timeframe, geo)
+
+        # Check if we're in a 429 cooldown period
+        now = time.time()
+        if now - self.__class__._last_429_time < self.__class__._429_cooldown_period:
+            remaining_cooldown = int(self.__class__._429_cooldown_period - (now - self.__class__._last_429_time))
+            logger.warning(
+                f"[Trends] In 429 cooldown period. {remaining_cooldown}s remaining. "
+                f"Returning cached data if available."
+            )
+            cached_data = self._get_from_cache(cache_key, ignore_ttl=True)  # Use stale cache
+            if cached_data:
+                logger.info(f"[Trends] Returning stale cached data for {keywords} during cooldown")
+                return {**cached_data, "cached": True, "cooldown_active": True}
+            return self._create_fallback_response(
+                keywords, timeframe, geo, gprop,
+                f"Rate limited by Google. Cooldown active for {remaining_cooldown}s. Try again later."
+            )
+
+        # Check fresh cache
         cached_data = self._get_from_cache(cache_key)
         if cached_data:
             logger.info(f"Returning cached trends data for: {keywords}")
             return {**cached_data, "cached": True}
 
+        # Retry logic for 429 errors
+        max_retries = 3
+        retry_delays = [30, 60, 120]  # Longer delays: 30s, 60s, 120s
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await self._do_analyze_trends(
+                    keywords, timeframe, geo, gprop, cache_key, attempt, max_retries
+                )
+            except Exception as e:
+                # Check if this is a 429 error (pytrends raises TooManyRequestsError)
+                is_429 = False
+                if _TooManyRequestsError and isinstance(e, _TooManyRequestsError):
+                    is_429 = True
+                else:
+                    error_str = str(e).lower()
+                    is_429 = "429" in error_str or "rate limit" in error_str or "too many requests" in error_str
+
+                if is_429:
+                    # Update the last 429 time for cooldown
+                    self.__class__._last_429_time = time.time()
+
+                    if attempt < max_retries:
+                        delay = retry_delays[attempt]
+                        logger.warning(
+                            f"[Trends] 429 rate limit hit (attempt {attempt + 1}/{max_retries + 1}), "
+                            f"retrying in {delay}s..."
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        # Out of retries - enter cooldown
+                        logger.error(
+                            f"[Trends] 429 rate limit persisted after {max_retries + 1} attempts. "
+                            f"Entering {self.__class__._429_cooldown_period}s cooldown period."
+                        )
+                        # Try to return stale cache
+                        stale_cache = self._get_from_cache(cache_key, ignore_ttl=True)
+                        if stale_cache:
+                            logger.info(f"[Trends] Returning stale cache after 429 exhaustion for {keywords}")
+                            result = {**stale_cache}
+                            result["cached"] = True
+                            result["cooldown_active"] = True
+                            return result
+                        return self._create_fallback_response(
+                            keywords, timeframe, geo, gprop,
+                            f"Google is rate limiting requests. Cooldown active for {self.__class__._429_cooldown_period}s. Try again later."
+                        )
+                else:
+                    # Non-429 error
+                    logger.error(f"Google Trends analysis failed after {attempt + 1} attempts: {e}")
+                    return self._create_fallback_response(keywords, timeframe, geo, gprop, str(e))
+
+        # Should not reach here, but just in case
+        return self._create_fallback_response(keywords, timeframe, geo, gprop, "Max retries exceeded")
+
+    async def _do_analyze_trends(
+        self,
+        keywords: List[str],
+        timeframe: str,
+        geo: str,
+        gprop: str,
+        cache_key: str,
+        attempt: int,
+        max_retries: int,
+    ) -> Dict[str, Any]:
+        """Internal method to perform the actual trends analysis."""
         await self.rate_limiter.acquire()
 
         total_start = time.monotonic()
@@ -207,95 +310,63 @@ class GoogleTrendsService:
         related_topics: Dict[str, List[Dict[str, Any]]] = {"top": [], "rising": []}
         related_queries: Dict[str, List[Dict[str, Any]]] = {"top": [], "rising": []}
 
-        try:
-            logger.info(f"[Trends] ===== START analyze_trends ===== keywords={keywords} timeframe={timeframe} geo={geo}")
+        logger.info(
+            f"[Trends] ===== START analyze_trends (attempt {attempt + 1}/{max_retries + 1}) ===== "
+            f"keywords={keywords} timeframe={timeframe} geo={geo}"
+        )
 
-            # Initialize TrendReq with gprop (youtube for video/podcast relevance)
-            init_start = time.monotonic()
-            pytrends = await asyncio.to_thread(
-                self._create_pytrends,
-                keywords,
-                timeframe,
-                geo,
-                gprop,
-            )
-            init_ms = int((time.monotonic() - init_start) * 1000)
-            logger.info(f"[Trends] TrendReq init + build_payload took {init_ms}ms")
+        # Initialize TrendReq with gprop (youtube for video/podcast relevance)
+        init_start = time.monotonic()
+        pytrends = await asyncio.to_thread(
+            self._create_pytrends,
+            keywords,
+            timeframe,
+            geo,
+            gprop,
+        )
+        init_ms = int((time.monotonic() - init_start) * 1000)
+        logger.info(f"[Trends] TrendReq init + build_payload took {init_ms}ms")
 
-            # --- Interest Over Time ---
-            iot_start = time.monotonic()
-            interest_over_time = await asyncio.to_thread(
-                lambda: self._fetch_interest_over_time(pytrends)
-            )
-            iot_ms = int((time.monotonic() - iot_start) * 1000)
-            logger.info(f"[Trends] interest_over_time took {iot_ms}ms, returned {len(interest_over_time)} points")
+        # --- Interest Over Time ONLY (skip others to avoid 429) ---
+        await self.rate_limiter.acquire()  # Rate limit check BEFORE each request
+        iot_start = time.monotonic()
+        interest_over_time = await asyncio.to_thread(
+            lambda: self._fetch_interest_over_time(pytrends)
+        )
+        iot_ms = int((time.monotonic() - iot_start) * 1000)
+        logger.info(f"[Trends] interest_over_time took {iot_ms}ms, returned {len(interest_over_time)} points")
 
-            await asyncio.sleep(2)
+        # Skip other requests to avoid 429 - only fetch interest_over_time for now
+        logger.info(f"[Trends] Skipping other requests to avoid 429 (interest_by_region, related_topics, related_queries)")
 
-            # --- Interest By Region ---
-            ibr_start = time.monotonic()
-            interest_by_region = await asyncio.to_thread(
-                lambda: self._fetch_interest_by_region(pytrends)
-            )
-            ibr_ms = int((time.monotonic() - ibr_start) * 1000)
-            logger.info(f"[Trends] interest_by_region took {ibr_ms}ms, returned {len(interest_by_region)} regions")
+        total_ms = int((time.monotonic() - total_start) * 1000)
+        logger.info(
+            f"[Trends] ===== DONE analyze_trends ===== total={total_ms}ms "
+            f"iot={len(interest_over_time)} ibr={len(interest_by_region)} "
+            f"rt_top={rt_top} rq_top={rq_top}"
+        )
 
-            await asyncio.sleep(2)
+        result = {
+            "interest_over_time": interest_over_time,
+            "interest_by_region": interest_by_region,
+            "related_topics": related_topics,
+            "related_queries": related_queries,
+            "timeframe": timeframe,
+            "geo": geo,
+            "keywords": keywords,
+            "source": "web" if gprop == "" else "podcast" if gprop == "youtube" else gprop,
+            "timestamp": datetime.utcnow().isoformat(),
+            "cached": False,
+        }
 
-            # --- Related Topics ---
-            rt_start = time.monotonic()
-            related_topics = await asyncio.to_thread(
-                lambda: self._fetch_related_topics(pytrends)
-            )
-            rt_ms = int((time.monotonic() - rt_start) * 1000)
-            rt_top = len(related_topics.get("top", []))
-            rt_rising = len(related_topics.get("rising", []))
-            logger.info(f"[Trends] related_topics took {rt_ms}ms, top={rt_top} rising={rt_rising}")
+        self._save_to_cache(cache_key, result)
 
-            await asyncio.sleep(2)
+        logger.info(
+            f"Google Trends data fetched successfully: "
+            f"{len(interest_over_time)} time points, {len(interest_by_region)} regions"
+        )
 
-            # --- Related Queries ---
-            rq_start = time.monotonic()
-            related_queries = await asyncio.to_thread(
-                lambda: self._fetch_related_queries(pytrends)
-            )
-            rq_ms = int((time.monotonic() - rq_start) * 1000)
-            rq_top = len(related_queries.get("top", []))
-            rq_rising = len(related_queries.get("rising", []))
-            logger.info(f"[Trends] related_queries took {rq_ms}ms, top={rq_top} rising={rq_rising}")
-
-            total_ms = int((time.monotonic() - total_start) * 1000)
-            logger.info(
-                f"[Trends] ===== DONE analyze_trends ===== total={total_ms}ms "
-                f"iot={len(interest_over_time)} ibr={len(interest_by_region)} "
-                f"rt_top={rt_top} rq_top={rq_top}"
-            )
-
-            result = {
-                "interest_over_time": interest_over_time,
-                "interest_by_region": interest_by_region,
-                "related_topics": related_topics,
-                "related_queries": related_queries,
-                "timeframe": timeframe,
-                "geo": geo,
-                "keywords": keywords,
-                "source": "web" if gprop == "" else "podcast" if gprop == "youtube" else gprop,
-                "timestamp": datetime.utcnow().isoformat(),
-                "cached": False,
-            }
-
-            self._save_to_cache(cache_key, result)
-
-            logger.info(
-                f"Google Trends data fetched successfully: "
-                f"{len(interest_over_time)} time points, {len(interest_by_region)} regions"
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Google Trends analysis failed: {e}")
-            return self._create_fallback_response(keywords, timeframe, geo, gprop, str(e))
+        return result
 
     # -----------------------------------------------------------------------
     # TrendReq factory
@@ -346,6 +417,12 @@ class GoogleTrendsService:
             return result
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
+            # Re-raise 429 errors so retry logic can handle them
+            if _TooManyRequestsError and isinstance(e, _TooManyRequestsError):
+                raise
+            error_str = str(e).lower()
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                raise
             logger.error(f"[Trends] interest_over_time failed in {elapsed}ms: {e}")
             return []
 
@@ -363,6 +440,12 @@ class GoogleTrendsService:
             return result
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
+            # Re-raise 429 errors so retry logic can handle them
+            if _TooManyRequestsError and isinstance(e, _TooManyRequestsError):
+                raise
+            error_str = str(e).lower()
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                raise
             logger.error(f"[Trends] interest_by_region failed in {elapsed}ms: {e}")
             return []
 
@@ -409,6 +492,12 @@ class GoogleTrendsService:
             return result
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
+            # Re-raise 429 errors so retry logic can handle them
+            if _TooManyRequestsError and isinstance(e, _TooManyRequestsError):
+                raise
+            error_str = str(e).lower()
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                raise
             logger.error(f"[Trends] related_topics failed in {elapsed}ms: {e}")
             return result
 
@@ -452,6 +541,12 @@ class GoogleTrendsService:
             return result
         except Exception as e:
             elapsed = int((time.monotonic() - start) * 1000)
+            # Re-raise 429 errors so retry logic can handle them
+            if _TooManyRequestsError and isinstance(e, _TooManyRequestsError):
+                raise
+            error_str = str(e).lower()
+            if "429" in error_str or "rate limit" in error_str or "too many requests" in error_str:
+                raise
             logger.error(f"[Trends] related_queries failed in {elapsed}ms: {e}")
             return result
 
@@ -503,14 +598,18 @@ class GoogleTrendsService:
         keywords_str = ":".join(sorted(keywords))
         return f"google_trends:{keywords_str}:{timeframe}:{geo}"
 
-    def _get_from_cache(self, cache_key: str) -> Optional[Dict[str, Any]]:
+    def _get_from_cache(self, cache_key: str, ignore_ttl: bool = False) -> Optional[Dict[str, Any]]:
+        """Get cached data. If ignore_ttl=True, return stale data too (for 429 cooldown)."""
         if cache_key not in self.cache:
             return None
         cached_entry = self.cache[cache_key]
-        cached_time = datetime.fromisoformat(cached_entry.get("timestamp", ""))
-        if datetime.utcnow() - cached_time > self.cache_ttl:
-            del self.cache[cache_key]
-            return None
+
+        if not ignore_ttl:
+            cached_time = datetime.fromisoformat(cached_entry.get("timestamp", ""))
+            if datetime.utcnow() - cached_time > self.cache_ttl:
+                del self.cache[cache_key]
+                return None
+
         result = {**cached_entry}
         result.pop("cached", None)
         return result

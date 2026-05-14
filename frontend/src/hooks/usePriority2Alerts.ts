@@ -56,7 +56,7 @@ export const usePriority2Alerts = (
 
   const generateAlerts = useCallback((data: DashboardData): Priority2Alert[] => {
     const generatedAlerts: Priority2Alert[] = [];
-    const currentUsage = data.current_usage;
+    const currentUsage = data.total_usage;
     const limits = data.limits;
     const projections = data.projections;
 

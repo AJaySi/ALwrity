@@ -92,6 +92,7 @@ class BlogSEORecommendationApplier:
             None,
             schema,
             user_id,  # Pass user_id for subscription checking
+            max_tokens=8192,
         )
 
         if not result or result.get("error"):

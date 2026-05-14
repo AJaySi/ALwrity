@@ -20,6 +20,7 @@ interface UsePhaseActionHandlersProps {
   setIsSEOAnalysisModalOpen: (open: boolean) => void;
   setIsSEOMetadataModalOpen: (open: boolean) => void;
   runSEOAnalysisDirect: () => string;
+  onResearchComplete?: (research: any) => void;
   onOutlineComplete?: (outline: any) => void;
   onContentComplete?: (sections: Record<string, string>) => void;
 }
@@ -40,14 +41,32 @@ export const usePhaseActionHandlers = ({
   setIsSEOAnalysisModalOpen,
   setIsSEOMetadataModalOpen,
   runSEOAnalysisDirect,
+  onResearchComplete,
   onOutlineComplete,
   onContentComplete,
 }: UsePhaseActionHandlersProps) => {
   const handleResearchAction = useCallback(() => {
+    if (research) {
+      navigateToPhase('research');
+      return;
+    }
+
+    const cachedEntries = researchCache.getAllCachedEntries();
+    const latestCached = cachedEntries.find(entry => {
+      try {
+        return new Date(entry.expires_at) > new Date();
+      } catch {
+        return false;
+      }
+    });
+
+    if (latestCached && onResearchComplete) {
+      debug.log('[BlogWriter] Restoring cached research data', { keywords: latestCached.keywords });
+      onResearchComplete(latestCached.result);
+    }
+
     navigateToPhase('research');
-    debug.log('[BlogWriter] Research action triggered - navigating to research phase');
-    // Note: Research caching is handled by ManualResearchForm component
-  }, [navigateToPhase]);
+  }, [navigateToPhase, onResearchComplete, research]);
 
   const handleOutlineAction = useCallback(async () => {
     if (!research) {

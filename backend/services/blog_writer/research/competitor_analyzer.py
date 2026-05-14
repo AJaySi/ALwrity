@@ -6,6 +6,7 @@ Extracts competitor insights and market intelligence from research content.
 
 from typing import Dict, Any
 from loguru import logger
+import json
 
 
 class CompetitorAnalyzer:
@@ -22,7 +23,7 @@ class CompetitorAnalyzer:
         Extract and analyze:
         1. Top competitors mentioned (companies, brands, platforms)
         2. Content gaps (what competitors are missing)
-        3. Market opportunities (untapped areas)
+        3. Opportunities (untapped areas)
         4. Competitive advantages (what makes content unique)
         5. Market positioning insights
         6. Industry leaders and their strategies
@@ -55,18 +56,38 @@ class CompetitorAnalyzer:
             "required": ["top_competitors", "content_gaps", "opportunities", "competitive_advantages", "market_positioning", "industry_leaders", "analysis_notes"]
         }
         
-        competitor_analysis = llm_text_gen(
+        raw = llm_text_gen(
             prompt=competitor_prompt,
-            json_struct=competitor_schema,
             user_id=user_id
         )
         
-        if isinstance(competitor_analysis, dict) and 'error' not in competitor_analysis:
-            logger.info("✅ AI competitor analysis completed successfully")
-            return competitor_analysis
+        # Parse JSON from LLM response (works with both string and dict return types)
+        import re
+        if isinstance(raw, str):
+            cleaned = raw.strip()
+            if cleaned.startswith('```json'):
+                cleaned = cleaned[7:]
+            if cleaned.startswith('```'):
+                cleaned = cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+            try:
+                competitor_analysis = json.loads(cleaned)
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                if json_match:
+                    competitor_analysis = json.loads(json_match.group(0))
+                else:
+                    raise ValueError(f"Competitor analysis returned non-JSON string: {cleaned[:200]}")
+        elif isinstance(raw, dict):
+            competitor_analysis = raw
         else:
-            # Fail gracefully - no fallback data
-            error_msg = competitor_analysis.get('error', 'Unknown error') if isinstance(competitor_analysis, dict) else str(competitor_analysis)
-            logger.error(f"AI competitor analysis failed: {error_msg}")
-            raise ValueError(f"Competitor analysis failed: {error_msg}")
+            raise ValueError(f"Unexpected LLM response type: {type(raw)}")
+        
+        if 'error' in competitor_analysis:
+            raise ValueError(f"Competitor analysis failed: {competitor_analysis.get('error', 'Unknown error')}")
+        
+        logger.info("✅ AI competitor analysis completed successfully")
+        return competitor_analysis
     

@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useOAuthTokenAlerts } from '../../hooks/useOAuthTokenAlerts';
-import { shouldSkipOnboarding } from '../../utils/demoMode';
+import { shouldSkipOnboarding, getDefaultLandingRoute, isFeatureOnlyMode, getSingleFeature } from '../../utils/demoMode';
+import { restoreNavigationState } from '../../utils/navigationState';
 import ConnectionErrorPage from '../shared/ConnectionErrorPage';
 
+const CHECKOUT_POLL_INTERVAL_MS = 2000;
+const CHECKOUT_POLL_MAX_ATTEMPTS = 10;
+
 const InitialRouteHandler: React.FC = () => {
-  // Helper to log and navigate in a single place
   const navigateAndLog = (to: string) => {
     console.log(`InitialRouteHandler: Redirecting to ${to}`);
     return <Navigate to={to} replace />;
@@ -23,12 +26,24 @@ const InitialRouteHandler: React.FC = () => {
     hasError: false,
     error: null,
   });
-  
+
+  // Post-checkout polling state
+  const [checkoutPolling, setCheckoutPolling] = useState(false);
+  const checkoutPollAttempts = useRef(0);
+  // Track whether the initial subscription check has completed
+  // Prevents premature routing decisions before we know the user's plan
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
+
+  const urlParams = new URLSearchParams(location.search);
+  const isCheckoutSuccess = urlParams.get('subscription') === 'success';
+  const returnTo = urlParams.get('return_to');
+
   useOAuthTokenAlerts({
     enabled: subscription?.active === true,
     interval: 60000,
   });
 
+  // Initial subscription check with retries
   useEffect(() => {
     const timeoutId = setTimeout(async () => {
       const maxRetries = 3;
@@ -38,47 +53,91 @@ const InitialRouteHandler: React.FC = () => {
           break;
         } catch (err) {
           console.error(`App: Subscription check attempt ${attempt + 1} failed:`, err);
-          
+
           const isConnectionError = err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError');
-          
+
           if (isConnectionError && attempt < maxRetries - 1) {
-             const delay = 1000 * Math.pow(2, attempt);
-             await new Promise(resolve => setTimeout(resolve, delay));
-             continue;
-           }
-           
-           if (attempt === maxRetries - 1 || !isConnectionError) {
-              if (isConnectionError) {
-                setConnectionError({
-                  hasError: true,
-                  error: err as Error,
-                });
-              }
-           }
+            const delay = 1000 * Math.pow(2, attempt);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          if (attempt === maxRetries - 1 || !isConnectionError) {
+            if (isConnectionError) {
+              setConnectionError({
+                hasError: true,
+                error: err as Error,
+              });
+            }
+          }
         }
       }
+      // Mark initial check as done regardless of success/failure
+      setInitialCheckDone(true);
     }, 100);
-    
+
     return () => clearTimeout(timeoutId);
   }, []);
 
-  const urlParams = new URLSearchParams(location.search);
-  const isCheckoutSuccess = urlParams.get('subscription') === 'success';
-  
+  // Handle post-checkout: when Stripe redirects back with ?subscription=success,
+  // the webhook may not have processed yet. Poll until subscription becomes active.
+  useEffect(() => {
+    if (!isCheckoutSuccess) return;
+    if (subscription?.active && subscription.plan !== 'none' && subscription.plan !== 'free') {
+      // Webhook has processed — subscription is active, stop polling
+      if (checkoutPolling) {
+        console.log('InitialRouteHandler: Checkout success — subscription confirmed active, stopping poll');
+        setCheckoutPolling(false);
+      }
+      return;
+    }
+
+    // Start polling if webhook hasn't processed yet
+    if (!checkoutPolling && checkoutPollAttempts.current === 0) {
+      console.log('InitialRouteHandler: Checkout success — subscription not yet active, starting poll');
+      setCheckoutPolling(true);
+    }
+  }, [isCheckoutSuccess, subscription, checkoutPolling]);
+
+  // Polling effect for post-checkout
+  useEffect(() => {
+    if (!checkoutPolling) return;
+
+    if (checkoutPollAttempts.current >= CHECKOUT_POLL_MAX_ATTEMPTS) {
+      console.log('InitialRouteHandler: Checkout polling exhausted — proceeding with current state');
+      setCheckoutPolling(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      checkoutPollAttempts.current += 1;
+      console.log(`InitialRouteHandler: Checkout poll attempt ${checkoutPollAttempts.current}/${CHECKOUT_POLL_MAX_ATTEMPTS}`);
+      try {
+        await checkSubscription();
+      } catch (err) {
+        console.error('InitialRouteHandler: Checkout poll check failed:', err);
+      }
+    }, CHECKOUT_POLL_INTERVAL_MS);
+
+    return () => clearTimeout(timer);
+  }, [checkoutPolling, checkSubscription]);
+
+  // Initialize onboarding when subscription is confirmed (but not on checkout success — let redirect happen)
   useEffect(() => {
     if (subscription && !subscriptionLoading) {
       const isNewUser = !subscription || subscription.plan === 'none';
-      
+
       console.log('InitialRouteHandler: Subscription data received:', {
         plan: subscription.plan,
         active: subscription.active,
         isNewUser,
-        subscriptionLoading
+        subscriptionLoading,
+        isCheckoutSuccess,
       });
-      
+
       if (subscription.active && !isNewUser) {
         console.log('InitialRouteHandler: Subscription confirmed, initializing onboarding...');
-        
+
         if (!isCheckoutSuccess) {
           initializeOnboarding();
         }
@@ -86,9 +145,85 @@ const InitialRouteHandler: React.FC = () => {
     }
   }, [subscription, subscriptionLoading, initializeOnboarding, isCheckoutSuccess]);
 
-  if (isCheckoutSuccess && subscription?.active && shouldSkipOnboarding()) {
-    console.log('InitialRouteHandler: Early redirect - Stripe checkout success in demo mode → Podcast Maker');
-    return navigateAndLog("/podcast-maker");
+  // --- Render decisions ---
+
+  // Wait for initial subscription check before making routing decisions.
+  // Without this, a null subscription (before API response) can trigger
+  // incorrect redirects (e.g., to feature routes instead of /pricing).
+  if (!initialCheckDone && !connectionError.hasError) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+        gap={2}
+      >
+        <CircularProgress size={60} />
+        <Typography variant="h6" color="textSecondary">
+          Checking subscription...
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Show polling spinner during post-checkout webhook wait
+  if (checkoutPolling) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        minHeight="100vh"
+        gap={2}
+      >
+        <CircularProgress size={60} />
+        <Typography variant="h6" color="textSecondary">
+          Activating your subscription...
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          This may take a few seconds.
+        </Typography>
+      </Box>
+    );
+  }
+
+  // Post-checkout: subscription is now active (or poll exhausted)
+  if (isCheckoutSuccess && subscription?.active && subscription.plan !== 'none' && subscription.plan !== 'free') {
+    // Restore navigation state (saved before Stripe redirect)
+    const navState = restoreNavigationState();
+    const redirectTo = returnTo || navState?.path;
+
+    if (redirectTo && redirectTo !== '/pricing' && redirectTo !== '/onboarding') {
+      console.log(`InitialRouteHandler: Checkout success — redirecting to saved page: ${redirectTo}`);
+      return navigateAndLog(redirectTo);
+    }
+
+    if (shouldSkipOnboarding()) {
+      const route = getDefaultLandingRoute();
+      console.log(`InitialRouteHandler: Checkout success in demo mode → ${route}`);
+      return navigateAndLog(route);
+    }
+
+    if (!isOnboardingComplete) {
+      console.log('InitialRouteHandler: Checkout success — onboarding incomplete → Onboarding');
+      return navigateAndLog('/onboarding');
+    }
+
+    console.log('InitialRouteHandler: Checkout success → Dashboard');
+    return navigateAndLog('/dashboard');
+  }
+
+  // Checkout success but subscription still not active after polling — treat as inactive
+  // SubscriptionContext will show the expired modal
+  if (isCheckoutSuccess && (!subscription?.active || subscription.plan === 'none' || subscription.plan === 'free')) {
+    console.log('InitialRouteHandler: Checkout success but subscription not yet active — showing pricing');
+    if (shouldSkipOnboarding()) {
+      return navigateAndLog(getDefaultLandingRoute());
+    }
+    return <Navigate to="/pricing" replace />;
   }
 
   if (connectionError.hasError) {
@@ -128,9 +263,9 @@ const InitialRouteHandler: React.FC = () => {
     subscription: subscription ? { plan: subscription.plan, active: subscription.active } : null,
     subscriptionLoading,
     loading,
-    data: !!data
+    data: !!data,
   });
-  const isActiveSubscriber = Boolean(subscription && subscription.active && subscription.plan !== 'none');
+  const isActiveSubscriber = Boolean(subscription && subscription.active && subscription.plan !== 'none' && subscription.plan !== 'free');
   console.log('InitialRouteHandler: isActiveSubscriber =', isActiveSubscriber);
   const waitingForOnboardingInit = !isDemoMode && isActiveSubscriber && (loading || !data);
   if (waitingForOnboardingInit) {
@@ -192,10 +327,15 @@ const InitialRouteHandler: React.FC = () => {
 
   if (!subscription) {
     if (isOnboardingComplete) {
+      if (isDemoMode) {
+        const route = getDefaultLandingRoute();
+        console.log(`InitialRouteHandler: Onboarding complete, no sub, demo mode → ${route}`);
+        return navigateAndLog(route);
+      }
       console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
       return navigateAndLog("/dashboard");
     }
-    
+
     if (subscriptionLoading) {
       return (
         <Box
@@ -213,43 +353,19 @@ const InitialRouteHandler: React.FC = () => {
         </Box>
       );
     }
-    
-    if (!subscription) {
-      if (isOnboardingComplete) {
-        console.log('InitialRouteHandler: Onboarding complete but no subscription data → Dashboard (allow access)');
-        return navigateAndLog("/dashboard");
-      }
-      
-      if (subscriptionLoading) {
-        return (
-          <Box
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            justifyContent="center"
-            minHeight="100vh"
-            gap={2}
-          >
-            <CircularProgress size={60} />
-            <Typography variant="h6" color="textSecondary">
-              Checking subscription...
-            </Typography>
-          </Box>
-        );
-      }
-      
-      if (shouldSkipOnboarding()) {
-        console.log('InitialRouteHandler: Demo mode - no subscription but allowing access to podcast-maker');
-        return navigateAndLog("/podcast-maker");
-      }
-      
-      console.log('InitialRouteHandler: No subscription data after check → Pricing page');
-      return navigateAndLog("/pricing");
+
+    if (shouldSkipOnboarding()) {
+      const route = getDefaultLandingRoute();
+      console.log(`InitialRouteHandler: Demo mode - no subscription but allowing access to ${route}`);
+      return navigateAndLog(route);
     }
+
+    console.log('InitialRouteHandler: No subscription data after check → Pricing page');
+    return navigateAndLog("/pricing");
   }
 
-  const isNewUser = !subscription || subscription.plan === 'none';
-  
+  const isNewUser = !subscription || subscription.plan === 'none' || subscription.plan === 'free';
+
   if (isNewUser || !subscription.active) {
     console.log('InitialRouteHandler: No active subscription - modal will be shown by SubscriptionContext');
     if (isNewUser) {
@@ -262,13 +378,19 @@ const InitialRouteHandler: React.FC = () => {
   if (!isOnboardingComplete) {
     console.log('InitialRouteHandler: isOnboardingComplete = false, shouldSkipOnboarding() =', shouldSkipOnboarding());
     if (shouldSkipOnboarding()) {
-      console.log('InitialRouteHandler: Demo mode - skipping onboarding → Podcast Maker');
-      return navigateAndLog("/podcast-maker");
+      const route = getDefaultLandingRoute();
+      console.log(`InitialRouteHandler: Demo mode - skipping onboarding → ${route}`);
+      return navigateAndLog(route);
     }
     console.log('InitialRouteHandler: Subscription active but onboarding incomplete → Onboarding');
     return navigateAndLog("/onboarding");
   }
 
+  if (isDemoMode) {
+    const route = getDefaultLandingRoute();
+    console.log(`InitialRouteHandler: All set in demo mode → ${route}`);
+    return navigateAndLog(route);
+  }
   console.log('InitialRouteHandler: All set (subscription + onboarding) → Dashboard');
   return navigateAndLog("/dashboard");
 };

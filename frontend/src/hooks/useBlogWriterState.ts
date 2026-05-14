@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BlogOutlineSection, BlogResearchResponse, BlogSEOMetadataResponse, BlogSEOAnalyzeResponse, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage } from '../services/blogWriterApi';
 import { researchCache } from '../services/researchCache';
+import { blogWriterCache } from '../services/blogWriterCache';
 
 const MINOR_TITLE_WORDS = new Set([
   'a', 'an', 'and', 'or', 'but', 'the', 'for', 'nor', 'on', 'at', 'to', 'from', 'by',
@@ -94,35 +95,69 @@ export const useBlogWriterState = () => {
 
   // Cache recovery - restore most recent research on page load
   useEffect(() => {
-    const cachedEntries = researchCache.getAllCachedEntries();
-    if (cachedEntries.length > 0) {
-      // Get the most recent cached research
-      const mostRecent = cachedEntries[0];
-      console.log('Restoring cached research from page load:', mostRecent.keywords);
-      setResearch(mostRecent.result);
-      
-      // Also try to restore outline if it exists in localStorage
-      try {
-        const savedOutline = localStorage.getItem('blog_outline');
-        const savedTitleOptions = localStorage.getItem('blog_title_options');
-        const savedSelectedTitle = localStorage.getItem('blog_selected_title');
+    const restoreState = async () => {
+      const cachedEntries = researchCache.getAllCachedEntries();
+      if (cachedEntries.length > 0) {
+        // Get the most recent cached research
+        const mostRecent = cachedEntries[0];
+        console.log('Restoring cached research from page load:', mostRecent.keywords);
+        setResearch(mostRecent.result);
         
-        if (savedOutline) {
-          setOutline(JSON.parse(savedOutline));
+        // Also try to restore outline if it exists in localStorage
+        try {
+          const savedOutline = localStorage.getItem('blog_outline');
+          const savedTitleOptions = localStorage.getItem('blog_title_options');
+          const savedSelectedTitle = localStorage.getItem('blog_selected_title');
+          
+          if (savedOutline) {
+            const parsedOutline = JSON.parse(savedOutline);
+            setOutline(parsedOutline);
+            
+            // Restore content sections from cache when outline is available
+            const outlineIds = parsedOutline.map((s: any) => String(s.id));
+            const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+            if (cachedContent && Object.keys(cachedContent).length > 0) {
+              setSections(cachedContent);
+              console.log('Restored content sections from cache', { sections: Object.keys(cachedContent).length });
+            }
+          }
+          if (savedTitleOptions) {
+            setTitleOptions(JSON.parse(savedTitleOptions));
+          }
+          if (savedSelectedTitle) {
+            setSelectedTitle(savedSelectedTitle);
+          }
+          
+          // Restore contentConfirmed from localStorage
+          const savedContentConfirmed = localStorage.getItem('blog_content_confirmed');
+          if (savedContentConfirmed === 'true') {
+            setContentConfirmed(true);
+          }
+          
+          console.log('Restored outline, content, and title data from localStorage');
+        } catch (error) {
+          console.error('Error restoring outline data:', error);
         }
-        if (savedTitleOptions) {
-          setTitleOptions(JSON.parse(savedTitleOptions));
-        }
-        if (savedSelectedTitle) {
-          setSelectedTitle(savedSelectedTitle);
-        }
-        
-        console.log('Restored outline and title data from localStorage');
-      } catch (error) {
-        console.error('Error restoring outline data:', error);
       }
-    }
+    };
+
+    restoreState();
   }, []);
+
+  // Persist contentConfirmed to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('blog_content_confirmed', String(contentConfirmed));
+    } catch {}
+  }, [contentConfirmed]);
+
+  // Persist sections to blogWriterCache whenever they change
+  useEffect(() => {
+    const outlineIds = outline.map(s => String(s.id));
+    if (outlineIds.length > 0 && Object.keys(sections).length > 0) {
+      blogWriterCache.cacheContent(sections, outlineIds);
+    }
+  }, [sections, outline]);
 
   // Handle research completion
   const handleResearchComplete = useCallback((researchData: BlogResearchResponse) => {

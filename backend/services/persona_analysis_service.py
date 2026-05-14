@@ -19,11 +19,11 @@ from services.database import get_db_session
 from models.onboarding import OnboardingSession, WebsiteAnalysis, ResearchPreferences
 from models.persona_models import WritingPersona, PlatformPersona, PersonaAnalysisResult
 
-def _get_podcast_mode():
-    """Check if running in podcast-only mode to skip heavy initialization."""
+def _is_feature_limited_mode():
+    """Check if running in feature-limited mode to skip heavy initialization."""
     import os
     env_val = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower()
-    return env_val == "podcast"
+    return env_val not in ("", "all")
 
 class PersonaAnalysisService:
     """Service for analyzing onboarding data and generating writing personas using Gemini AI."""
@@ -40,9 +40,9 @@ class PersonaAnalysisService:
     def __init__(self):
         """Initialize the persona analysis service (only once)."""
         if not self._initialized:
-            # Skip heavy initialization in podcast-only mode
-            if _get_podcast_mode():
-                logger.debug("PersonaAnalysisService: Skipping heavy init in podcast mode")
+            # Skip heavy initialization in feature-limited mode
+            if _is_feature_limited_mode():
+                logger.debug(f"PersonaAnalysisService: Skipping heavy init in feature-limited mode")
                 self._initialized = True
                 return
             
@@ -55,8 +55,8 @@ class PersonaAnalysisService:
             return
             
         # Check again in case mode changed
-        if _get_podcast_mode():
-            logger.debug("PersonaAnalysisService: Skipping heavy init in podcast mode")
+        if _is_feature_limited_mode():
+            logger.debug("PersonaAnalysisService: Skipping heavy init in feature-limited mode")
             self._heavy_init_done = True
             return
             
@@ -89,9 +89,9 @@ class PersonaAnalysisService:
         # Ensure heavy services are initialized
         self._ensure_heavy_init()
         
-        # Check if heavy init failed (podcast mode)
+        # Check if heavy init failed (feature-limited mode)
         if not getattr(self, '_heavy_init_done', False):
-            return {"error": "Persona service unavailable in podcast-only mode"}
+            return {"error": "Persona service unavailable in feature-limited mode"}
             
         try:
             logger.info(f"Generating persona for user {user_id}")

@@ -9,6 +9,7 @@ import json
 from typing import Dict, Any, List
 from loguru import logger
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from models.blog_models import (
     MediumBlogGenerateRequest,
@@ -26,7 +27,7 @@ class MediumBlogGenerator:
     def __init__(self):
         self.cache = persistent_content_cache
     
-    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str) -> MediumBlogGenerateResult:
+    async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str, db: Session = None) -> MediumBlogGenerateResult:
         """Use Gemini structured JSON to generate a medium-length blog in one call.
         
         Args:

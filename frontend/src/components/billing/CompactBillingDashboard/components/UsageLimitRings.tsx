@@ -7,7 +7,8 @@ import { UsageLimitRing } from '../../../shared/UsageLimitRing';
 import { DashboardData } from '../../../../types/billing';
 
 interface UsageLimitRingsProps {
-  currentUsage: DashboardData['current_usage'];
+  currentUsage: DashboardData['total_usage'];
+  currentPeriodUsage: DashboardData['total_usage'];
   limits: DashboardData['limits'];
   terminalTheme?: boolean;
   TypographyComponent: typeof TerminalTypography | React.ComponentType<any>;
@@ -15,59 +16,34 @@ interface UsageLimitRingsProps {
 
 /**
  * UsageLimitRings - Displays circular progress rings for key usage limits
+ * Uses currentPeriodUsage for ring values (per-period budget), currentUsage for total display.
  */
 export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
   currentUsage,
+  currentPeriodUsage,
   limits,
   terminalTheme = false,
   TypographyComponent
 }) => {
-  // Calculate image calls - check multiple possible sources
-  const imageCalls = useMemo(() => {
-    // Primary: provider_breakdown.image
-    const imageFromBreakdown = currentUsage.provider_breakdown?.image?.calls ?? 0;
-    const imageEditFromBreakdown = currentUsage.provider_breakdown?.image_edit?.calls ?? 0;
-    
-    // Fallback: Check if there's a stability key (legacy)
-    const stabilityFromBreakdown = currentUsage.provider_breakdown?.stability?.calls ?? 0;
-    
-    // Sum all image-related calls
-    const total = imageFromBreakdown + imageEditFromBreakdown + stabilityFromBreakdown;
-    
-    // Debug logging (can be removed in production)
-    if (total > 0 || imageFromBreakdown > 0 || stabilityFromBreakdown > 0) {
-      console.log('[UsageLimitRings] Image calls calculation:', {
-        image: imageFromBreakdown,
-        image_edit: imageEditFromBreakdown,
-        stability: stabilityFromBreakdown,
-        total,
-        provider_breakdown_keys: Object.keys(currentUsage.provider_breakdown || {})
-      });
-    }
-    
-    return total;
-  }, [currentUsage.provider_breakdown]);
+  const periodBreakdown = currentPeriodUsage?.provider_breakdown || {};
+  const totalBreakdown = currentUsage.provider_breakdown || {};
 
-  // Calculate video calls - check multiple possible sources
+  // Calculate image calls from current period
+  const imageCalls = useMemo(() => {
+    const stabilityFromBreakdown = periodBreakdown.stability?.calls ?? 0;
+    const imageEditFromBreakdown = periodBreakdown.image_edit?.calls ?? 0;
+    return stabilityFromBreakdown + imageEditFromBreakdown;
+  }, [periodBreakdown]);
+
+  // Calculate video calls from current period
   const videoCalls = useMemo(() => {
-    // Primary: provider_breakdown.video
-    const videoFromBreakdown = currentUsage.provider_breakdown?.video?.calls ?? 0;
-    
-    // Debug logging (can be removed in production)
-    if (videoFromBreakdown > 0) {
-      console.log('[UsageLimitRings] Video calls calculation:', {
-        video: videoFromBreakdown,
-        provider_breakdown_keys: Object.keys(currentUsage.provider_breakdown || {})
-      });
-    }
-    
-    return videoFromBreakdown;
-  }, [currentUsage.provider_breakdown]);
+    return periodBreakdown.video?.calls ?? 0;
+  }, [periodBreakdown]);
 
   const keyLimits = [
     {
       label: 'AI Calls',
-      used: currentUsage.total_calls,
+      used: currentPeriodUsage?.total_calls ?? 0,
       limit: limits.limits.ai_text_generation_calls || limits.limits.gemini_calls || limits.limits.openai_calls || 50,
       color: '#3b82f6',
       unlimited: limits.limits.ai_text_generation_calls === 0 && limits.limits.gemini_calls === 0 && limits.limits.openai_calls === 0,
@@ -88,7 +64,7 @@ export const UsageLimitRings: React.FC<UsageLimitRingsProps> = ({
     },
     {
       label: 'Audio',
-      used: currentUsage.provider_breakdown?.audio?.calls ?? 0,
+      used: periodBreakdown.audio?.calls ?? 0,
       limit: limits.limits.audio_calls,
       color: '#22c55e',
       unlimited: limits.limits.audio_calls === 0,

@@ -111,19 +111,22 @@ class ResearchService:
                 # Exa research workflow
                 from .exa_provider import ExaResearchProvider
                 from services.subscription.preflight_validator import validate_exa_research_operations
-                from services.database import get_db
+                from services.database import get_session_for_user
                 from services.subscription import PricingService
                 import os
                 import time
                 
-                # Pre-flight validation
-                db_val = next(get_db())
+                # Pre-flight validation (use get_session_for_user since get_db is a FastAPI dependency)
+                db_val = get_session_for_user(user_id)
+                if not db_val:
+                    raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
                 try:
                     pricing_service = PricingService(db_val)
                     gpt_provider = os.getenv("GPT_PROVIDER", "google")
                     validate_exa_research_operations(pricing_service, user_id, gpt_provider)
                 finally:
-                    db_val.close()
+                    if db_val:
+                        db_val.close()
                 
                 # Execute Exa search
                 api_start_time = time.time()
@@ -162,13 +165,15 @@ class ResearchService:
             elif config.provider == ResearchProvider.TAVILY:
                 # Tavily research workflow
                 from .tavily_provider import TavilyResearchProvider
-                from services.database import get_db
+                from services.database import get_session_for_user
                 from services.subscription import PricingService
                 import os
                 import time
                 
-                # Pre-flight validation (similar to Exa)
-                db_val = next(get_db())
+                # Pre-flight validation (use get_session_for_user since get_db is a FastAPI dependency)
+                db_val = get_session_for_user(user_id)
+                if not db_val:
+                    raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
                 try:
                     pricing_service = PricingService(db_val)
                     # Check Tavily usage limits
@@ -429,14 +434,16 @@ class ResearchService:
                 # Exa research workflow
                 from .exa_provider import ExaResearchProvider
                 from services.subscription.preflight_validator import validate_exa_research_operations
-                from services.database import get_db
+                from services.database import get_session_for_user
                 from services.subscription import PricingService
                 import os
                 
                 await task_manager.update_progress(task_id, "🌐 Connecting to Exa neural search...")
                 
-                # Pre-flight validation
-                db_val = next(get_db())
+                # Pre-flight validation (use get_session_for_user since get_db is a FastAPI dependency)
+                db_val = get_session_for_user(user_id)
+                if not db_val:
+                    raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
                 try:
                     pricing_service = PricingService(db_val)
                     gpt_provider = os.getenv("GPT_PROVIDER", "google")
@@ -446,7 +453,8 @@ class ResearchService:
                     await task_manager.update_progress(task_id, f"❌ Subscription limit exceeded: {http_error.detail.get('message', str(http_error.detail)) if isinstance(http_error.detail, dict) else str(http_error.detail)}")
                     raise
                 finally:
-                    db_val.close()
+                    if db_val:
+                        db_val.close()
                 
                 # Execute Exa search
                 await task_manager.update_progress(task_id, "🤖 Executing Exa neural search...")
@@ -485,14 +493,16 @@ class ResearchService:
             elif config.provider == ResearchProvider.TAVILY:
                 # Tavily research workflow
                 from .tavily_provider import TavilyResearchProvider
-                from services.database import get_db
+                from services.database import get_session_for_user
                 from services.subscription import PricingService
                 import os
                 
                 await task_manager.update_progress(task_id, "🌐 Connecting to Tavily AI search...")
                 
-                # Pre-flight validation
-                db_val = next(get_db())
+                # Pre-flight validation (use get_session_for_user since get_db is a FastAPI dependency)
+                db_val = get_session_for_user(user_id)
+                if not db_val:
+                    raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again.")
                 try:
                     pricing_service = PricingService(db_val)
                     # Check Tavily usage limits
@@ -529,7 +539,8 @@ class ResearchService:
                 except Exception as e:
                     logger.warning(f"Error checking Tavily limits: {e}")
                 finally:
-                    db_val.close()
+                    if db_val:
+                        db_val.close()
                 
                 # Execute Tavily search
                 await task_manager.update_progress(task_id, "🤖 Executing Tavily AI search...")

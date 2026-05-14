@@ -1,4 +1,11 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
 import { debug } from '../../utils/debug';
 import WriterCopilotSidebar from './BlogWriterUtils/WriterCopilotSidebar';
 import { blogWriterApi } from '../../services/blogWriterApi';
@@ -28,7 +35,7 @@ import { useBlogWriterRefs } from './BlogWriterUtils/useBlogWriterRefs';
 import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSection';
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
 
-export const BlogWriter: React.FC = () => {
+const BlogWriter: React.FC = () => {
   // Add light theme class to body/html on mount, remove on unmount
   React.useEffect(() => {
     document.body.classList.add('blog-writer-page');
@@ -43,6 +50,8 @@ export const BlogWriter: React.FC = () => {
   const { isAvailable: copilotKitAvailable } = useCopilotKitHealth({
     enabled: true, // Enable health checking
   });
+
+  const navigate = useNavigate();
 
   // Use custom hook for all state management
   const {
@@ -67,6 +76,7 @@ export const BlogWriter: React.FC = () => {
     flowAnalysisCompleted,
     flowAnalysisResults,
     sectionImages,
+    setResearch,
     setOutline,
     setTitleOptions,
     setSelectedTitle,
@@ -77,6 +87,7 @@ export const BlogWriter: React.FC = () => {
     setContinuityRefresh,
     setOutlineTaskId,
     setContentConfirmed,
+    setOutlineConfirmed,
     setFlowAnalysisCompleted,
     setFlowAnalysisResults,
     setSectionImages,
@@ -291,6 +302,48 @@ export const BlogWriter: React.FC = () => {
     }
   }, [navigateToPhase, seoAnalysis, research, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
 
+  const handleNewBlog = useCallback(() => {
+    setResearch(null);
+    setOutline([]);
+    setSections({});
+    setSeoAnalysis(null);
+    setSeoMetadata(null);
+    setContentConfirmed(false);
+    setOutlineConfirmed(false);
+    setSelectedTitle('');
+    setTitleOptions([]);
+    setCurrentPhase('');
+    try {
+      localStorage.removeItem('blog_outline');
+      localStorage.removeItem('blog_title_options');
+      localStorage.removeItem('blog_selected_title');
+      localStorage.removeItem('blogwriter_current_phase');
+      localStorage.removeItem('blogwriter_user_selected_phase');
+      localStorage.removeItem('blog_content_confirmed');
+      localStorage.removeItem('blog_seo_recommendations_applied');
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [setResearch, setOutline, setSections, setSeoAnalysis, setSeoMetadata,
+      setContentConfirmed, setOutlineConfirmed, setSelectedTitle, setTitleOptions,
+      setCurrentPhase]);
+
+  const handleMyBlogs = useCallback(() => {
+    navigate('/asset-library?source_module=blog_writer&asset_type=text');
+  }, [navigate]);
+
+  const [newBlogDialogOpen, setNewBlogDialogOpen] = useState(false);
+
+  const hasExistingWork = !!(research || outline.length > 0 || Object.keys(sections).length > 0);
+
+  const confirmNewBlog = useCallback(() => {
+    if (hasExistingWork) {
+      setNewBlogDialogOpen(true);
+    } else {
+      handleNewBlog();
+    }
+  }, [hasExistingWork, handleNewBlog]);
+
   const outlineGenRef = useRef<any>(null);
 
   // Callback to handle cached outline completion
@@ -332,6 +385,7 @@ export const BlogWriter: React.FC = () => {
     setIsSEOAnalysisModalOpen,
     setIsSEOMetadataModalOpen,
     runSEOAnalysisDirect,
+    onResearchComplete: handleResearchComplete,
     onOutlineComplete: handleCachedOutlineComplete,
     onContentComplete: handleCachedContentComplete,
   });
@@ -443,6 +497,7 @@ export const BlogWriter: React.FC = () => {
       />
       
       {/* Phase navigation header - always visible as default interface */}
+      <div style={{ flexShrink: 0 }}>
       <HeaderBar
         phases={phases}
         currentPhase={currentPhase}
@@ -464,7 +519,11 @@ export const BlogWriter: React.FC = () => {
         hasSEOAnalysis={!!seoAnalysis}
         seoRecommendationsApplied={seoRecommendationsApplied}
         hasSEOMetadata={!!seoMetadata}
+        onNewBlog={confirmNewBlog}
+        onMyBlogs={handleMyBlogs}
+        onHelp={() => window.open('/docs', '_blank')}
       />
+      </div>
 
       {/* Landing section - extracted to BlogWriterLandingSection */}
       <BlogWriterLandingSection
@@ -560,6 +619,26 @@ export const BlogWriter: React.FC = () => {
           // Publisher component will use this metadata when calling publish API
         }}
       />
+
+      {/* New Blog confirmation dialog */}
+      <Dialog
+        open={newBlogDialogOpen}
+        onClose={() => setNewBlogDialogOpen(false)}
+        aria-labelledby="new-blog-dialog-title"
+      >
+        <DialogTitle id="new-blog-dialog-title">Start New Blog?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will clear all your current work and start a new blog. This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewBlogDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => { handleNewBlog(); setNewBlogDialogOpen(false); }} color="primary" variant="contained">
+            Start New
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

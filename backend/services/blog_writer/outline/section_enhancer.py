@@ -5,8 +5,8 @@ Enhances individual outline sections for better engagement and value.
 """
 
 from loguru import logger
-
 from models.blog_models import BlogOutlineSection
+import json
 
 
 class SectionEnhancer:
@@ -73,14 +73,45 @@ class SectionEnhancer:
                 "required": ["heading", "subheadings", "key_points", "target_words", "keywords"]
             }
             
-            enhanced_data = llm_text_gen(
+            raw = llm_text_gen(
                 prompt=enhancement_prompt,
-                json_struct=enhancement_schema,
                 system_prompt=None,
                 user_id=user_id
             )
             
-            if isinstance(enhanced_data, dict) and 'error' not in enhanced_data:
+            # Parse JSON from LLM response (works with both string and dict return types)
+            import re
+            if isinstance(raw, str):
+                cleaned = raw.strip()
+                if cleaned.startswith('```json'):
+                    cleaned = cleaned[7:]
+                if cleaned.startswith('```'):
+                    cleaned = cleaned[3:]
+                if cleaned.endswith('```'):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+                try:
+                    enhanced_data = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                    if json_match:
+                        try:
+                            enhanced_data = json.loads(json_match.group(0))
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Section enhancement returned invalid JSON: {e}")
+                            return section
+                    else:
+                        logger.warning(f"Section enhancement returned non-JSON string: {cleaned[:200]}")
+                        return section
+            elif isinstance(raw, dict):
+                enhanced_data = raw
+            else:
+                logger.warning(f"Unexpected LLM response type: {type(raw)}")
+                return section
+            
+            if 'error' in enhanced_data:
+                logger.warning(f"AI section enhancement failed: {enhanced_data.get('error', 'Unknown error')}")
+            else:
                 return BlogOutlineSection(
                     id=section.id,
                     heading=enhanced_data.get('heading', section.heading),

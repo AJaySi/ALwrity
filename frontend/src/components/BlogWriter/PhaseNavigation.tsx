@@ -1,4 +1,8 @@
 import React from 'react';
+import Box from '@mui/material/Box';
+import Tooltip from '@mui/material/Tooltip';
+import CircularProgress from '@mui/material/CircularProgress';
+import Typography from '@mui/material/Typography';
 
 export interface Phase {
   id: string;
@@ -11,12 +15,12 @@ export interface Phase {
 }
 
 export interface PhaseActionHandlers {
-  onResearchAction?: () => void;      // Show research form
-  onOutlineAction?: () => void;       // Generate outline
-  onContentAction?: () => void;       // Confirm outline + generate content
-  onSEOAction?: () => void;           // Run SEO analysis
-  onApplySEORecommendations?: () => void;  // Apply SEO recommendations
-  onPublishAction?: () => void;       // Generate SEO metadata or publish
+  onResearchAction?: () => void;
+  onOutlineAction?: () => void;
+  onContentAction?: () => void;
+  onSEOAction?: () => void;
+  onApplySEORecommendations?: () => void;
+  onPublishAction?: () => void;
 }
 
 interface PhaseNavigationProps {
@@ -25,7 +29,6 @@ interface PhaseNavigationProps {
   currentPhase: string;
   copilotKitAvailable?: boolean;
   actionHandlers?: PhaseActionHandlers;
-  // State for determining which actions to show
   hasResearch?: boolean;
   hasOutline?: boolean;
   outlineConfirmed?: boolean;
@@ -35,6 +38,22 @@ interface PhaseNavigationProps {
   seoRecommendationsApplied?: boolean;
   hasSEOMetadata?: boolean;
 }
+
+const PHASE_TOOLTIPS: Record<string, string> = {
+  research: 'Research your topic and gather data from the web to create a well-informed blog post.',
+  outline: 'Create and refine your blog outline with AI-generated structure and key talking points.',
+  content: 'Generate, edit, and perfect your blog content using the WYSIWYG editor and AI assistance.',
+  seo: 'Optimize your blog for search engines with AI-powered SEO analysis, recommendations, and metadata.',
+  publish: 'Publish your blog to WordPress, Wix, or export as HTML or Markdown.',
+};
+
+const PHASE_ACTIONS: Record<string, string> = {
+  research: 'Enter keywords to research your topic',
+  outline: 'Create your blog outline to structure your content',
+  content: 'Generate and refine your blog content',
+  seo: 'Optimize your blog for search engines',
+  publish: 'Publish or export your finished blog',
+};
 
 export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
   phases,
@@ -51,32 +70,22 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
   seoRecommendationsApplied = false,
   hasSEOMetadata = false,
 }) => {
-  // Phase Navigation: Default interface for blog writing workflow
-  // - Phase buttons are always clickable and functional (for both CopilotKit and manual flows)
-  // - Action buttons (▶) only appear when CopilotKit is unavailable (manual fallback)
-  // - When CopilotKit is available, users can use either phase buttons or CopilotKit suggestions
-  
-  // Determine which action to show for each phase when CopilotKit is unavailable
+  const totalPhases = phases.length;
+  const completedCount = phases.filter(p => p.completed).length;
+  const completionPct = totalPhases > 0 ? Math.round((completedCount / totalPhases) * 100) : 0;
+
   const getActionForPhase = (phaseId: string): { label: string; handler: (() => void) | null } => {
-    // Show action buttons for both CopilotKit and manual flows (dual mode)
-    // Users can use either CopilotKit suggestions or phase navigation buttons
     if (!actionHandlers) {
       return { label: '', handler: null };
     }
 
     switch (phaseId) {
       case 'research':
-        // Always show "Start Research" button when on research phase and no research exists yet
-        // This allows users to manually trigger research form
-        // If research already exists, don't show the button (user can click the phase button to view)
         if (!hasResearch) {
           return { label: 'Start Research', handler: actionHandlers.onResearchAction || null };
         }
         break;
       case 'outline':
-        // Show "Create Outline" if research exists and outline is not yet confirmed
-        // This ensures users can create/regenerate outline after research, even if cached one exists
-        // Once outline is confirmed, we hide the button to avoid confusion during content generation
         if (hasResearch && !outlineConfirmed) {
           return { label: 'Create Outline', handler: actionHandlers.onOutlineAction || null };
         }
@@ -87,343 +96,329 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         }
         break;
       case 'seo':
-        // Priority order matching CopilotKit suggestions:
-        // 1. No SEO analysis yet - Run SEO Analysis
-        // Note: We check hasContent (sections exist) - contentConfirmed is checked but not strictly required
-        // This allows users to run SEO analysis even if contentConfirmed hasn't been explicitly set
         if (hasContent && !hasSEOAnalysis) {
           return { label: 'Run SEO Analysis', handler: actionHandlers.onSEOAction || null };
         }
-        // 2. SEO analysis exists but recommendations not applied - Apply SEO Recommendations
         if (hasSEOAnalysis && !seoRecommendationsApplied) {
           return { label: 'Apply SEO Recommendations', handler: actionHandlers.onApplySEORecommendations || null };
         }
-        // 3. SEO analysis exists and recommendations applied but no metadata - Generate SEO Metadata
         if (hasSEOAnalysis && seoRecommendationsApplied && !hasSEOMetadata) {
           return { label: 'Generate SEO Metadata', handler: actionHandlers.onPublishAction || null };
         }
         break;
       case 'publish':
-        // Only show if SEO metadata exists (ready to publish)
         if (hasSEOAnalysis && seoRecommendationsApplied && hasSEOMetadata) {
-          return { label: 'Ready to Publish', handler: null }; // Publish handled separately
+          return { label: 'Ready to Publish', handler: null };
         }
         break;
     }
     return { label: '', handler: null };
   };
 
+  const activePhase = phases.find(p => p.current);
+
+  const infoText = (() => {
+    if (!activePhase || !activePhase.id) {
+      if (completedCount === 0) return '📍 Start with Research to begin';
+      const next = phases.find(p => !p.completed && !p.disabled);
+      return next ? `👉 Next: ${next.name}` : '✅ All phases complete!';
+    }
+    const next = phases.find(p => !p.completed && !p.disabled);
+    if (activePhase.completed && !next) return '✅ All phases complete!';
+    if (activePhase.completed) return `✅ ${activePhase.name} done — Next: ${next!.name}`;
+    return `📍 ${activePhase.name}: ${PHASE_ACTIONS[activePhase.id] || 'Complete this phase'}`;
+  })();
+
   return (
     <>
       <style>{`
-        /* Enterprise Phase Navigation Styles */
-        .phase-nav-container {
-          display: flex;
-          gap: 10px;
-          alignItems: center;
-          padding: 12px 0;
-          flexWrap: wrap;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.98) 100%);
-          border-radius: 12px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-        
-        .phase-chip {
-          position: relative;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 18px;
-          border-radius: 24px;
-          border: none;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          letter-spacing: 0.01em;
-        }
-        
-        .phase-chip::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: -100%;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-          transition: left 0.5s ease;
-        }
-        
-        .phase-chip:hover::before {
-          left: 100%;
-        }
-        
-        /* Current Phase - Active Gradient */
-        .phase-chip.current {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-          transform: translateY(-2px) scale(1.02);
-        }
-        
-        .phase-chip.current:hover {
-          transform: translateY(-3px) scale(1.03);
-          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
-        }
-        
-        .phase-chip.current:active {
-          transform: translateY(-1px) scale(1.01);
-          box-shadow: 0 3px 12px rgba(102, 126, 234, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
-        }
-        
-        /* Completed Phase - Success Gradient */
-        .phase-chip.completed {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: white;
-          box-shadow: 0 3px 12px rgba(16, 185, 129, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-        }
-        
-        .phase-chip.completed:hover {
-          transform: translateY(-2px) scale(1.02);
-          box-shadow: 0 5px 16px rgba(16, 185, 129, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
-        }
-        
-        /* Pending Phase - Subtle Gradient */
-        .phase-chip.pending {
-          background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
-          color: #4b5563;
-          border: 1px solid rgba(99, 102, 241, 0.2);
-          box-shadow: 0 2px 6px rgba(99, 102, 241, 0.1);
-        }
-        
-        .phase-chip.pending:hover {
-          background: linear-gradient(135deg, #c7d2fe 0%, #bfdbfe 100%);
-          transform: translateY(-2px) scale(1.02);
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-          border-color: rgba(99, 102, 241, 0.3);
-        }
-        
-        /* Disabled Phase */
-        .phase-chip.disabled {
-          background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-          color: #9ca3af;
-          cursor: not-allowed;
-          opacity: 0.6;
-          box-shadow: none;
-          border: 1px solid #e5e7eb;
-        }
-        
-        .phase-chip.disabled:hover {
-          transform: none;
-          box-shadow: none;
-        }
-        
-        /* Phase Icon */
-        .phase-icon {
-          font-size: 18px;
-          filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
-          transition: transform 0.3s ease;
-        }
-        
-        .phase-chip.current .phase-icon,
-        .phase-chip.completed .phase-icon {
-          filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-        }
-        
-        .phase-chip:hover:not(.disabled) .phase-icon {
-          transform: scale(1.1) rotate(5deg);
-        }
-        
-        /* Checkmark for completed */
-        .phase-checkmark {
-          font-size: 14px;
-          margin-left: 4px;
-          animation: checkmarkPop 0.3s ease;
-        }
-        
-        @keyframes checkmarkPop {
-          0% { transform: scale(0); }
-          50% { transform: scale(1.2); }
-          100% { transform: scale(1); }
-        }
-        
-        /* Action Button - Enterprise Style */
-        .phase-action-btn {
-          position: relative;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 16px;
-          border-radius: 20px;
-          border: none;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          overflow: hidden;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35), 
-                      0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-                      0 1px 2px rgba(0, 0, 0, 0.1) inset;
-        }
-        
-        .phase-action-btn::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: -100%;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
-          transition: left 0.5s ease;
-        }
-        
-        .phase-action-btn:hover::before {
-          left: 100%;
-        }
-        
-        .phase-action-btn:hover {
-          transform: translateY(-2px) scale(1.05);
-          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5), 
-                      0 0 0 1px rgba(255, 255, 255, 0.2) inset,
-                      0 2px 4px rgba(0, 0, 0, 0.15) inset;
-        }
-        
-        .phase-action-btn:active {
-          transform: translateY(0) scale(1.02);
-          box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4), 
-                      0 0 0 1px rgba(255, 255, 255, 0.15) inset;
-        }
-        
-        .phase-action-btn:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3), 
-                      0 4px 12px rgba(102, 126, 234, 0.35),
-                      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-        }
-        
-        .phase-action-icon {
-          font-size: 12px;
-          transition: transform 0.3s ease;
-        }
-        
-        .phase-action-btn:hover .phase-action-icon {
-          transform: translateX(2px);
+        @keyframes phaseActivePulse {
+          0%, 100% {
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35), 0 0 0 0 rgba(37, 99, 235, 0.25);
+          }
+          50% {
+            box-shadow: 0 2px 16px rgba(37, 99, 235, 0.55), 0 0 0 4px rgba(37, 99, 235, 0.1);
+          }
         }
       `}</style>
-      
-      <div className="phase-nav-container">
+
+      <Box sx={{
+        display: 'flex',
+        gap: 0.75,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}>
+        {/* Dynamic phase info text */}
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          px: 1.25,
+          py: 0.4,
+          borderRadius: '20px',
+          background: 'rgba(37, 99, 235, 0.06)',
+          border: '1px solid rgba(37, 99, 235, 0.12)',
+          fontSize: '0.75rem',
+          color: '#475569',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+          maxWidth: { xs: '180px', sm: '300px', md: '400px' },
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          flexShrink: 0,
+        }}>
+          {infoText}
+        </Box>
+
+        {/* Phase chips */}
         {phases.map((phase) => {
           const isCurrent = phase.current;
           const isCompleted = phase.completed;
           const isDisabled = phase.disabled;
           const action = getActionForPhase(phase.id);
-          
-          // Show action button when:
-          // 1. CopilotKit is unavailable
-          // 2. Action handler exists
-          // 3. Phase is not disabled
-          // 4. Show for current phase OR next actionable phase (not completed) OR phases with available actions
-          //    For research phase: always show button when on research phase (allows manual trigger)
-          //    For outline phase: always show if research exists but no outline (like research phase)
-          //    For SEO phase: always show if action handler exists (prerequisites are met)
-          const isResearchPhase = phase.id === 'research' && action.handler; // Always show if handler exists
-          // Outline phase: show action whenever research exists and action handler is available
-          // This allows users to create/regenerate outline after research, even if cached one exists
+
+          const isResearchPhase = phase.id === 'research' && action.handler;
           const isOutlinePhase = phase.id === 'outline' && hasResearch && action.handler;
-          // SEO phase: show action whenever prerequisites are met (action handler exists)
-          // Similar to research/outline, show SEO actions whenever handler exists and phase is enabled
           const isSEOPhase = phase.id === 'seo' && action.handler;
-          
-          // Debug logging for SEO phase (temporary - for troubleshooting)
-          if (phase.id === 'seo' && !copilotKitAvailable && process.env.NODE_ENV === 'development') {
-            console.log('[PhaseNavigation] SEO phase debug:', {
-              phaseId: phase.id,
-              isCurrent,
-              isCompleted,
-              isDisabled,
-              hasContent,
-              contentConfirmed,
-              hasSEOAnalysis,
-              seoRecommendationsApplied,
-              hasSEOMetadata,
-              actionLabel: action.label,
-              actionHandler: !!action.handler,
-              copilotKitAvailable,
-              isSEOPhase,
-              showActionWillBe: !copilotKitAvailable && action.handler && !isDisabled && (
-                isCurrent || 
-                (!isCompleted && !isDisabled) ||
-                isResearchPhase ||
-                isOutlinePhase ||
-                isSEOPhase
-              )
-            });
-          }
-          
-          // Show action if: current phase, or phase is not completed and not disabled, or it's research/outline/SEO with available action
-          // For SEO: show whenever action handler exists (prerequisites are met), even if phase is marked as disabled/completed
-          // This is critical because SEO prerequisites (hasContent && contentConfirmed) are validated in getActionForPhase,
-          // so if action.handler exists, we should show it regardless of phase navigation's disabled state
-          // DUAL MODE: Show action buttons even when CopilotKit is available (users can use either method)
-          // For research phase: show action button when on research phase and no research exists yet (to start research)
-          const showAction = action.handler && (
-            (isCurrent && phase.id === 'research' && !hasResearch) || // Show "Start Research" when on research phase with no research
-            (isCurrent && phase.id !== 'research') || // For other phases, show action when current
-            (!isCompleted && !isDisabled) ||
-            (phase.id !== 'research' && (isResearchPhase || isOutlinePhase || isSEOPhase)) // Show for outline/SEO when appropriate
+
+          /* Phase state derivation:
+             - Active: phase is current AND not yet completed (user needs to work on it)
+             - Done: phase is completed (show green regardless of whether it's current)
+             - Pending: not current, not completed, not disabled */
+          const isActive = isCurrent && !isCompleted;
+          const isDone = isCompleted;
+          const isPending = !isCurrent && !isCompleted && !isDisabled;
+
+          /* Chip click: use action handler when available (same as action button),
+             fall back to navigation for viewing completed/disabled phases */
+          const handleChipClick = () => {
+            if (isDisabled) return;
+            if (action.handler) {
+              action.handler();
+            } else {
+              onPhaseClick(phase.id);
+            }
+          };
+
+          /* Show action button only when phase is NOT completed.
+             Research action: only on landing page (not current), to invite start.
+             Other phase actions: show when current, pending, or next-actionable. */
+          const showAction = action.handler && !isDone && (
+            (!isCurrent && phase.id === 'research' && !hasResearch) ||
+            (isCurrent && phase.id !== 'research') ||
+            (!isCurrent && !isDisabled && phase.id !== 'research') ||
+            (phase.id !== 'research' && (isResearchPhase || isOutlinePhase || isSEOPhase))
           );
-          
-          // Determine chip class
-          const chipClass = [
-            'phase-chip',
-            isCurrent ? 'current' : '',
-            isCompleted && !isCurrent ? 'completed' : '',
-            !isCurrent && !isCompleted && !isDisabled ? 'pending' : '',
-            isDisabled ? 'disabled' : ''
-          ].filter(Boolean).join(' ');
-          
+
+          const iconOnly = isDone && !isCurrent;
+
+          const chipSx = {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            borderRadius: '20px',
+            border: 'none',
+            fontWeight: 600,
+            cursor: isDisabled ? 'not-allowed' : 'pointer',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'clip',
+
+            /* Disabled phase: muted */
+            ...(isDisabled && {
+              px: 1.25,
+              py: 0.5,
+              fontSize: '0.8125rem',
+              background: '#f1f5f9',
+              color: '#94a3b8',
+              border: '1px solid #e2e8f0',
+              opacity: 0.5,
+            }),
+
+            /* Done phase: green, collapsed to icon if not current */
+            ...(isDone && !isDisabled && {
+              px: iconOnly ? 0.5 : 1.5,
+              py: 0.5,
+              fontSize: '0.8125rem',
+              justifyContent: iconOnly ? 'center' : 'flex-start',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#fff',
+              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+              maxWidth: iconOnly ? '36px' : 'none',
+              opacity: iconOnly ? 0.85 : 1,
+              '&:hover': {
+                maxWidth: iconOnly ? '160px' : 'none',
+                px: iconOnly ? 1.5 : 1.5,
+                opacity: 1,
+                transform: 'translateY(-1px)',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+              },
+            }),
+
+            /* Active phase (current but not done): larger, pulse glow */
+            ...(isActive && !isDisabled && {
+              px: 2,
+              py: 0.75,
+              fontSize: '0.875rem',
+              background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+              color: '#fff',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.35), inset 0 0 0 1px rgba(255,255,255,0.15)',
+              animation: 'phaseActivePulse 2s ease-in-out infinite',
+              '&:hover': {
+                transform: 'translateY(-1px) scale(1.03)',
+                boxShadow: '0 4px 16px rgba(37, 99, 235, 0.5), inset 0 0 0 1px rgba(255,255,255,0.2)',
+              },
+              '&:active': {
+                transform: 'translateY(0) scale(1.01)',
+              },
+            }),
+
+            /* Pending phase: compact, subtle */
+            ...(isPending && {
+              px: 1.25,
+              py: 0.5,
+              fontSize: '0.8125rem',
+              background: 'rgba(37, 99, 235, 0.08)',
+              color: '#475569',
+              border: '1px solid rgba(37, 99, 235, 0.15)',
+              '&:hover': {
+                transform: 'translateY(-1px)',
+                background: 'rgba(37, 99, 235, 0.12)',
+                boxShadow: '0 3px 8px rgba(37, 99, 235, 0.15)',
+              },
+            }),
+          };
+
+          const actionBtnSx = {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5,
+            px: 1.25,
+            py: 0.4,
+            borderRadius: '16px',
+            border: 'none',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+            color: '#fff',
+            boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.03em',
+            whiteSpace: 'nowrap',
+            '&:hover': {
+              transform: 'translateY(-1px) scale(1.03)',
+              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)',
+            },
+            '&:active': {
+              transform: 'translateY(0) scale(1.01)',
+            },
+          };
+
+          const iconSx = {
+            fontSize: '14px',
+            lineHeight: 1,
+            flexShrink: 0,
+          };
+
           return (
-            <div key={phase.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={() => !isDisabled && onPhaseClick(phase.id)}
-                disabled={isDisabled}
-                className={chipClass}
-                title={phase.disabled ? `Complete ${phase.name} first` : phase.description}
+            <Box key={phase.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Tooltip
+                title={
+                  <Box>
+                    <Box sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.875rem' }}>{phase.name}</Box>
+                    <Box sx={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                      {isDisabled
+                        ? `Complete the previous phase first to unlock ${phase.name}.`
+                        : (PHASE_TOOLTIPS[phase.id] || phase.description)}
+                    </Box>
+                  </Box>
+                }
+                arrow
+                placement="top"
+                enterDelay={300}
+                leaveDelay={100}
               >
-                <span className="phase-icon">
-                  {phase.icon}
-                </span>
-                <span>{phase.name}</span>
-                {isCompleted && !isCurrent && (
-                  <span className="phase-checkmark">
-                    ✓
-                  </span>
-                )}
-              </button>
-              
-              {showAction && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    action.handler?.();
-                  }}
-                  className="phase-action-btn"
-                  title={`${action.label}`}
+                <Box
+                  component="button"
+                  onClick={handleChipClick}
+                  sx={chipSx}
                 >
-                  <span className="phase-action-icon">▶</span>
-                  <span>{action.label}</span>
-                </button>
+                  <Box component="span" sx={iconSx}>{phase.icon}</Box>
+                  <Box component="span" sx={{ flexShrink: 0 }}>{phase.name}</Box>
+                  {isDone && (
+                    <Box component="span" sx={{ fontSize: '12px', flexShrink: 0, ml: 0.25 }}>✓</Box>
+                  )}
+                </Box>
+              </Tooltip>
+
+              {showAction && (
+                <Tooltip
+                  title={`${action.label}`}
+                  arrow
+                  placement="top"
+                >
+                  <Box
+                    component="button"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      action.handler?.();
+                    }}
+                    sx={actionBtnSx}
+                  >
+                    <Box component="span" sx={{ fontSize: '10px' }}>▶</Box>
+                    <Box component="span">{action.label}</Box>
+                  </Box>
+                </Tooltip>
               )}
-            </div>
+            </Box>
           );
         })}
-      </div>
+
+        {/* Circular progress indicator */}
+        {totalPhases > 0 && (
+          <Tooltip
+            title={`${completedCount} of ${totalPhases} phases complete (${completionPct}%)`}
+            arrow
+            placement="top"
+          >
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              ml: 0.5,
+              position: 'relative',
+              cursor: 'pointer',
+            }}>
+              <CircularProgress
+                variant="determinate"
+                value={completionPct}
+                size={26}
+                thickness={3}
+                sx={{
+                  color: completionPct === 100 ? '#10b981' : '#2563eb',
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                {completionPct}
+              </Typography>
+            </Box>
+          </Tooltip>
+        )}
+      </Box>
     </>
   );
 };

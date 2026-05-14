@@ -6,6 +6,7 @@ Extracts and analyzes keywords from research content using structured AI respons
 
 from typing import Dict, Any, List
 from loguru import logger
+import json
 
 
 class KeywordAnalyzer:
@@ -62,18 +63,38 @@ class KeywordAnalyzer:
             "required": ["primary", "secondary", "long_tail", "search_intent", "difficulty", "content_gaps", "semantic_keywords", "trending_terms", "analysis_insights"]
         }
         
-        keyword_analysis = llm_text_gen(
+        raw = llm_text_gen(
             prompt=keyword_prompt,
-            json_struct=keyword_schema,
             user_id=user_id
         )
         
-        if isinstance(keyword_analysis, dict) and 'error' not in keyword_analysis:
-            logger.info("✅ AI keyword analysis completed successfully")
-            return keyword_analysis
+        # Parse JSON from LLM response (works with both string and dict return types)
+        import re
+        if isinstance(raw, str):
+            cleaned = raw.strip()
+            if cleaned.startswith('```json'):
+                cleaned = cleaned[7:]
+            if cleaned.startswith('```'):
+                cleaned = cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+            try:
+                keyword_analysis = json.loads(cleaned)
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                if json_match:
+                    keyword_analysis = json.loads(json_match.group(0))
+                else:
+                    raise ValueError(f"Keyword analysis returned non-JSON string: {cleaned[:200]}")
+        elif isinstance(raw, dict):
+            keyword_analysis = raw
         else:
-            # Fail gracefully - no fallback data
-            error_msg = keyword_analysis.get('error', 'Unknown error') if isinstance(keyword_analysis, dict) else str(keyword_analysis)
-            logger.error(f"AI keyword analysis failed: {error_msg}")
-            raise ValueError(f"Keyword analysis failed: {error_msg}")
+            raise ValueError(f"Unexpected LLM response type: {type(raw)}")
+        
+        if 'error' in keyword_analysis:
+            raise ValueError(f"Keyword analysis failed: {keyword_analysis.get('error', 'Unknown error')}")
+        
+        logger.info("✅ AI keyword analysis completed successfully")
+        return keyword_analysis
     

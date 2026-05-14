@@ -191,72 +191,72 @@ const useBlogTextSelectionHandler = (
 
   // Text selection handler with debouncing
   const handleTextSelection = () => {
-    console.log('🔍 [BlogTextSelectionHandler] handleTextSelection called');
-    
-    // Clear any existing timeout
     if (selectionTimeoutRef.current) {
       clearTimeout(selectionTimeoutRef.current);
     }
-    
-    // Debounce the selection handling
+
     selectionTimeoutRef.current = setTimeout(() => {
       try {
-        const sel = window.getSelection();
-        console.log('🔍 [BlogTextSelectionHandler] Selection object (debounced):', sel);
-        
-        if (!sel || sel.rangeCount === 0) { 
-          console.log('🔍 [BlogTextSelectionHandler] No selection or range count is 0');
-          setSelectionMenu(null); 
-          return; 
-        }
-        
-        const text = (sel.toString() || '').trim();
-        console.log('🔍 [BlogTextSelectionHandler] Selected text (debounced):', text, 'Length:', text.length);
-        
-        if (!text || text.length < 10) { 
-          console.log('🔍 [BlogTextSelectionHandler] Text too short or empty, hiding menu');
-          setSelectionMenu(null); 
-          return; 
-        }
-        
-        const range = sel.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        
-        console.log('🔍 [BlogTextSelectionHandler] Range rect:', rect);
-        
-        // Check if rect has valid dimensions
-        if (rect.width === 0 && rect.height === 0) {
-          console.log('🔍 [BlogTextSelectionHandler] Invalid rect dimensions, trying alternative positioning');
-          
-          // Try to get position from the textarea element itself
-          if (contentRef.current) {
-            const textareaRect = contentRef.current.getBoundingClientRect();
-            console.log('🔍 [BlogTextSelectionHandler] Textarea rect:', textareaRect);
-            
-            // Position menu near the textarea center
-            const x = Math.max(8, Math.min(textareaRect.left + (textareaRect.width / 2), window.innerWidth - 280));
-            const y = Math.max(8, textareaRect.top + window.scrollY - 60);
-            
-            const menuPosition = { x, y, text };
-            console.log('🔍 [BlogTextSelectionHandler] Using textarea position:', menuPosition);
-            setSelectionMenu(menuPosition);
-            return;
+        let text = '';
+        let rect: DOMRect | null = null;
+
+        const el = contentRef.current;
+        if (el instanceof HTMLTextAreaElement) {
+          const start = el.selectionStart;
+          const end = el.selectionEnd;
+          if (start !== end) {
+            text = el.value.substring(start, end).trim();
+            try {
+              const { selectionStart, selectionEnd } = el;
+              if (selectionStart !== null && selectionEnd !== null) {
+                const textRect = el.getBoundingClientRect();
+                const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+                const linesBefore = el.value.substring(0, selectionStart).split('\n').length - 1;
+                rect = new DOMRect(
+                  textRect.left + 10,
+                  textRect.top + (linesBefore * lineHeight) + 10,
+                  100,
+                  20
+                );
+              }
+            } catch (_) {}
+          }
+        } else {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            text = (sel.toString() || '').trim();
+            if (text.length >= 10) {
+              rect = sel.getRangeAt(0).getBoundingClientRect();
+            }
           }
         }
-        
-        // Use viewport coordinates for absolute positioning
-        const x = Math.max(8, Math.min(rect.left + (rect.width / 2), window.innerWidth - 280)); // Account for menu width
-        const y = Math.max(8, rect.top + window.scrollY - 60); // Position above selection
-        
-        const menuPosition = { x, y, text };
-        console.log('🔍 [BlogTextSelectionHandler] Setting selection menu at position (debounced):', menuPosition);
-        setSelectionMenu(menuPosition);
-        
+
+        if (!text || text.length < 10) {
+          setSelectionMenu(null);
+          return;
+        }
+
+        if (!rect || (rect.width === 0 && rect.height === 0)) {
+          if (el) {
+            const elRect = el.getBoundingClientRect();
+            const x = Math.max(8, Math.min(elRect.left + (elRect.width / 2), window.innerWidth - 280));
+            const y = Math.max(8, elRect.top + window.scrollY - 60);
+            setSelectionMenu({ x, y, text });
+            return;
+          }
+          setSelectionMenu(null);
+          return;
+        }
+
+        const x = Math.max(8, Math.min(rect.left + (rect.width / 2), window.innerWidth - 280));
+        const y = Math.max(8, rect.top + window.scrollY - 60);
+
+        setSelectionMenu({ x, y, text });
       } catch (error) {
-        console.error('🔍 [BlogTextSelectionHandler] Error handling text selection:', error);
+        console.error('Text selection error:', error);
         setSelectionMenu(null);
       }
-    }, 150); // 150ms debounce
+    }, 150);
   };
 
   return {

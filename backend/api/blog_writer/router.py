@@ -1195,3 +1195,68 @@ async def generate_introductions(
     except Exception as e:
         logger.error(f"Failed to generate introductions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------
+# Save Complete Blog Asset
+# ---------------------------
+
+
+class SaveCompleteBlogAssetRequest(BaseModel):
+    title: str
+    content: str
+    seo_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    focus_keyword: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    categories: List[str] = Field(default_factory=list)
+
+
+@router.post("/save-complete-asset")
+async def save_complete_blog_asset(
+    request: SaveCompleteBlogAssetRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Save the complete blog content as a single asset in the asset library."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+
+        full_content = f"# {request.title}\n\n{request.content}"
+
+        asset_id = save_and_track_text_content(
+            db=db,
+            user_id=user_id,
+            content=full_content,
+            source_module="blog_writer",
+            title=f"Published Blog: {request.title[:60]}",
+            description=request.meta_description or f"Complete published blog post: {request.title}",
+            prompt=f"SEO Title: {request.seo_title or request.title}\nFocus Keyword: {request.focus_keyword or ''}",
+            tags=["blog", "published"] + [t for t in (request.tags or []) if t],
+            asset_metadata={
+                "status": "published",
+                "focus_keyword": request.focus_keyword,
+                "categories": request.categories,
+                "word_count": len(full_content.split()),
+            },
+            subdirectory="published",
+            file_extension=".md"
+        )
+
+        if asset_id:
+            logger.info(f"✅ Complete blog asset saved to library: ID={asset_id}")
+            return {"success": True, "asset_id": asset_id}
+        else:
+            logger.warning("save_and_track_text_content returned None for published blog")
+            return {"success": False, "error": "Failed to save blog asset"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save complete blog asset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

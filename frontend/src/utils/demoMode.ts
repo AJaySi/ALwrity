@@ -41,26 +41,35 @@ let cachedFeatures: Set<string> | null = null;
 /**
  * Get enabled features from localStorage or environment.
  * Returns a Set of enabled feature names.
+ * 
+ * Priority: env var > localStorage > default "all"
+ * The env var (REACT_APP_ENABLED_FEATURES) takes precedence because it's
+ * the authoritative deployment config — stale localStorage values from
+ * previous sessions should not override it.
  */
 export function getEnabledFeatures(): Set<string> {
   if (cachedFeatures) {
     return cachedFeatures;
   }
 
-  const storageValue = localStorage.getItem(PRIMARY_STORAGE_KEY);
-  if (storageValue) {
-    const features = storageValue.toLowerCase().split(',').map(f => f.trim());
+  // Env var is the authoritative source (deployment config)
+  const envValue = process.env[PRIMARY_ENV_KEY];
+  if (envValue) {
+    const features = envValue.toLowerCase().split(',').map(f => f.trim());
     if (features.includes('all')) {
       cachedFeatures = new Set(['all']);
       return cachedFeatures;
     }
     cachedFeatures = new Set(features.filter(f => f));
+    // Sync localStorage to match env var
+    try { localStorage.setItem(PRIMARY_STORAGE_KEY, envValue); } catch {}
     return cachedFeatures;
   }
 
-  const envValue = process.env[PRIMARY_ENV_KEY];
-  if (envValue) {
-    const features = envValue.toLowerCase().split(',').map(f => f.trim());
+  // Fallback to localStorage (for runtime overrides in dev)
+  const storageValue = localStorage.getItem(PRIMARY_STORAGE_KEY);
+  if (storageValue) {
+    const features = storageValue.toLowerCase().split(',').map(f => f.trim());
     if (features.includes('all')) {
       cachedFeatures = new Set(['all']);
       return cachedFeatures;
@@ -109,18 +118,30 @@ export function getSingleFeature(): string | null {
 }
 
 /**
+ * Priority-ordered list of features to their landing routes.
+ * The first enabled feature in this list determines the landing route.
+ */
+const FEATURE_ROUTE_PRIORITY: [string, string][] = [
+  ['podcast', '/podcast-maker'],
+  ['blog_writer', '/blog-writer'],
+  ['story', '/story-writer'],
+  ['image', '/image-studio'],
+  ['video', '/video-studio'],
+  ['campaign', '/campaign-creator'],
+  ['social', '/social-media'],
+  ['seo', '/seo-tools'],
+  ['research', '/research-dashboard'],
+];
+
+/**
  * Get the default landing route based on enabled features.
+ * When multiple features are enabled, routes to the highest-priority one.
  */
 export function getDefaultLandingRoute(): string {
   const enabled = getEnabledFeatures();
   if (enabled.has('all')) return '/dashboard';
-  const singleFeature = getSingleFeature();
-  if (singleFeature) {
-    const routeMap: Record<string, string> = {
-      'podcast': '/podcast-maker',
-      'blog_writer': '/blog-writer',
-    };
-    return routeMap[singleFeature] || '/dashboard';
+  for (const [feature, route] of FEATURE_ROUTE_PRIORITY) {
+    if (enabled.has(feature)) return route;
   }
   return '/dashboard';
 }

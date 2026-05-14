@@ -7,12 +7,11 @@ The onboarding endpoints are re-exported from a stable module
 
 import os
 
-# Check podcast mode early
-_is_podcast = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
-
-# In podcast mode, don't import heavy onboarding endpoints
+# In feature-only modes, don't import heavy onboarding endpoints
 # They trigger heavy dependencies (exa_py, etc.)
-if _is_podcast:
+_is_full_mode = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() in ("", "all")
+
+if not _is_full_mode:
     __all__ = []
 else:
     from .onboarding_endpoints import (

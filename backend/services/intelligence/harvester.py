@@ -20,13 +20,14 @@ class SemanticHarvesterService:
             "last_harvest_time": None
         }
 
-    async def harvest_website(self, website_url: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def harvest_website(self, website_url: str, limit: int = 100, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Deep crawl a website using Exa AI.
         
         Args:
             website_url: The root URL to crawl.
             limit: Maximum number of pages to retrieve.
+            user_id: Optional user ID for usage tracking and preflight checks.
             
         Returns:
             List of pages with content and metadata.
@@ -59,6 +60,30 @@ class SemanticHarvesterService:
                      logger.warning("[SemanticHarvester] Exa service disabled. Returning placeholder data.")
                      return self._get_placeholder_data(website_url)
 
+            # Preflight subscription check if user_id provided
+            if user_id:
+                try:
+                    from services.database import get_session_for_user
+                    from services.subscription import PricingService
+                    from models.subscription_models import APIProvider
+                    db = get_session_for_user(user_id)
+                    if db:
+                        try:
+                            pricing_service = PricingService(db)
+                            can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                                user_id=user_id,
+                                provider=APIProvider.EXA,
+                                tokens_requested=0,
+                                actual_provider_name="exa",
+                            )
+                            if not can_proceed:
+                                logger.warning(f"[SemanticHarvester] Exa blocked for user {user_id}: {message}")
+                                return []
+                        finally:
+                            db.close()
+                except Exception as e:
+                    logger.warning(f"[SemanticHarvester] Preflight check failed: {e}")
+
             # Use Exa to search for all pages in this domain
             search_response = self.exa_service.exa.search_and_contents(
                 query=f"site:{website_url}",
@@ -82,6 +107,38 @@ class SemanticHarvesterService:
                     })
             
             logger.info(f"[SemanticHarvester] Successfully harvested {len(results)} pages from {website_url}")
+
+            # Track Exa usage if user_id provided
+            if user_id and results:
+                try:
+                    from services.database import get_session_for_user
+                    from services.subscription import PricingService
+                    from sqlalchemy import text
+                    db = get_session_for_user(user_id)
+                    if db:
+                        try:
+                            pricing_service = PricingService(db)
+                            current_period = pricing_service.get_current_billing_period(user_id)
+                            cost = 0.005  # Exa search cost estimate
+
+                            update_query = text("""
+                                UPDATE usage_summaries 
+                                SET exa_calls = COALESCE(exa_calls, 0) + 1,
+                                    exa_cost = COALESCE(exa_cost, 0) + :cost,
+                                    total_calls = COALESCE(total_calls, 0) + 1,
+                                    total_cost = COALESCE(total_cost, 0) + :cost
+                                WHERE user_id = :user_id AND billing_period = :period
+                            """)
+                            db.execute(update_query, {
+                                'cost': cost, 'user_id': user_id, 'period': current_period,
+                            })
+                            db.commit()
+                            logger.info(f"[SemanticHarvester] Tracked Exa usage: user={user_id}, cost=${cost}")
+                        finally:
+                            db.close()
+                except Exception as track_err:
+                    logger.warning(f"[SemanticHarvester] Failed to track Exa usage: {track_err}")
+
             return results
             
         except Exception as e:

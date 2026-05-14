@@ -27,6 +27,7 @@ import {
   Avatar,
   CircularProgress
 } from '@mui/material';
+import { hashContent, getSeoCacheKey } from '../../utils/contentHash';
 import { apiClient, triggerSubscriptionError } from '../../api/client';
 import { 
   CheckCircle, 
@@ -145,24 +146,7 @@ interface SEOAnalysisModalProps {
   onAnalysisComplete?: (analysis: SEOAnalysisResult) => void;
 }
 
-// Simple content hashing helper (SHA-256)
-async function hashContent(text: string): Promise<string> {
-  try {
-    const enc = new TextEncoder().encode(text);
-    const digest = await crypto.subtle.digest('SHA-256', enc);
-    const bytes = Array.from(new Uint8Array(digest));
-    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    // Fallback hash
-    let h = 0;
-    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
-    return String(h);
-  }
-}
 
-function getSeoCacheKey(contentHash: string, title?: string) {
-  return `seo_cache:${contentHash}:${title || ''}`;
-}
 
 export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   isOpen,

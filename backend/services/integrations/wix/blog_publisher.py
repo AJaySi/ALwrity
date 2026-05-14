@@ -233,7 +233,7 @@ def create_blog_post(
     
     # BACK TO BASICS MODE: Try simplest possible structure FIRST
     # Since posting worked before Ricos/SEO, let's test with absolute minimum
-    BACK_TO_BASICS_MODE = True  # Set to True to test with simplest structure
+    BACK_TO_BASICS_MODE = False  # Disabled: full Ricos conversion now produces valid output
     
     wix_logger.reset()
     wix_logger.log_operation_start("Blog Post Creation", title=title[:50] if title else None, member_id=member_id[:20] if member_id else None)
@@ -257,8 +257,7 @@ def create_blog_post(
                         'text': (content[:500] if content else "This is a post from ALwrity.").strip(),
                         'decorations': []
                     }
-                }],
-                'paragraphData': {}
+                }]
             }]
         }
         

@@ -63,18 +63,41 @@ class ContentAngleGenerator:
             "required": ["content_angles"]
         }
         
-        angles_result = llm_text_gen(
+        raw = llm_text_gen(
             prompt=angles_prompt,
-            json_struct=angles_schema,
             user_id=user_id
         )
         
-        if isinstance(angles_result, dict) and 'content_angles' in angles_result:
-            logger.info("✅ AI content angles generation completed successfully")
-            return angles_result['content_angles'][:7]
+        # Parse JSON from LLM response (works with both string and dict return types)
+        import json, re
+        if isinstance(raw, str):
+            cleaned = raw.strip()
+            if cleaned.startswith('```json'):
+                cleaned = cleaned[7:]
+            if cleaned.startswith('```'):
+                cleaned = cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+            try:
+                angles_result = json.loads(cleaned)
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                if json_match:
+                    angles_result = json.loads(json_match.group(0))
+                else:
+                    raise ValueError(f"Content angles returned non-JSON string: {cleaned[:200]}")
+        elif isinstance(raw, dict):
+            angles_result = raw
         else:
-            # Fail gracefully - no fallback data
-            error_msg = angles_result.get('error', 'Unknown error') if isinstance(angles_result, dict) else str(angles_result)
-            logger.error(f"AI content angles generation failed: {error_msg}")
-            raise ValueError(f"Content angles generation failed: {error_msg}")
+            raise ValueError(f"Unexpected LLM response type: {type(raw)}")
+        
+        if 'error' in angles_result:
+            raise ValueError(f"Content angles generation failed: {angles_result.get('error', 'Unknown error')}")
+        
+        if 'content_angles' not in angles_result:
+            raise ValueError(f"Content angles missing from response")
+        
+        logger.info("✅ AI content angles generation completed successfully")
+        return angles_result['content_angles'][:7]
     

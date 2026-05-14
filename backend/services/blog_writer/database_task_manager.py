@@ -499,7 +499,7 @@ class DatabaseTaskManager:
             )
             blog_writer_logger.log_error(e, "outline_generation_task", context={"task_id": task_id})
     
-    async def _run_medium_generation_task(self, task_id: str, request: MediumBlogGenerateRequest):
+    async def _run_medium_generation_task(self, task_id: str, request: MediumBlogGenerateRequest, user_id: str):
         """Background task to generate a medium blog using a single structured JSON call."""
         try:
             await self.update_progress(task_id, "📦 Packaging outline and metadata...", 0)
@@ -512,7 +512,7 @@ class DatabaseTaskManager:
             result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
                 request,
                 task_id,
-                user_id=request.user_id if hasattr(request, 'user_id') else (await self.get_task_status(task_id))['user_id'],
+                user_id,
                 db=self.db
             )
             

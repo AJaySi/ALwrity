@@ -5,8 +5,8 @@ Modular utilities for ALwrity backend startup and configuration.
 
 import os
 
-# Check podcast mode early to skip heavy imports
-_is_podcast = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
+# Check feature mode early to skip heavy imports
+_is_full_mode = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() in ("", "all")
 
 from .dependency_manager import DependencyManager
 from .environment_setup import EnvironmentSetup
@@ -26,41 +26,25 @@ from .feature_runtime import (
 )
 
 # Lazy load OnboardingManager - it triggers heavy imports (aiohttp, etc.)
-if not _is_podcast:
+if _is_full_mode:
     from .onboarding_manager import OnboardingManager
-    __all__ = [
-        'DependencyManager',
-        'EnvironmentSetup', 
-        'DatabaseSetup',
-        'ProductionOptimizer',
-        'HealthChecker',
-        'RateLimiter',
-        'FrontendServing',
-        'RouterManager',
-        'OnboardingManager',
-        'get_active_profiles',
-        'get_enabled_groups',
-        'get_enabled_optional_services',
-        'get_enabled_routers',
-        'get_enabled_startup_hooks',
-        'is_enabled'
-    ]
 else:
     OnboardingManager = None
-    __all__ = [
-        'DependencyManager',
-        'EnvironmentSetup', 
-        'DatabaseSetup',
-        'ProductionOptimizer',
-        'HealthChecker',
-        'RateLimiter',
-        'FrontendServing',
-        'RouterManager',
-        'OnboardingManager',
-        'get_active_profiles',
-        'get_enabled_groups',
-        'get_enabled_optional_services',
-        'get_enabled_routers',
-        'get_enabled_startup_hooks',
-        'is_enabled'
-    ]
+
+__all__ = [
+    'DependencyManager',
+    'EnvironmentSetup', 
+    'DatabaseSetup',
+    'ProductionOptimizer',
+    'HealthChecker',
+    'RateLimiter',
+    'FrontendServing',
+    'RouterManager',
+    'OnboardingManager',
+    'get_active_profiles',
+    'get_enabled_groups',
+    'get_enabled_optional_services',
+    'get_enabled_routers',
+    'get_enabled_startup_hooks',
+    'is_enabled'
+]

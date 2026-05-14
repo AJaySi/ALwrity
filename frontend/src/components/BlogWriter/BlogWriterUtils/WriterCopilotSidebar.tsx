@@ -198,6 +198,18 @@ export const WriterCopilotSidebar: React.FC<WriterCopilotSidebarProps> = ({
         * {
           transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         }
+        
+        /* Hide CopilotKit announcement/notification icon (bell badge) */
+        [class*="announcement"] {
+          display: none !important;
+        }
+        [class*="announce"] {
+          display: none !important;
+        }
+        /* Hide the floating Web Inspector button (shadow DOM - target the custom element itself) */
+        cpk-web-inspector {
+          display: none !important;
+        }
       `}</style>
       
       {/* Inject data attributes to identify Next suggestions */}

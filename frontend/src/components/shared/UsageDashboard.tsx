@@ -64,7 +64,8 @@ interface UsageLimits {
 }
 
 interface DashboardData {
-  current_usage: UsageStats;
+  total_usage: UsageStats;
+  current_period_usage: UsageStats;
   limits: UsageLimits;
   projections: {
     projected_monthly_cost: number;
@@ -248,14 +249,15 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
 
   if (!dashboardData) return null;
 
-  const currentUsage = dashboardData.current_usage;
+  const totalUsage = dashboardData.total_usage;
+  const currentPeriodUsage = dashboardData.current_period_usage;
   const limits = dashboardData.limits;
 
   if (compact) {
     // Compact view - show key metrics as chips
-    // Use current_usage for accurate cost (properly coerced from provider breakdown)
-    // Fallback to summary if current_usage is not available
-    const usageData = dashboardData?.current_usage || {
+    // Use total_usage for accurate cost (properly coerced from provider breakdown)
+    // Fallback to summary if total_usage is not available
+    const usageData = dashboardData?.total_usage || {
         total_calls: dashboardData?.summary?.total_api_calls_this_month || 0,
         total_cost: dashboardData?.summary?.total_cost_this_month || 0,
         usage_status: dashboardData?.summary?.usage_status || 'active',
@@ -267,37 +269,49 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
     const monthlyLimit = dashboardData?.limits?.limits?.monthly_cost || 0;
     const usagePercentage = monthlyLimit > 0 ? (totalCost / monthlyLimit) * 100 : 0;
 
-    // Build per-category usage summaries from provider_breakdown and limits
-    const providerBreakdown = usageData.provider_breakdown || {};
+    // Use current_period provider_breakdown for budget bars, total_usage for total display
+    const periodBreakdown = currentPeriodUsage?.provider_breakdown || {};
+    const totalBreakdown = usageData.provider_breakdown || {};
     const providerLimits = dashboardData?.limits?.limits || {};
 
-    // Aggregate AI text calls (gemini + openai + anthropic + mistral)
-    const aiCalls = (providerBreakdown.gemini?.calls || 0) + (providerBreakdown.openai?.calls || 0) + (providerBreakdown.anthropic?.calls || 0) + (providerBreakdown.mistral?.calls || 0) + (providerBreakdown.huggingface?.calls || 0) + (providerBreakdown.wavespeed?.calls || 0);
+    // Aggregate AI text calls (gemini + openai + anthropic + mistral) — from current period
+    const aiCalls = (periodBreakdown.gemini?.calls || 0) + (periodBreakdown.openai?.calls || 0) + (periodBreakdown.anthropic?.calls || 0) + (periodBreakdown.mistral?.calls || 0) + (periodBreakdown.huggingface?.calls || 0) + (periodBreakdown.wavespeed?.calls || 0);
     const aiCallLimit = providerLimits.ai_text_generation_calls || providerLimits.gemini_calls || 0;
 
-    // Image calls (stability + wavespeed image)
-    const imageCalls = (providerBreakdown.stability?.calls || 0) + (providerBreakdown.image_edit?.calls || 0);
+    // Image calls (stability + wavespeed image) — from current period
+    const imageCalls = (periodBreakdown.stability?.calls || 0) + (periodBreakdown.image_edit?.calls || 0);
     const imageCallLimit = providerLimits.stability_calls || 0;
+    const imageTotal = (totalBreakdown.stability?.calls || 0) + (totalBreakdown.image_edit?.calls || 0);
 
-    // Audio calls
-    const audioCalls = providerBreakdown.audio?.calls || 0;
+    // Audio calls — from current period
+    const audioCalls = periodBreakdown.audio?.calls || 0;
     const audioCallLimit = providerLimits.audio_calls || 0;
+    const audioTotal = totalBreakdown.audio?.calls || 0;
 
-    // Video calls
-    const videoCalls = providerBreakdown.video?.calls || 0;
+    // Video calls — from current period
+    const videoCalls = periodBreakdown.video?.calls || 0;
     const videoCallLimit = providerLimits.video_calls || 0;
+    const videoTotal = totalBreakdown.video?.calls || 0;
 
-    // Research calls (exa + tavily + serper + firecrawl)
-    const researchCalls = (providerBreakdown.exa?.calls || 0) + (providerBreakdown.tavily?.calls || 0) + (providerBreakdown.serper?.calls || 0) + (providerBreakdown.firecrawl?.calls || 0);
+    // Research calls (exa + tavily + serper + firecrawl) — from current period
+    const researchCalls = (periodBreakdown.exa?.calls || 0) + (periodBreakdown.tavily?.calls || 0) + (periodBreakdown.serper?.calls || 0) + (periodBreakdown.firecrawl?.calls || 0);
     const researchCallLimit = (providerLimits.exa_calls || 0) + (providerLimits.tavily_calls || 0) + (providerLimits.serper_calls || 0) + (providerLimits.firecrawl_calls || 0);
 
-    // WaveSpeed calls (all WaveSpeed API calls)
-    const wavespeedCalls = providerBreakdown.wavespeed?.calls || 0;
+    // WaveSpeed calls (all WaveSpeed API calls) — from current period
+    const wavespeedCalls = periodBreakdown.wavespeed?.calls || 0;
     const wavespeedCallLimit = providerLimits.wavespeed_calls || 0;
+    const wavespeedTotal = totalBreakdown.wavespeed?.calls || 0;
 
-    const formatLimit = (used: number, limit: number) => {
-      if (limit === 0) return `${used} / ∞`;
-      return `${used} / ${limit}`;
+    // All-time totals for rows without separate total variables
+    const aiTotal = (totalBreakdown.gemini?.calls || 0) + (totalBreakdown.openai?.calls || 0) + (totalBreakdown.anthropic?.calls || 0) + (totalBreakdown.mistral?.calls || 0) + (totalBreakdown.huggingface?.calls || 0) + (totalBreakdown.wavespeed?.calls || 0);
+    const researchTotal = (totalBreakdown.exa?.calls || 0) + (totalBreakdown.tavily?.calls || 0) + (totalBreakdown.serper?.calls || 0) + (totalBreakdown.firecrawl?.calls || 0);
+
+    const formatLimit = (used: number, limit: number, total?: number) => {
+      const periodStr = limit === 0 ? `${used} / ∞` : `${used} / ${limit}`;
+      if (total !== undefined && total !== used) {
+        return `${periodStr}  •  Total: ${total}`;
+      }
+      return periodStr;
     };
 
     return (
@@ -434,7 +448,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(aiCalls, aiCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(aiCalls, aiCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(aiCalls, aiCallLimit)}
+                  {formatLimit(aiCalls, aiCallLimit, aiTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -449,7 +463,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(imageCalls, imageCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(imageCalls, imageCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(imageCalls, imageCallLimit)}
+                  {formatLimit(imageCalls, imageCallLimit, imageTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -464,7 +478,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(audioCalls, audioCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(audioCalls, audioCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(audioCalls, audioCallLimit)}
+                  {formatLimit(audioCalls, audioCallLimit, audioTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -479,7 +493,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(videoCalls, videoCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(videoCalls, videoCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(videoCalls, videoCallLimit)}
+                  {formatLimit(videoCalls, videoCallLimit, videoTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -494,7 +508,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(researchCalls, researchCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(researchCalls, researchCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(researchCalls, researchCallLimit)}
+                  {formatLimit(researchCalls, researchCallLimit, researchTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -509,7 +523,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
                   sx={{ flex: 1, height: 4, borderRadius: 2, bgcolor: '#e5e7eb', '& .MuiLinearProgress-bar': { bgcolor: getUsageColor(wavespeedCalls, wavespeedCallLimit), borderRadius: 2 } }}
                 />
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 600, color: getUsageColor(wavespeedCalls, wavespeedCallLimit), minWidth: 55, textAlign: 'right' }}>
-                  {formatLimit(wavespeedCalls, wavespeedCallLimit)}
+                  {formatLimit(wavespeedCalls, wavespeedCallLimit, wavespeedTotal)}
                 </Typography>
               </Box>
             </Box>
@@ -552,7 +566,7 @@ const UsageDashboard: React.FC<UsageDashboardProps> = ({
   }
 
   // Full dashboard view (for dedicated usage page)
-  const usageData = dashboardData?.current_usage || {
+  const usageData = dashboardData?.total_usage || {
     total_calls: dashboardData?.summary?.total_api_calls_this_month || 0,
     total_cost: dashboardData?.summary?.total_cost_this_month || 0,
     provider_breakdown: {}

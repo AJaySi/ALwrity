@@ -4,12 +4,13 @@ import { useUser, useClerk } from '@clerk/clerk-react';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import SystemStatusIndicator from '../ContentPlanningDashboard/components/SystemStatusIndicator';
 import UsageDashboard from './UsageDashboard';
-import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
+import { isFeatureOnlyMode } from '../../utils/demoMode';
 import {
   apiClient,
   isBackendCooldownActive,
   logBackendCooldownSkipOnce,
 } from '../../api/client';
+import { saveNavigationState } from '../../utils/navigationState';
 
 interface UserBadgeProps {
   colorMode?: 'light' | 'dark';
@@ -31,8 +32,8 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
 
   // Fetch system status for status bulb
   useEffect(() => {
-    // Skip system status checks in podcast-only mode (endpoint not available)
-    if (isPodcastOnlyDemoMode()) {
+    // Skip system status checks in feature-limited mode (endpoint not available)
+    if (isFeatureOnlyMode()) {
       setSystemStatus('unknown');
       return;
     }
@@ -254,7 +255,7 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         
         <Divider sx={{ mx: 2 }} />
         
-        <MenuItem onClick={() => { handleClose(); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
+        <MenuItem onClick={() => { handleClose(); saveNavigationState(window.location.pathname); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
           Manage Subscription
         </MenuItem>
         <MenuItem onClick={handleSignOut} sx={{ mx: 1, borderRadius: 1, color: '#6b7280', '&:hover': { bgcolor: '#fef2f2', color: '#ef4444' } }}>

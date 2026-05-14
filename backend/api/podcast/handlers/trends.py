@@ -4,6 +4,7 @@ Podcast Trends Handler
 Endpoints for fetching Google Trends data relevant to podcast topics.
 """
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
@@ -12,6 +13,25 @@ from loguru import logger
 from middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/trends", tags=["Podcast Trends"])
+
+# Module-level shared instance (singleton pattern)
+_trends_service_instance = None
+_trends_service_lock = None
+
+
+def get_trends_service():
+    """Get or create shared GoogleTrendsService instance."""
+    global _trends_service_instance, _trends_service_lock
+    if _trends_service_instance is None:
+        try:
+            from services.research.trends import GoogleTrendsService
+            _trends_service_instance = GoogleTrendsService()
+            _trends_service_lock = asyncio.Lock()
+            logger.info("[Podcast Trends] Created shared GoogleTrendsService instance")
+        except (ImportError, RuntimeError) as e:
+            logger.error(f"[Podcast Trends] Failed to create GoogleTrendsService: {e}")
+            raise
+    return _trends_service_instance
 
 
 class PodcastTrendsRequest(BaseModel):
@@ -38,7 +58,7 @@ async def get_podcast_trends(
         raise HTTPException(status_code=401, detail="User ID not found")
 
     try:
-        from services.research.trends import GoogleTrendsService
+        service = get_trends_service()
     except (ImportError, RuntimeError) as e:
         logger.error(f"[Podcast Trends] GoogleTrendsService unavailable: {e}")
         raise HTTPException(
@@ -47,11 +67,10 @@ async def get_podcast_trends(
         )
 
     try:
-        service = GoogleTrendsService()
         # Map 'source' to 'gprop' - 'podcast' uses YouTube for video/podcast relevance
         gprop_map = {"": "", "web": "", "podcast": "youtube", "news": "news", "images": "images", "shopping": "froogle"}
         gprop = gprop_map.get(request.source, "")
-        
+
         result = await service.analyze_trends(
             keywords=request.keywords,
             timeframe=request.timeframe,
@@ -73,7 +92,15 @@ async def get_podcast_trends(
         # Return error if: has error OR no data (meaning blocked/empty)
         if has_error and not has_data:
             error_msg = result.get("error", "")
+            cooldown_active = result.get("cooldown_active", False)
             logger.warning(f"[Trends] No data or error: {error_msg[:100]}")
+            # Provide helpful message during cooldown
+            if cooldown_active:
+                return PodcastTrendsResponse(
+                    success=False,
+                    data=result,
+                    error="Google is rate limiting requests. Try using 'Get Trending Topics' instead, or wait 30 minutes."
+                )
             return PodcastTrendsResponse(success=False, data=result, error=error_msg or "No trends data available. Google may be blocking requests.")
 
         # Even if no error but empty data - return error

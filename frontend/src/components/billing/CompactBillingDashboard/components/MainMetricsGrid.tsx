@@ -10,7 +10,7 @@ import { DashboardData } from '../../../../types/billing';
 import { SystemHealth } from '../../../../types/monitoring';
 
 interface MainMetricsGridProps {
-  currentUsage: DashboardData['current_usage'];
+  currentUsage: DashboardData['total_usage'];
   systemHealth: SystemHealth | null;
   healthError: string | null;
   sparklineData: {

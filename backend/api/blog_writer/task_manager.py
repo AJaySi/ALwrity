@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 from fastapi import HTTPException
 from loguru import logger
 from sqlalchemy.orm import Session
-from services.database import SessionLocal, get_session_for_user
+from services.database import get_session_for_user
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -264,7 +264,7 @@ class TaskManager:
                 raise ValueError("Global target words exceed 1000; medium generation not allowed")
 
             # Create a sync session for asset saving
-            db_session = SessionLocal()
+            db_session = get_session_for_user(user_id)
             try:
                 result: MediumBlogGenerateResult = await self.service.generate_medium_blog_with_progress(
                     request,
@@ -326,6 +326,7 @@ class TaskManager:
                 await self.update_progress(task_id, f"❌ Medium generation failed: {str(e)}")
                 self.task_storage[task_id]["status"] = "failed"
                 self.task_storage[task_id]["error"] = str(e)
+                self.task_storage[task_id]["error_data"] = {"error_message": str(e), "error_type": type(e).__name__}
 
 
 # Global task manager instance

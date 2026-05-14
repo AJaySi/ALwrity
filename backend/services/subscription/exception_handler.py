@@ -12,7 +12,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from models.subscription_models import APIProvider, UsageAlert
+from models.subscription_models import APIProvider, UsageAlert, UserSubscription
 
 class SubscriptionErrorType(Enum):
     USAGE_LIMIT_EXCEEDED = "usage_limit_exceeded"
@@ -248,6 +248,18 @@ class SubscriptionExceptionHandler:
             return
         
         try:
+            # Get billing period from subscription, fallback to calendar month
+            billing_period = datetime.now().strftime("%Y-%m")  # default
+            try:
+                subscription = self.db.query(UserSubscription).filter(
+                    UserSubscription.user_id == error.user_id,
+                    UserSubscription.is_active == True
+                ).first()
+                if subscription and subscription.current_period_start:
+                    billing_period = subscription.current_period_start.strftime("%Y-%m")
+            except:
+                pass  # Use default calendar period
+            
             alert = UsageAlert(
                 user_id=error.user_id,
                 alert_type="system_error",
@@ -256,7 +268,7 @@ class SubscriptionExceptionHandler:
                 title=f"System Error: {error.error_type.value}",
                 message=error.message,
                 severity=error.severity.value,
-                billing_period=datetime.now().strftime("%Y-%m")
+                billing_period=billing_period
             )
             
             self.db.add(alert)

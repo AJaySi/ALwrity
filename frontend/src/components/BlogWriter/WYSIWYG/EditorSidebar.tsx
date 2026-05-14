@@ -1,8 +1,6 @@
 import React from 'react';
-import { Paper, Button, Chip } from '@mui/material';
+import { Paper, Chip } from '@mui/material';
 import {
-  Add as AddIcon,
-  AutoAwesome as AutoAwesomeIcon,
   BarChart as BarChartIcon,
   Hub as HubIcon,
   GpsFixed as GpsFixedIcon,
@@ -14,74 +12,112 @@ interface EditorSidebarProps {
 }
 
 const EditorSidebar: React.FC<EditorSidebarProps> = ({ sections, totalWords }) => {
+  const wordTarget = sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0);
+  const progress = wordTarget > 0 ? Math.min(100, Math.round((totalWords / wordTarget) * 100)) : 0;
+
   return (
-    <div className="sticky top-24 hidden lg:block">
-      <Paper elevation={2} className="p-4 rounded-xl shadow-lg border border-gray-100">
-        <h3 className="font-bold text-lg mb-4 text-gray-700">Editor's Toolkit</h3>
-        <div className="space-y-3 mb-6">
-          <Button 
-            fullWidth 
-            variant="contained" 
-            startIcon={<AutoAwesomeIcon />} 
-            className="!bg-gradient-to-r !from-indigo-500 !to-purple-500 !capitalize !font-semibold !rounded-lg"
-          >
-            ALwrity it
-          </Button>
-          <Button 
-            fullWidth 
-            variant="outlined" 
-            startIcon={<AddIcon />} 
-            className="!capitalize !rounded-lg"
-          >
-            Add Section
-          </Button>
+    <div>
+      <Paper elevation={0} className="p-5 rounded-xl border border-gray-200/60 bg-white">
+        {/* Progress ring */}
+        <div className="text-center mb-5">
+          <div className="relative inline-flex items-center justify-center">
+            <svg className="w-20 h-20 -rotate-90">
+              <circle cx="40" cy="40" r="34" fill="none" stroke="#f3f4f6" strokeWidth="4" />
+              <circle
+                cx="40" cy="40" r="34"
+                fill="none" stroke="#4f46e5" strokeWidth="4"
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 34}`}
+                strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress / 100)}`}
+                className="transition-all duration-500"
+              />
+            </svg>
+            <span className="absolute text-lg font-bold text-gray-700">{progress}%</span>
+          </div>
+          <div className="mt-2 text-xs text-gray-400">content complete</div>
         </div>
-        <div className="mb-6">
-          <h4 className="font-semibold text-sm text-gray-600 mb-3">Outline</h4>
-          <ul className="space-y-2">
-            {sections.map(section => (
-              <li key={section.id}>
-                <a 
-                  href={`#section-${section.id}`} 
-                  className="text-sm text-gray-500 hover:text-indigo-600 transition-colors flex items-start"
-                >
-                  <span className="mr-2 font-semibold">{section.id}.</span>
-                  <span className="flex-1">{section.title}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
+
+        {/* Stats */}
+        <div className="space-y-2 mb-5">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Sections</span>
+            <span className="font-medium text-gray-800">{sections.length}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Words</span>
+            <span className="font-medium text-gray-800">{totalWords.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Target</span>
+            <span className="font-medium text-gray-800">{wordTarget.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Reading time</span>
+            <span className="font-medium text-gray-800">{Math.max(1, Math.ceil(totalWords / 200))} min</span>
+          </div>
         </div>
-        <div className="border-t pt-4">
-          <h4 className="font-semibold text-sm text-gray-600 mb-3">SuperPowers</h4>
+
+        <div className="border-t border-gray-100 pt-4">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Research Tools</h4>
           <div className="flex flex-wrap gap-2">
-            <Chip 
-              icon={<BarChartIcon />} 
-              label="Research" 
-              size="small" 
-              clickable 
-              variant="outlined" 
+            <Chip
+              icon={<BarChartIcon sx={{ fontSize: 14 }} />}
+              label="Keywords"
+              size="small"
+              variant="outlined"
+              sx={{
+                fontSize: '12px',
+                height: 28,
+                '&:hover': { borderColor: '#4f46e5', color: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.04)' },
+                transition: 'all 0.15s ease',
+              }}
             />
-            <Chip 
-              icon={<HubIcon />} 
-              label="Source Mapping" 
-              size="small" 
-              clickable 
-              variant="outlined" 
+            <Chip
+              icon={<HubIcon sx={{ fontSize: 14 }} />}
+              label="Sources"
+              size="small"
+              variant="outlined"
+              sx={{
+                fontSize: '12px',
+                height: 28,
+                '&:hover': { borderColor: '#4f46e5', color: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.04)' },
+                transition: 'all 0.15s ease',
+              }}
             />
-            <Chip 
-              icon={<GpsFixedIcon />} 
-              label="Grounding" 
-              size="small" 
-              clickable 
-              variant="outlined" 
+            <Chip
+              icon={<GpsFixedIcon sx={{ fontSize: 14 }} />}
+              label="Grounding"
+              size="small"
+              variant="outlined"
+              sx={{
+                fontSize: '12px',
+                height: 28,
+                '&:hover': { borderColor: '#4f46e5', color: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.04)' },
+                transition: 'all 0.15s ease',
+              }}
             />
           </div>
         </div>
+
+        {/* Section navigation */}
+        {sections.length > 0 && (
+          <div className="border-t border-gray-100 pt-4 mt-4">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">On this page</h4>
+            <nav className="space-y-1">
+              {sections.map((section, i) => (
+                <a
+                  key={section.id}
+                  href={`#section-${section.id}`}
+                  className="block text-sm text-gray-500 hover:text-indigo-600 transition-colors py-1 truncate"
+                >
+                  <span className="text-xs text-gray-300 mr-2">{i + 1}.</span>
+                  {section.title || `Section ${i + 1}`}
+                </a>
+              ))}
+            </nav>
+          </div>
+        )}
       </Paper>
-      <div className="text-center text-xs text-gray-400 mt-4">
-        <span>{sections.length} sections</span> &bull; <span>{totalWords} words total</span>
-      </div>
     </div>
   );
 };

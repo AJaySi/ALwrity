@@ -296,6 +296,33 @@ class ResearchEngine:
         target_audience = request.target_audience or "General"
         
         research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
+
+        # Preflight subscription check
+        try:
+            db = self._db_session
+            if not db:
+                from services.database import get_db_session
+                db = get_db_session()
+            if db:
+                from services.subscription import PricingService
+                from models.subscription_models import APIProvider
+                pricing_service = PricingService(db)
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=APIProvider.EXA,
+                    tokens_requested=0,
+                    actual_provider_name="exa",
+                )
+                if not can_proceed:
+                    raise HTTPException(status_code=429, detail={
+                        'error': message, 'message': message,
+                        'provider': 'exa', 'usage_info': usage_info or {}
+                    })
+                logger.info(f"[ResearchEngine] Exa preflight check passed for user {user_id}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"[ResearchEngine] Exa preflight check failed: {e}")
         
         # Execute Exa search
         try:
@@ -341,6 +368,33 @@ class ResearchEngine:
         target_audience = request.target_audience or "General"
         
         research_prompt = strategy.build_research_prompt(topic, industry, target_audience, config)
+
+        # Preflight subscription check
+        try:
+            db = self._db_session
+            if not db:
+                from services.database import get_db_session
+                db = get_db_session()
+            if db:
+                from services.subscription import PricingService
+                from models.subscription_models import APIProvider
+                pricing_service = PricingService(db)
+                can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                    user_id=user_id,
+                    provider=APIProvider.TAVILY,
+                    tokens_requested=0,
+                    actual_provider_name="tavily",
+                )
+                if not can_proceed:
+                    raise HTTPException(status_code=429, detail={
+                        'error': message, 'message': message,
+                        'provider': 'tavily', 'usage_info': usage_info or {}
+                    })
+                logger.info(f"[ResearchEngine] Tavily preflight check passed for user {user_id}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"[ResearchEngine] Tavily preflight check failed: {e}")
         
         # Execute Tavily search
         try:

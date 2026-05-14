@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Any, Dict
 from loguru import logger
 
 from services.writing_assistant import WritingAssistantService
+from middleware.auth_middleware import get_current_user
 
 
 router = APIRouter(prefix="/api/writing-assistant", tags=["writing-assistant"])
@@ -11,7 +12,6 @@ router = APIRouter(prefix="/api/writing-assistant", tags=["writing-assistant"])
 
 class SuggestRequest(BaseModel):
     text: str
-    max_results: int | None = 1
 
 
 class SourceModel(BaseModel):
@@ -38,9 +38,10 @@ assistant_service = WritingAssistantService()
 
 
 @router.post("/suggest", response_model=SuggestResponse)
-async def suggest_endpoint(req: SuggestRequest) -> SuggestResponse:
+async def suggest_endpoint(req: SuggestRequest, current_user: Dict[str, Any] = Depends(get_current_user)) -> SuggestResponse:
     try:
-        suggestions = await assistant_service.suggest(req.text, req.max_results or 1)
+        user_id = current_user.get("id")
+        suggestions = await assistant_service.suggest(req.text, user_id=user_id)
         return SuggestResponse(
             success=True,
             suggestions=[

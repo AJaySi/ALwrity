@@ -22,7 +22,7 @@ import {
 } from "../components/PodcastMaker/types";
 import { checkPreflight, PreflightOperation } from "./billingService";
 import { TaskStatus } from "./storyWriterApi";
-import { isPodcastOnlyDemoMode } from "../utils/demoMode";
+import { isFeatureOnlyMode } from "../utils/demoMode";
 
 const DEFAULT_KNOBS: Knobs = {
   voice_emotion: "neutral",
@@ -360,7 +360,7 @@ export const podcastApi = {
       exaSuggestedConfig: analysisResp.data?.exa_suggested_config || undefined,
     };
 
-    const researchConfig = isPodcastOnlyDemoMode() ? null : await getResearchConfig();
+    const researchConfig = isFeatureOnlyMode() ? null : await getResearchConfig();
     
     // Use AI-generated queries if available, fallback to legacy mapping
     let queries: Query[] = [];

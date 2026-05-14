@@ -1,20 +1,20 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { createTheme, ThemeProvider, Paper, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Divider } from '@mui/material';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { createTheme, ThemeProvider, Paper, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Divider, TextField } from '@mui/material';
 import {
   AutoAwesome as AutoAwesomeIcon,
+  MoreHoriz as MoreHorizIcon,
 } from '@mui/icons-material';
 import { BlogOutlineSection, BlogResearchResponse, blogWriterApi } from '../../../services/blogWriterApi';
 import BlogSection from './BlogSection';
+import EditorSidebar from './EditorSidebar';
+import HoverMenu from './HoverMenu';
 
-// Helper to create a consistent theme
 const theme = createTheme({
   typography: {
     fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
   },
   palette: {
-    primary: {
-      main: '#4f46e5',
-    },
+    primary: { main: '#4f46e5' },
   },
 });
 
@@ -48,16 +48,26 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   sectionImages = {}
 }) => {
   const [blogTitle, setBlogTitle] = useState(initialTitle || 'Your Amazing Blog Title');
-  const [introduction, setIntroduction] = useState('Click "Generate Introduction" to create a compelling opening for your blog post based on your content and research.');
+  const [introduction, setIntroduction] = useState('');
   const [sections, setSections] = useState<any[]>([]);
-  // const [isTitleLoading, setIsTitleLoading] = useState(false); // Unused state
   const [isIntroductionLoading, setIsIntroductionLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<any>>(new Set());
   const [showTitleModal, setShowTitleModal] = useState(false);
   const [showIntroductionModal, setShowIntroductionModal] = useState(false);
   const [generatedIntroductions, setGeneratedIntroductions] = useState<string[]>([]);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingIntro, setEditingIntro] = useState(false);
+  const [titleMenuAnchor, setTitleMenuAnchor] = useState<HTMLElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const introInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize sections from outline or use parent sections
+  const totalWords = useMemo(() =>
+    sections.reduce((sum, s) => sum + (s.content?.split(/\s+/).filter(Boolean).length || 0), 0),
+    [sections]
+  );
+
+  const readingTime = useMemo(() => Math.max(1, Math.ceil(totalWords / 200)), [totalWords]);
+
   useEffect(() => {
     if (outline && outline.length > 0) {
       const initialSections = outline.map((section, index) => ({
@@ -78,53 +88,39 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
     }
   }, [outline, parentSections]);
 
-  // Update sections when parentSections content changes (e.g., after SEO recommendations are applied)
-  // This effect specifically watches for content changes in parentSections and updates the corresponding sections
-  // Use a ref to track the previous parentSections content to detect actual content changes
   const prevParentSectionsRef = useRef<string>('');
   const prevContinuityRefreshRef = useRef<number | undefined>(undefined);
   
   useEffect(() => {
     if (!parentSections || !outline || outline.length === 0) return;
 
-    // Create a stringified version of parentSections for comparison
     const parentSectionsString = JSON.stringify(parentSections);
     const continuityRefreshChanged = continuityRefresh !== prevContinuityRefreshRef.current;
     
-    // Update if content changed OR continuityRefresh changed (forced refresh)
     if (parentSectionsString === prevParentSectionsRef.current && !continuityRefreshChanged) {
-      return; // No changes detected
+      return;
     }
     
     prevParentSectionsRef.current = parentSectionsString;
     prevContinuityRefreshRef.current = continuityRefresh;
 
     setSections(prevSections => {
-      // Update sections with new content from parentSections
       const updatedSections = prevSections.map(section => {
-        // Try multiple ID formats to match sections (string, number, or stringified number)
         const sectionIdStr = String(section.id);
         const parentContent = parentSections[section.id] || 
                               parentSections[sectionIdStr] || 
                               parentSections[Number(section.id)];
         
-        // Update if parent has content for this section ID and it's different
         if (parentContent !== undefined && parentContent !== section.content) {
-          console.log(`[BlogEditor] Updating section ${section.id} with new content (length: ${parentContent.length})`);
-          return {
-            ...section,
-            content: parentContent
-          };
+          return { ...section, content: parentContent };
         }
         return section;
       });
       
-      // Check if any sections were actually updated
       const hasUpdates = updatedSections.some((section, index) => 
         section.content !== prevSections[index]?.content
       );
       
-      // Notify parent component of content update if changes were made
       if (onContentUpdate && hasUpdates) {
         onContentUpdate(updatedSections);
       }
@@ -133,17 +129,41 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
     });
   }, [parentSections, outline, continuityRefresh, onContentUpdate]);
 
-  // Initialize title from parent when provided
   useEffect(() => {
     if (initialTitle && initialTitle.trim().length > 0) {
       setBlogTitle(initialTitle);
     }
   }, [initialTitle]);
 
+  useEffect(() => {
+    if (editingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [editingTitle]);
+
+  useEffect(() => {
+    if (editingIntro && introInputRef.current) {
+      introInputRef.current.focus();
+      introInputRef.current.select();
+    }
+  }, [editingIntro]);
+
   const handleSuggestTitle = useCallback(() => {
-    console.log('Available titles:', { researchTitles, aiGeneratedTitles, titleOptions });
     setShowTitleModal(true);
-  }, [researchTitles, aiGeneratedTitles, titleOptions]);
+  }, []);
+
+  const handleTitleAction = useCallback((action: string) => {
+    switch (action) {
+      case 'generate-titles':
+      case 'research-titles':
+        setShowTitleModal(true);
+        break;
+      case 'seo-optimize':
+      case 'ab-test':
+        break;
+    }
+  }, []);
 
   const handleTitleSelect = useCallback((selectedTitle: string) => {
     setBlogTitle(selectedTitle);
@@ -151,9 +171,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   }, []);
 
   const handleGenerateIntroductions = useCallback(async () => {
-    if (!research || !outline.length || isIntroductionLoading) {
-      return;
-    }
+    if (!research || !outline.length || isIntroductionLoading) return;
 
     setIsIntroductionLoading(true);
     try {
@@ -161,7 +179,6 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
       const primaryKeywords = keywordAnalysis.primary || [];
       const searchIntent = keywordAnalysis.search_intent || 'informational';
 
-      // Build sections_content from current sections
       const sectionsContent: Record<string, string> = {};
       sections.forEach(section => {
         if (section.content) {
@@ -184,7 +201,6 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
       }
     } catch (error) {
       console.error('Failed to generate introductions:', error);
-      alert('Failed to generate introductions. Please try again.');
     } finally {
       setIsIntroductionLoading(false);
     }
@@ -198,75 +214,107 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   const toggleSectionExpansion = useCallback((sectionId: any) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(sectionId)) {
-        newSet.delete(sectionId);
-      } else {
-        newSet.add(sectionId);
-      }
+      if (newSet.has(sectionId)) newSet.delete(sectionId);
+      else newSet.add(sectionId);
       return newSet;
     });
   }, []);
 
-
-  // Main Render - Exactly like your example
   return (
     <ThemeProvider theme={theme}>
-      <div className="bg-gray-50 min-h-screen font-sans">
-        <main className="w-full px-4 sm:px-6 lg:px-8 py-8">
-          <div className="w-full max-w-4xl mx-auto">
-            <Paper elevation={0} className="bg-white p-8 md:p-12 rounded-xl border border-gray-200/80 w-full">
-                <div className="mb-8 pb-6 border-b">
+      <div className="min-h-screen bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex gap-8">
+            {/* Main editor column */}
+            <div className="flex-1 min-w-0 max-w-4xl">
+              <Paper elevation={0} className="bg-white p-8 md:p-10 rounded-xl border border-gray-200/60">
+                {/* Title */}
+                <div className="mb-6 pb-6 border-b border-gray-100">
                   <div className="flex items-start gap-2 group">
-                    <h1 
-                      className="flex-1 text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight cursor-pointer hover:bg-gray-50 p-2 rounded-md transition-colors duration-200"
-                      style={{
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        lineHeight: '1.3'
-                      }}
-                      onClick={() => {
-                        const newTitle = prompt('Edit blog title:', blogTitle);
-                        if (newTitle !== null) {
-                          setBlogTitle(newTitle);
-                        }
-                      }}
-                      title="Click to edit title"
-                    >
-                      {blogTitle}
-                    </h1>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 mt-1">
-                      <Tooltip title="✨ ALwrity it">
-                        {/* isTitleLoading is currently unused but kept for future implementation */}
+                    {editingTitle ? (
+                      <TextField
+                        inputRef={titleInputRef}
+                        fullWidth
+                        variant="standard"
+                        value={blogTitle}
+                        onChange={(e) => setBlogTitle(e.target.value)}
+                        onBlur={() => setEditingTitle(false)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setEditingTitle(false);
+                          if (e.key === 'Escape') setEditingTitle(false);
+                        }}
+                        InputProps={{
+                          disableUnderline: true,
+                          className: 'text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight truncate min-w-0',
+                        }}
+                      />
+                    ) : (
+                      <h1
+                        className="flex-1 min-w-0 text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight cursor-text hover:bg-gray-50/50 px-2 -ml-2 py-1 rounded transition-colors duration-150 truncate"
+                        onClick={() => setEditingTitle(true)}
+                      >
+                        {blogTitle}
+                      </h1>
+                    )}
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1 shrink-0 flex items-center gap-1">
+                      <Tooltip title="Title actions">
+                        <IconButton size="small" onClick={(e) => setTitleMenuAnchor(e.currentTarget)}>
+                          <MoreHorizIcon className="text-gray-400" fontSize="small"/>
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Choose from AI titles">
                         <IconButton onClick={handleSuggestTitle} size="small">
                           <AutoAwesomeIcon className="text-purple-500" fontSize="small"/>
                         </IconButton>
                       </Tooltip>
                     </div>
+                    <HoverMenu
+                      anchorEl={titleMenuAnchor}
+                      open={Boolean(titleMenuAnchor)}
+                      onClose={() => setTitleMenuAnchor(null)}
+                      type="title"
+                      onAction={handleTitleAction}
+                    />
                   </div>
-                  <div className="mt-3 group/intro">
+
+                  {/* Introduction */}
+                  <div className="mt-4 group/intro">
                     <div className="flex items-start gap-2">
-                      <p 
-                        className="flex-1 text-gray-600 text-sm leading-relaxed cursor-pointer hover:bg-gray-50 p-2 rounded-md transition-colors duration-200"
-                        onClick={() => {
-                          const newIntro = prompt('Edit introduction:', introduction);
-                          if (newIntro !== null && newIntro.trim()) {
-                            setIntroduction(newIntro.trim());
-                          }
-                        }}
-                        title="Click to edit introduction"
-                      >
-                        {introduction}
-                      </p>
-                      <div className="opacity-0 group-hover/intro:opacity-100 transition-opacity duration-300">
-                        <Tooltip title="✨ Generate Introduction">
-                          <IconButton 
-                            onClick={handleGenerateIntroductions} 
-                            disabled={isIntroductionLoading || !research || !outline.length} 
+                      {editingIntro ? (
+                        <TextField
+                          inputRef={introInputRef}
+                          fullWidth
+                          variant="standard"
+                          multiline
+                          minRows={2}
+                          value={introduction}
+                          onChange={(e) => setIntroduction(e.target.value)}
+                          onBlur={() => setEditingIntro(false)}
+                          placeholder="Write an engaging introduction..."
+                          InputProps={{
+                            disableUnderline: true,
+                            className: 'text-base text-gray-600 leading-relaxed',
+                          }}
+                        />
+                      ) : (
+                        <p
+                          className={`flex-1 text-base leading-relaxed cursor-text hover:bg-gray-50/50 px-2 -ml-2 py-1 rounded transition-colors duration-150 ${
+                            introduction ? 'text-gray-600' : 'text-gray-400'
+                          }`}
+                          onClick={() => setEditingIntro(true)}
+                        >
+                          {introduction || 'Click to write your introduction...'}
+                        </p>
+                      )}
+                      <div className="opacity-0 group-hover/intro:opacity-100 transition-opacity duration-200 shrink-0">
+                        <Tooltip title="Generate Introduction">
+                          <IconButton
+                            onClick={handleGenerateIntroductions}
+                            disabled={isIntroductionLoading || !research || !outline.length}
                             size="small"
                           >
                             {isIntroductionLoading ? (
-                              <CircularProgress size={20} />
+                              <CircularProgress size={18} />
                             ) : (
                               <AutoAwesomeIcon className="text-blue-500" fontSize="small"/>
                             )}
@@ -275,11 +323,11 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                       </div>
                     </div>
                   </div>
-                  <Divider sx={{ mt: 3, opacity: 0.3 }} />
                 </div>
-                <div>
+
+                {/* Sections */}
+                <div className="space-y-1">
                   {sections.map((section, index) => {
-                    // Robust image mapping: prefer outline index id (order is consistent across phases)
                     const imageIdByIndex = outline[index]?.id;
                     const outlineSection = outline.find(s => (s.id === section.id) || (s.heading === section.title));
                     const imageId = imageIdByIndex || outlineSection?.id || section.id;
@@ -298,17 +346,46 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                     );
                   })}
                 </div>
-            </Paper>
+
+                {/* Stats bar */}
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-sm text-gray-400">
+                    <div className="flex items-center gap-4">
+                      <span>{sections.length} {sections.length === 1 ? 'section' : 'sections'}</span>
+                      <span className="text-gray-300">|</span>
+                      <span>{totalWords.toLocaleString()} words</span>
+                      <span className="text-gray-300">|</span>
+                      <span>{readingTime} min read</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, (totalWords / Math.max(1, sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0))) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {totalWords > 0
+                          ? `${Math.round(Math.min(100, (totalWords / Math.max(1, sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0))) * 100))}%`
+                          : '0%'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Paper>
+            </div>
+
+            {/* Sidebar */}
+            <div className="hidden lg:block w-72 shrink-0">
+              <div className="sticky top-6">
+                <EditorSidebar sections={sections} totalWords={totalWords} />
+              </div>
+            </div>
           </div>
-        </main>
-        
+        </div>
+
         {/* Title Selection Modal */}
-        <Dialog 
-          open={showTitleModal} 
-          onClose={() => setShowTitleModal(false)}
-          maxWidth="md"
-          fullWidth
-        >
+        <Dialog open={showTitleModal} onClose={() => setShowTitleModal(false)} maxWidth="md" fullWidth>
           <DialogTitle>
             <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
               Choose Your Blog Title
@@ -316,11 +393,10 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
           </DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
-              {/* Research Titles */}
               {researchTitles.length > 0 && (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 2, color: 'primary.main' }}>
-                    📊 Research-Based Titles
+                    Research-Based Titles
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {researchTitles.map((title, index) => (
@@ -329,17 +405,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                         variant="outlined"
                         fullWidth
                         onClick={() => handleTitleSelect(title)}
-                        sx={{ 
-                          justifyContent: 'flex-start',
-                          textAlign: 'left',
-                          textTransform: 'none',
-                          py: 1.5,
-                          px: 2,
-                          '&:hover': {
-                            backgroundColor: 'primary.light',
-                            color: 'white',
-                          }
-                        }}
+                        sx={{ justifyContent: 'flex-start', textAlign: 'left', textTransform: 'none', py: 1.5, px: 2 }}
                       >
                         {title}
                       </Button>
@@ -347,12 +413,10 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                   </Box>
                 </Box>
               )}
-              
-              {/* AI Generated Titles */}
               {aiGeneratedTitles.length > 0 && (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 2, color: 'secondary.main' }}>
-                    🤖 AI Generated Titles
+                    AI Generated Titles
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {aiGeneratedTitles.map((title, index) => (
@@ -361,17 +425,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                         variant="outlined"
                         fullWidth
                         onClick={() => handleTitleSelect(title)}
-                        sx={{ 
-                          justifyContent: 'flex-start',
-                          textAlign: 'left',
-                          textTransform: 'none',
-                          py: 1.5,
-                          px: 2,
-                          '&:hover': {
-                            backgroundColor: 'secondary.light',
-                            color: 'white',
-                          }
-                        }}
+                        sx={{ justifyContent: 'flex-start', textAlign: 'left', textTransform: 'none', py: 1.5, px: 2 }}
                       >
                         {title}
                       </Button>
@@ -379,12 +433,10 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                   </Box>
                 </Box>
               )}
-              
-              {/* Title Options */}
               {titleOptions.length > 0 && (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 2, color: 'success.main' }}>
-                    ✨ Additional Options
+                    Additional Options
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {titleOptions.map((title, index) => (
@@ -393,17 +445,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                         variant="outlined"
                         fullWidth
                         onClick={() => handleTitleSelect(title)}
-                        sx={{ 
-                          justifyContent: 'flex-start',
-                          textAlign: 'left',
-                          textTransform: 'none',
-                          py: 1.5,
-                          px: 2,
-                          '&:hover': {
-                            backgroundColor: 'success.light',
-                            color: 'white',
-                          }
-                        }}
+                        sx={{ justifyContent: 'flex-start', textAlign: 'left', textTransform: 'none', py: 1.5, px: 2 }}
                       >
                         {title}
                       </Button>
@@ -411,82 +453,48 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                   </Box>
                 </Box>
               )}
-              
               {researchTitles.length === 0 && aiGeneratedTitles.length === 0 && titleOptions.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                   No title options available. Please generate an outline first.
                 </Typography>
               )}
-              
-              {/* Debug info */}
-              {process.env.NODE_ENV === 'development' && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Debug: Research titles: {researchTitles.length}, AI titles: {aiGeneratedTitles.length}, Options: {titleOptions.length}
-                  </Typography>
-                </Box>
-              )}
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setShowTitleModal(false)}>
-              Cancel
-            </Button>
+            <Button onClick={() => setShowTitleModal(false)}>Cancel</Button>
           </DialogActions>
         </Dialog>
 
         {/* Introduction Selection Modal */}
-        <Dialog 
-          open={showIntroductionModal} 
-          onClose={() => setShowIntroductionModal(false)}
-          maxWidth="md"
-          fullWidth
-        >
+        <Dialog open={showIntroductionModal} onClose={() => setShowIntroductionModal(false)} maxWidth="md" fullWidth>
           <DialogTitle>
             <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
               Choose Your Blog Introduction
             </Typography>
             <Typography variant="body2" sx={{ mt: 1, color: 'text.secondary' }}>
-              Select one of the AI-generated introductions below. Each offers a different approach to hooking your readers.
+              Select one of the AI-generated introductions below.
             </Typography>
           </DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
               {generatedIntroductions.map((intro, index) => (
-                <Box 
-                  key={index} 
-                  sx={{ 
-                    mb: 3,
-                    p: 2,
+                <Box
+                  key={index}
+                  sx={{
+                    mb: 3, p: 2,
                     border: '1px solid',
                     borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'success.main',
                     borderRadius: 2,
-                    '&:hover': {
-                      backgroundColor: 'action.hover',
-                    },
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    '&:hover': { backgroundColor: 'action.hover' },
                   }}
                   onClick={() => handleIntroductionSelect(intro)}
                 >
-                  <Typography 
-                    variant="subtitle2" 
-                    sx={{ 
-                      fontWeight: 'bold', 
-                      mb: 1,
-                      color: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'success.main'
-                    }}
-                  >
-                    {index === 0 ? '📌 Option 1: Problem-Focused' : index === 1 ? '✨ Option 2: Benefit-Focused' : '📊 Option 3: Story/Statistic-Focused'}
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1, color: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'success.main' }}>
+                    {index === 0 ? 'Problem-Focused' : index === 1 ? 'Benefit-Focused' : 'Story/Statistic-Focused'}
                   </Typography>
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      color: 'text.primary',
-                      lineHeight: 1.7,
-                      whiteSpace: 'pre-wrap'
-                    }}
-                  >
+                  <Typography variant="body1" sx={{ color: 'text.primary', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                     {intro}
                   </Typography>
                 </Box>
@@ -494,9 +502,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setShowIntroductionModal(false)}>
-              Cancel
-            </Button>
+            <Button onClick={() => setShowIntroductionModal(false)}>Cancel</Button>
           </DialogActions>
         </Dialog>
       </div>

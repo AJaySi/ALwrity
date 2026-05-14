@@ -12,6 +12,26 @@ interface PublisherProps {
   seoMetadata: BlogSEOMetadataResponse | null;
 }
 
+const saveCompleteBlogAsset = async (
+  title: string,
+  content: string,
+  seoMetadata: BlogSEOMetadataResponse | null
+) => {
+  try {
+    await apiClient.post('/api/blog/save-complete-asset', {
+      title,
+      content,
+      seo_title: seoMetadata?.seo_title,
+      meta_description: seoMetadata?.meta_description,
+      focus_keyword: seoMetadata?.focus_keyword,
+      tags: seoMetadata?.blog_tags || [],
+      categories: seoMetadata?.blog_categories || [],
+    });
+  } catch (error) {
+    console.error('Failed to save complete blog asset:', error);
+  }
+};
+
 const useCopilotActionTyped = useCopilotAction as any;
 
 interface WixConnectionStatus {
@@ -230,7 +250,15 @@ export const Publisher: React.FC<PublisherProps> = ({
         }
 
         // We have a valid access token, proceed with publishing
-        return await publishToWix(md, seoMetadata, tokenResult.accessToken);
+        const wixResult = await publishToWix(md, seoMetadata, tokenResult.accessToken);
+        if (wixResult.success) {
+          saveCompleteBlogAsset(
+            seoMetadata?.seo_title || 'Blog Post',
+            md,
+            seoMetadata
+          );
+        }
+        return wixResult;
       } else if (platform === 'wordpress') {
         // WordPress publishing
         if (!seoMetadata) {
@@ -284,6 +312,7 @@ export const Publisher: React.FC<PublisherProps> = ({
           const result = await wordpressAPI.publishContent(publishRequest);
           
           if (result.success) {
+            saveCompleteBlogAsset(title, md, seoMetadata);
             return {
               success: true,
               url: result.post_url || `${activeSite.site_url}/?p=${result.post_id}`,

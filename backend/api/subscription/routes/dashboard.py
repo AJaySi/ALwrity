@@ -12,7 +12,7 @@ import sqlite3
 from services.database import get_db
 from services.subscription import UsageTrackingService, PricingService
 from services.subscription.schema_utils import ensure_subscription_plan_columns, ensure_usage_summaries_columns
-from models.subscription_models import UsageAlert
+from models.subscription_models import UsageAlert, UserSubscription
 from middleware.auth_middleware import get_current_user
 from ..dependencies import verify_user_access
 from ..cache import get_cached_dashboard, set_cached_dashboard
@@ -27,7 +27,9 @@ async def get_dashboard_data(
     db: Session = Depends(get_db),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Get comprehensive dashboard data for usage monitoring."""
+    """Get comprehensive dashboard data for usage monitoring.
+    Returns all-time total + current period usage by default.
+    When billing_period is specified, returns that period's data only."""
 
     verify_user_access(user_id, current_user)
     
@@ -35,17 +37,23 @@ async def get_dashboard_data(
         ensure_subscription_plan_columns(db)
         ensure_usage_summaries_columns(db)
         
-        # Check cache first (skip if billing_period is specified)
-        if not billing_period:
-            cached_data = get_cached_dashboard(user_id)
-            if cached_data:
-                return cached_data
+        # Check cache first (only for default view, skip when a specific period is requested)
+        cached_data = get_cached_dashboard(user_id)
+        if cached_data and not billing_period:
+            return cached_data
 
         usage_service = UsageTrackingService(db)
         pricing_service = PricingService(db)
         
-        # Get current usage stats (for the requested period)
-        current_usage = usage_service.get_user_usage_stats(user_id, billing_period)
+        # When a specific billing_period is requested, show only that period's data
+        # Otherwise show all-time total + current period usage
+        if billing_period:
+            period_usage = usage_service.get_usage_for_period(user_id, billing_period)
+            total_usage = period_usage
+            current_period_usage = period_usage
+        else:
+            total_usage = usage_service.get_user_usage_stats(user_id, None)
+            current_period_usage = usage_service.get_current_period_usage(user_id)
         
         # Get usage trends (last 6 months)
         trends = usage_service.get_usage_trends(user_id, 6)
@@ -76,13 +84,44 @@ async def get_dashboard_data(
         ]
         
         # Calculate cost projections (only relevant for current month)
-        current_cost = current_usage.get('total_cost', 0)
+        current_cost = total_usage.get('total_cost', 0)
         days_in_period = 30
         current_day = datetime.now().day
         
-        # Only project costs if viewing current month
-        is_current_month = not billing_period or billing_period == datetime.now().strftime("%Y-%m")
-        if is_current_month:
+        # Determine if viewing current period based on subscription, not calendar
+        subscription = db.query(UserSubscription).filter(
+            UserSubscription.user_id == user_id,
+            UserSubscription.is_active == True
+        ).first()
+        
+        # Use subscription's billing period or fallback to calendar
+        if subscription and subscription.current_period_start:
+            sub_period = subscription.current_period_start.strftime("%Y-%m")
+            calendar_period = datetime.now().strftime("%Y-%m")
+            
+            # Check if we have data for subscription period or calendar period
+            from models.subscription_models import UsageSummary
+            sub_data_exists = db.query(UsageSummary).filter(
+                UsageSummary.user_id == user_id,
+                UsageSummary.billing_period == sub_period
+            ).first()
+            
+            # Determine which period to use for "current"
+            if sub_data_exists:
+                effective_period = sub_period
+            else:
+                # Check calendar period for backward compatibility
+                cal_data_exists = db.query(UsageSummary).filter(
+                    UsageSummary.user_id == user_id,
+                    UsageSummary.billing_period == calendar_period
+                ).first()
+                effective_period = calendar_period if cal_data_exists else sub_period
+            
+            is_current_period = not billing_period or billing_period == effective_period
+        else:
+            is_current_period = not billing_period or billing_period == datetime.now().strftime("%Y-%m")
+        
+        if is_current_period:
             projected_cost = (current_cost / current_day) * days_in_period if current_day > 0 else 0
         else:
             projected_cost = current_cost # For past months, projected is actual
@@ -90,7 +129,8 @@ async def get_dashboard_data(
         response_payload = {
             "success": True,
             "data": {
-                "current_usage": current_usage,
+                "total_usage": total_usage,
+                "current_period_usage": current_period_usage,
                 "trends": trends,
                 "limits": limits,
                 "alerts": alerts_data,
@@ -100,9 +140,9 @@ async def get_dashboard_data(
                     "projected_usage_percentage": (projected_cost / max(limits.get('limits', {}).get('monthly_cost', 1), 1)) * 100 if limits else 0
                 },
                 "summary": {
-                    "total_api_calls_this_month": current_usage.get('total_calls', 0),
-                    "total_cost_this_month": current_usage.get('total_cost', 0),
-                    "usage_status": current_usage.get('usage_status', 'active'),
+                    "total_api_calls_this_month": total_usage.get('total_calls', 0),
+                    "total_cost_this_month": total_usage.get('total_cost', 0),
+                    "usage_status": total_usage.get('usage_status', 'active'),
                     "unread_alerts": len(alerts_data)
                 }
             }
@@ -131,7 +171,13 @@ async def get_dashboard_data(
                 usage_service = UsageTrackingService(db)
                 pricing_service = PricingService(db)
                 
-                current_usage = usage_service.get_user_usage_stats(user_id)
+                if billing_period:
+                    period_usage = usage_service.get_usage_for_period(user_id, billing_period)
+                    total_usage = period_usage
+                    current_period_usage = period_usage
+                else:
+                    total_usage = usage_service.get_user_usage_stats(user_id, None)
+                    current_period_usage = usage_service.get_current_period_usage(user_id)
                 trends = usage_service.get_usage_trends(user_id, 6)
                 limits = pricing_service.get_user_limits(user_id)
                 
@@ -152,7 +198,7 @@ async def get_dashboard_data(
                     for alert in alerts
                 ]
                 
-                current_cost = current_usage.get('total_cost', 0)
+                current_cost = total_usage.get('total_cost', 0)
                 days_in_period = 30
                 current_day = datetime.now().day
                 projected_cost = (current_cost / current_day) * days_in_period if current_day > 0 else 0
@@ -160,7 +206,8 @@ async def get_dashboard_data(
                 response_payload = {
                     "success": True,
                     "data": {
-                        "current_usage": current_usage,
+                        "total_usage": total_usage,
+                        "current_period_usage": current_period_usage,
                         "trends": trends,
                         "limits": limits,
                         "alerts": alerts_data,
@@ -170,16 +217,17 @@ async def get_dashboard_data(
                             "projected_usage_percentage": (projected_cost / max(limits.get('limits', {}).get('monthly_cost', 1), 1)) * 100 if limits else 0
                         },
                         "summary": {
-                            "total_api_calls_this_month": current_usage.get('total_calls', 0),
-                            "total_cost_this_month": current_usage.get('total_cost', 0),
-                            "usage_status": current_usage.get('usage_status', 'active'),
+                            "total_api_calls_this_month": total_usage.get('total_calls', 0),
+                            "total_cost_this_month": total_usage.get('total_cost', 0),
+                            "usage_status": total_usage.get('usage_status', 'active'),
                             "unread_alerts": len(alerts_data)
                         }
                     }
                 }
                 
-                # Cache the response after successful retry
-                set_cached_dashboard(user_id, response_payload)
+                # Cache the response after successful retry (only for default view)
+                if not billing_period:
+                    set_cached_dashboard(user_id, response_payload)
                 return response_payload
             except Exception as retry_err:
                 logger.error(f"Schema fix and retry failed: {retry_err}")
@@ -187,7 +235,8 @@ async def get_dashboard_data(
                     "success": False,
                     "error": str(retry_err),
                     "data": {
-                        "current_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                        "total_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                        "current_period_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}, "usage_percentages": {}},
                         "trends": [],
                         "limits": {"limits": {"monthly_cost": 0}},
                         "alerts": [],
@@ -201,7 +250,8 @@ async def get_dashboard_data(
             "success": False,
             "error": str(e),
             "data": {
-                "current_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                "total_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}},
+                "current_period_usage": {"total_calls": 0, "total_cost": 0, "usage_status": "error", "provider_breakdown": {}, "usage_percentages": {}},
                 "trends": [],
                 "limits": {"limits": {"monthly_cost": 0}},
                 "alerts": [],

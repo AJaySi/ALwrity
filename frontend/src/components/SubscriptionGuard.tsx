@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useSubscriptionGuard, SubscriptionGuardOptions } from '../hooks/useSubscriptionGuard';
+import { saveNavigationState } from '../utils/navigationState';
 import LockIcon from '@mui/icons-material/Lock';
 import UpgradeIcon from '@mui/icons-material/Upgrade';
 
@@ -98,6 +99,7 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({
               variant="contained"
               startIcon={<UpgradeIcon />}
               onClick={() => {
+                saveNavigationState(window.location.pathname);
                 navigate('/pricing');
               }}
             >
@@ -123,6 +125,7 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({
             variant="outlined"
             sx={{ mt: 1 }}
             onClick={() => {
+              saveNavigationState(window.location.pathname);
               navigate('/pricing');
             }}
           >

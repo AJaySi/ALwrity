@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Paper, 
   IconButton, 
@@ -6,17 +6,7 @@ import {
   TextField, 
   Tooltip, 
   CircularProgress,
-  Divider,
-  Button,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText
+  Divider
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -24,12 +14,12 @@ import {
   FileCopyOutlined as FileCopyOutlinedIcon,
   Link as LinkIcon,
   AutoAwesome as AutoAwesomeIcon,
-  Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  MoreHoriz as MoreHorizIcon,
 } from '@mui/icons-material';
 import useBlogTextSelectionHandler from './BlogTextSelectionHandler';
-import { ContinuityBadge } from '../ContinuityBadge';
+import HoverMenu from './HoverMenu';
 import { blogWriterApi } from '../../../services/blogWriterApi';
 
 interface BlogSectionProps {
@@ -57,7 +47,6 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   id, 
   title, 
   content: initialContent, 
-  wordCount, 
   sources, 
   outlineData, 
   onContentUpdate,
@@ -80,205 +69,142 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   const [toolResult, setToolResult] = useState<any>(null);
   const [toolDialogOpen, setToolDialogOpen] = useState(false);
 
-  // Initialize assistive writing handler
+  const wordCount_ = useMemo(() => content.split(/\s+/).filter(Boolean).length, [content]);
+
   const assistiveWriting = useBlogTextSelectionHandler(
     contentRef,
     (originalText: string, newText: string, editType: string) => {
-      // Handle text replacement in the textarea
       if (contentRef.current) {
         const textarea = contentRef.current;
-        
-        // For smart suggestions, newText is already the complete updated content with insertion
-        // For other edits (like text selection improvements), we need to replace originalText with newText
         let updatedContent: string;
-        
         if (editType === 'smart-suggestion') {
-          // newText already contains the full content with suggestion inserted
           updatedContent = newText;
         } else {
-          // For other edits, replace the selected text
-          const currentContent = textarea.value;
-          updatedContent = currentContent.replace(originalText, newText);
+          updatedContent = textarea.value.replace(originalText, newText);
         }
-        
-        console.log('🔍 [BlogSection] Text updated, editType:', editType, 'New length:', updatedContent.length);
         setContent(updatedContent);
-        
-        // Update parent state
-        if (onContentUpdate) {
-          onContentUpdate([{ id, content: updatedContent }]);
-        }
-        
-        // Note: Cursor positioning is handled by SmartTypingAssist for smart-suggestion edits
-        // For other edits, we may need to handle cursor positioning here if needed
+        if (onContentUpdate) onContentUpdate([{ id, content: updatedContent }]);
       }
     }
   );
 
-  // Format content helper - ensures proper paragraph breaks
   const formatContent = (rawContent: string) => {
     if (!rawContent) return rawContent;
-    
-    // Ensure double line breaks between paragraphs
-    // Replace single line breaks with double line breaks if they're not already double
-    let formatted = rawContent
-      .replace(/\n{3,}/g, '\n\n') // Replace 3+ line breaks with double
-      .replace(/\n(?!\n)/g, '\n\n') // Replace single line breaks with double
-      .trim();
-    
-    return formatted;
+    return rawContent.replace(/\n{3,}/g, '\n\n').replace(/\n(?!\n)/g, '\n\n').trim();
   };
 
-  // Sync content when initialContent changes (e.g., from AI generation)
   useEffect(() => {
     if (initialContent !== content) {
-      const formattedContent = formatContent(initialContent);
-      setContent(formattedContent);
+      setContent(formatContent(initialContent));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent]);
   
   const handleContentChange = (e: any) => {
     const newContent = e.target.value;
-    console.log('🔍 [BlogSection] handleContentChange called, content length:', newContent.length);
     setContent(newContent);
-    
-    // Trigger smart typing assist
     assistiveWriting.handleTypingChange(newContent);
   };
   
   const handleFocus = () => setIsFocused(true);
   const handleBlur = () => setIsFocused(false);
 
-  const openToolsMenu = (event: React.MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setToolsAnchorEl(event.currentTarget);
-  };
-
-  const closeToolsMenu = () => {
-    setToolsAnchorEl(null);
-  };
-
   const closeToolDialog = () => {
     setToolDialogOpen(false);
     setToolLoading(false);
   };
 
-  const runSectionTool = async (tool: 'originality' | 'optimize' | 'fact' | 'links' | 'flow') => {
-    closeToolsMenu();
+  const runSectionTool = useCallback(async (tool: 'originality' | 'optimize' | 'fact' | 'links' | 'flow') => {
     setActiveTool(tool);
     setToolResult(null);
     setToolLoading(true);
     setToolDialogOpen(true);
 
     try {
+      let res;
       if (tool === 'originality') {
-        const res = await blogWriterApi.sectionOriginalityTools({
-          section_id: String(id),
-          title: sectionTitle,
-          content
+        res = await blogWriterApi.sectionOriginalityTools({ section_id: String(id), title: sectionTitle, content });
+      } else if (tool === 'links') {
+        res = await blogWriterApi.sectionInternalLinkTools({ section_id: String(id), title: sectionTitle, content });
+      } else if (tool === 'fact') {
+        res = await blogWriterApi.sectionFactCheckTools({ section_id: String(id), title: sectionTitle, content });
+      } else if (tool === 'optimize') {
+        res = await blogWriterApi.sectionOptimizeTools({
+          section_id: String(id), title: sectionTitle, content,
+          keywords: outlineData?.keywords || [], goal: 'readability'
         });
-        setToolResult(res);
-        return;
-      }
-
-      if (tool === 'links') {
-        const res = await blogWriterApi.sectionInternalLinkTools({
-          section_id: String(id),
-          title: sectionTitle,
-          content
-        });
-        setToolResult(res);
-        return;
-      }
-
-      if (tool === 'fact') {
-        const res = await blogWriterApi.sectionFactCheckTools({
-          section_id: String(id),
-          title: sectionTitle,
-          content
-        });
-        setToolResult(res);
-        return;
-      }
-
-      if (tool === 'optimize') {
-        const res = await blogWriterApi.sectionOptimizeTools({
-          section_id: String(id),
-          title: sectionTitle,
-          content,
-          keywords: outlineData?.keywords || [],
-          goal: 'readability'
-        });
-        setToolResult(res);
-        return;
-      }
-
-      if (tool === 'flow') {
-        const res = await blogWriterApi.analyzeFlowAdvanced({
+      } else if (tool === 'flow') {
+        res = await blogWriterApi.analyzeFlowAdvanced({
           title: sectionTitle,
           sections: [{ id: String(id), heading: sectionTitle, content }]
         });
-        setToolResult(res);
-        return;
       }
+      setToolResult(res);
     } catch (error: any) {
       setToolResult({ success: false, error: error?.message || 'Request failed' });
     } finally {
       setToolLoading(false);
     }
-  };
+  }, [id, sectionTitle, content, outlineData]);
 
   const applyOptimizedContent = () => {
     const next = toolResult?.optimized_content;
     if (!next) return;
     setContent(next);
-    if (onContentUpdate) {
-      onContentUpdate([{ id, content: next }]);
-    }
+    if (onContentUpdate) onContentUpdate([{ id, content: next }]);
     closeToolDialog();
   };
 
   const insertLinkSuggestion = (url: string) => {
     if (!url) return;
-    const insertion = `\n\n[Related](${url})`;
-    const next = `${content || ''}${insertion}`;
+    const next = `${content || ''}\n\n[Related](${url})`;
     setContent(next);
-    if (onContentUpdate) {
-      onContentUpdate([{ id, content: next }]);
-    }
+    if (onContentUpdate) onContentUpdate([{ id, content: next }]);
   };
-  
 
   const handleGenerateContent = async () => {
     setIsGenerating(true);
-    try {
-      // This would call your AI service for content generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const generated = `This is AI-generated content for "${sectionTitle}" with engaging, well-structured paragraphs grounded in your research.`;
-      setContent(generated);
-      // Update parent state if needed
-      if (onContentUpdate) {
-        onContentUpdate([{ id, content: generated }]);
-      }
-    } catch (error) {
-      console.error('Failed to generate content:', error);
-    } finally {
-      setIsGenerating(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsGenerating(false);
   };
 
+  // HoverMenu action handler
+  const handleSectionAction = useCallback((action: string) => {
+    switch (action) {
+      case 'generate-content':
+        handleGenerateContent();
+        break;
+      case 'enhance-section':
+        runSectionTool('optimize');
+        break;
+      case 'fact-check':
+        runSectionTool('fact');
+        break;
+      case 'source-mapping':
+        runSectionTool('originality');
+        break;
+      case 'seo-analysis':
+        runSectionTool('flow');
+        break;
+      case 'add-subsection':
+        break;
+      case 'copy-section':
+        break;
+      case 'delete-section':
+        break;
+      default:
+        break;
+    }
+  }, []);
 
   return (
     <div 
-      className="group relative mb-6" 
+      className="group relative mb-8" 
       id={`section-${id}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      
       <div className="flex items-center gap-3 mb-4">
+        <span className="text-xs font-medium text-gray-300 select-none">{id}.</span>
         {isEditing ? (
           <TextField
             fullWidth
@@ -286,182 +212,117 @@ const BlogSection: React.FC<BlogSectionProps> = ({
             value={sectionTitle}
             onChange={(e) => setSectionTitle(e.target.value)}
             onBlur={() => setIsEditing(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setIsEditing(false); }}
             autoFocus
-            InputProps={{ className: 'text-2xl md:text-3xl font-bold !font-serif text-gray-800' }}
+            InputProps={{ disableUnderline: true, className: 'text-xl md:text-2xl font-bold font-serif text-gray-800' }}
           />
         ) : (
           <h2
-            className="text-2xl md:text-3xl font-bold font-serif text-gray-800 cursor-pointer"
+            className="flex-1 text-xl md:text-2xl font-bold font-serif text-gray-800 cursor-text hover:text-indigo-600 transition-colors duration-150"
             onClick={() => setIsEditing(true)}
           >
             {sectionTitle}
           </h2>
         )}
-        
       </div>
 
-      {/* Section Image Display */}
       {sectionImage && (
-        <div style={{ marginBottom: '16px', marginTop: '8px' }}>
-          <div style={{ 
-            border: '1px solid #e0e0e0', 
-            borderRadius: '8px', 
-            overflow: 'hidden',
-            maxWidth: '100%',
-            backgroundColor: '#fff'
-          }}>
+        <div className="mb-4">
+          <div className="rounded-lg overflow-hidden border border-gray-100 bg-white">
             <img 
               src={`data:image/png;base64,${sectionImage}`} 
               alt={`Cover image for ${sectionTitle}`}
-              style={{ 
-                width: '100%', 
-                height: 'auto',
-                display: 'block',
-                maxHeight: '400px',
-                objectFit: 'contain'
-              }} 
+              className="w-full h-auto max-h-96 object-contain"
             />
           </div>
         </div>
       )}
       
-        {isGenerating ? (
-          <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg animate-pulse">
-            <span className="text-gray-500 font-medium">Generating content based on research...</span>
-          </div>
-        ) : (
-          <div className="relative">
-            {/* Image Placeholder */}
-            {outlineData?.keywords && outlineData.keywords.length > 0 && (
-              <div className="absolute -right-4 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Tooltip title="Section image coming soon">
-                  <IconButton size="small">
-                    <img 
-                      src={`https://source.unsplash.com/random/800x600?${outlineData.keywords[0]}`}
-                      alt="" 
-                      className="w-8 h-8 rounded object-cover" 
-                    />
-                  </IconButton>
-                </Tooltip>
-              </div>
-            )}
-            
-            <TextField
-              multiline
-              fullWidth
-              variant="outlined"
-              placeholder="Start writing or use AI to generate content..."
-              value={content}
-              onChange={handleContentChange}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              minRows={6}
-              InputProps={{
-                className: `font-serif text-lg leading-relaxed text-gray-700 p-0 border-none ${isFocused ? 'bg-white' : 'bg-transparent'} transition-colors duration-200`,
-                style: { lineHeight: '1.8' }
-              }}
-              sx={{
-                '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                '& .MuiOutlinedInput-root': { padding: 0 }
-              }}
-            />
-          </div>
-        )}
+      {isGenerating ? (
+        <div className="flex items-center gap-3 p-6 bg-indigo-50/50 rounded-lg border border-indigo-100/50 mb-3">
+          <CircularProgress size={20} className="text-indigo-400" />
+          <span className="text-sm text-indigo-600 font-medium">Generating content...</span>
+        </div>
+      ) : (
+        <div className="relative">
+          <TextField
+            multiline
+            fullWidth
+            variant="outlined"
+            placeholder="Start writing..."
+            value={content}
+            onChange={handleContentChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onSelect={assistiveWriting.handleTextSelection}
+            inputRef={contentRef}
+            minRows={5}
+            InputProps={{
+              className: `font-serif text-base leading-relaxed text-gray-700 p-0 ${isFocused ? 'bg-white' : 'bg-transparent'}`,
+              style: { lineHeight: '1.8' }
+            }}
+            sx={{
+              '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              '& .MuiOutlinedInput-root': { padding: 0 },
+              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+            }}
+          />
+        </div>
+      )}
 
-      {/* Outline Information Section */}
+      {/* Outline info */}
       {outlineData && expandedSections.has(id) && (
-        <div className="mt-4">
-          <Paper elevation={0} sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 2, mb: 2 }}>
-            <div className="flex flex-col gap-4">
-              {/* Key Points */}
-              {outlineData.keyPoints && outlineData.keyPoints.length > 0 && (
+        <div className="mt-3 mb-2">
+          <Paper elevation={0} sx={{ p: 3, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #f0f0f0' }}>
+            <div className="grid grid-cols-2 gap-4">
+              {outlineData.keyPoints?.length > 0 && (
                 <div>
-                  <div className="text-sm font-bold text-blue-600 mb-2">Key Points:</div>
-                  <div className="flex flex-wrap gap-1">
-                    {outlineData.keyPoints.map((point: any, index: any) => (
-                      <Chip
-                        key={index}
-                        label={point}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Key Points</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {outlineData.keyPoints.map((point: any, i: any) => (
+                      <Chip key={i} label={point} size="small" variant="outlined" sx={{ fontSize: '0.7rem', height: 24 }} />
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Subheadings */}
-              {outlineData.subheadings && outlineData.subheadings.length > 0 && (
+              {outlineData.subheadings?.length > 0 && (
                 <div>
-                  <div className="text-sm font-bold text-blue-600 mb-2">Subheadings:</div>
-                  <div className="flex flex-wrap gap-1">
-                    {outlineData.subheadings.map((subheading: any, index: any) => (
-                      <Chip
-                        key={index}
-                        label={subheading}
-                        size="small"
-                        variant="outlined"
-                        color="secondary"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Subheadings</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {outlineData.subheadings.map((sub: any, i: any) => (
+                      <Chip key={i} label={sub} size="small" variant="outlined" color="secondary" sx={{ fontSize: '0.7rem', height: 24 }} />
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Keywords */}
-              {outlineData.keywords && outlineData.keywords.length > 0 && (
-                <div>
-                  <div className="text-sm font-bold text-blue-600 mb-2">Keywords:</div>
-                  <div className="flex flex-wrap gap-1">
-                    {outlineData.keywords.map((keyword: any, index: any) => (
-                      <Chip
-                        key={index}
-                        label={keyword}
-                        size="small"
-                        variant="filled"
-                        color="primary"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Target Words */}
               {outlineData.targetWords > 0 && (
                 <div>
-                  <div className="text-sm font-bold text-blue-600 mb-2">
-                    Target Words: {outlineData.targetWords}
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Target words</div>
+                  <div className="text-sm text-gray-700">{outlineData.targetWords}</div>
+                </div>
+              )}
+              {outlineData.keywords?.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Keywords</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {outlineData.keywords.map((kw: any, i: any) => (
+                      <Chip key={i} label={kw} size="small" variant="filled" color="primary" sx={{ fontSize: '0.7rem', height: 24 }} />
+                    ))}
                   </div>
                 </div>
               )}
-
-              {/* References */}
-              {outlineData.references && outlineData.references.length > 0 && (
-                <div>
-                  <div className="text-sm font-bold text-blue-600 mb-2">
-                    References ({outlineData.references.length}):
+              {outlineData.references?.length > 0 && (
+                <div className="col-span-2">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    References ({outlineData.references.length})
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    {outlineData.references.slice(0, 3).map((ref: any, index: any) => (
-                      <Chip
-                        key={index}
-                        label={ref.title || `Source ${index + 1}`}
-                        size="small"
-                        variant="outlined"
-                        color="info"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
+                  <div className="flex flex-wrap gap-1.5">
+                    {outlineData.references.slice(0, 3).map((ref: any, i: any) => (
+                      <Chip key={i} label={ref.title || `Source ${i + 1}`} size="small" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 24 }} />
                     ))}
                     {outlineData.references.length > 3 && (
-                      <Chip
-                        label={`+${outlineData.references.length - 3} more`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.75rem' }}
-                      />
+                      <Chip label={`+${outlineData.references.length - 3} more`} size="small" variant="outlined" sx={{ fontSize: '0.7rem', height: 24 }} />
                     )}
                   </div>
                 </div>
@@ -471,180 +332,156 @@ const BlogSection: React.FC<BlogSectionProps> = ({
         </div>
       )}
       
-      <div className="absolute -bottom-4 right-0 flex items-center space-x-1" style={{ opacity: isHovered ? 1 : 0, transition: 'opacity 0.3s' }}>
-        <Chip label={`${content.split(' ').length} words`} size="small" variant="outlined" className="!text-gray-500" />
-        <Chip icon={<LinkIcon />} label={`${sources} sources`} size="small" variant="outlined" className="!text-gray-500" />
-        {outlineData && (
-          <Chip
-            icon={expandedSections.has(id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            label="Outline Info"
-            size="small"
-            variant="outlined"
-            clickable
-            onClick={() => toggleSectionExpansion(id)}
-            sx={{ 
-              fontSize: '0.75rem',
-              '&:hover': {
-                backgroundColor: 'rgba(25, 118, 210, 0.08)',
-              }
-            }}
-          />
-        )}
-        <Tooltip title="Generate Content">
-          <IconButton size="small" onClick={handleGenerateContent}>
-            <AutoAwesomeIcon fontSize="small" />
+      {/* Bottom toolbar */}
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">{wordCount_} words</span>
+          {outlineData?.targetWords && outlineData.targetWords > 0 && (
+            <>
+              <span className="text-gray-300 text-xs">/</span>
+              <span className="text-xs text-gray-400">{outlineData.targetWords} target</span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5" style={{ opacity: isHovered ? 1 : 0, transition: 'opacity 0.2s' }}>
+          {outlineData && (
+            <Tooltip title={expandedSections.has(id) ? 'Hide outline info' : 'Show outline info'}>
+              <IconButton size="small" onClick={() => toggleSectionExpansion(id)} sx={{ width: 28, height: 28 }}>
+                {expandedSections.has(id) ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Section actions">
+            <IconButton size="small" onClick={(e) => setToolsAnchorEl(e.currentTarget)} sx={{ width: 28, height: 28 }}>
+              <MoreHorizIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <IconButton size="small" sx={{ width: 28, height: 28 }}>
+            <FileCopyOutlinedIcon sx={{ fontSize: 16 }} />
           </IconButton>
-        </Tooltip>
-        
-        {/* Flow Analysis Badge - Enabled when flow analysis results are available */}
-        <ContinuityBadge 
-          sectionId={id} 
-          refreshToken={refreshToken}
-          disabled={!flowAnalysisResults}
-          flowAnalysisResults={flowAnalysisResults}
-        />
-
-        <Tooltip title="Section Tools">
-          <IconButton size="small" onClick={openToolsMenu}>
-            <InfoIcon fontSize="small" />
+          <IconButton size="small" sx={{ width: 28, height: 28 }}>
+            <DeleteOutlineIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
           </IconButton>
-        </Tooltip>
-        
-        <Tooltip title="Copy Section"><IconButton size="small"><FileCopyOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-        <Tooltip title="Edit Metadata"><IconButton size="small"><EditIcon fontSize="small" /></IconButton></Tooltip>
-        <Tooltip title="Delete Section"><IconButton size="small" className="text-red-500"><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
+        </div>
       </div>
 
-      <Menu
+      {/* HoverMenu for section-level actions */}
+      <HoverMenu
         anchorEl={toolsAnchorEl}
         open={Boolean(toolsAnchorEl)}
-        onClose={closeToolsMenu}
-      >
-        <MenuItem onClick={() => runSectionTool('originality')}>Originality Check</MenuItem>
-        <MenuItem onClick={() => runSectionTool('optimize')}>Optimize Section</MenuItem>
-        <MenuItem onClick={() => runSectionTool('fact')}>SIF Fact Check</MenuItem>
-        <MenuItem onClick={() => runSectionTool('links')}>Internal Link Suggestions</MenuItem>
-        <MenuItem onClick={() => runSectionTool('flow')}>Flow Analysis</MenuItem>
-      </Menu>
+        onClose={() => setToolsAnchorEl(null)}
+        type="section"
+        onAction={handleSectionAction}
+        context={{
+          sectionId: String(id),
+          hasContent: content.trim().length > 0,
+          sources,
+          wordCount: wordCount_,
+        }}
+      />
 
-      <Dialog open={toolDialogOpen} onClose={closeToolDialog} fullWidth maxWidth="md">
-        <DialogTitle>
-          {activeTool === 'originality' && 'Originality Check'}
-          {activeTool === 'optimize' && 'Optimize Section'}
-          {activeTool === 'fact' && 'SIF Fact Check'}
-          {activeTool === 'links' && 'Internal Link Suggestions'}
-          {activeTool === 'flow' && 'Flow Analysis'}
-        </DialogTitle>
-        <DialogContent dividers>
-          {toolLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <CircularProgress size={18} />
-              <div>Working…</div>
+      {/* Tool result dialog */}
+      {toolDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onClick={closeToolDialog}>
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {activeTool === 'originality' && 'Originality Check'}
+                {activeTool === 'optimize' && 'Optimize Section'}
+                {activeTool === 'fact' && 'SIF Fact Check'}
+                {activeTool === 'links' && 'Internal Link Suggestions'}
+                {activeTool === 'flow' && 'Flow Analysis'}
+              </h3>
             </div>
-          )}
-
-          {!toolLoading && toolResult?.error && (
-            <div style={{ color: '#b91c1c', fontWeight: 600 }}>{toolResult.error}</div>
-          )}
-
-          {!toolLoading && activeTool === 'optimize' && toolResult?.optimized_content && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {toolResult?.diff_summary && (
-                <div style={{ fontWeight: 600 }}>{toolResult.diff_summary}</div>
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {toolLoading && (
+                <div className="flex items-center gap-3">
+                  <CircularProgress size={18} />
+                  <span className="text-sm text-gray-500">Working...</span>
+                </div>
               )}
-              {Array.isArray(toolResult?.changes_made) && toolResult.changes_made.length > 0 && (
-                <List dense>
-                  {toolResult.changes_made.map((c: string, idx: number) => (
-                    <ListItem key={idx}>
-                      <ListItemText primary={c} />
-                    </ListItem>
-                  ))}
-                </List>
+              {!toolLoading && toolResult?.error && (
+                <div className="text-red-600 font-medium">{toolResult.error}</div>
               )}
-              <TextField
-                multiline
-                minRows={10}
-                value={toolResult.optimized_content}
-                fullWidth
-                InputProps={{ readOnly: true }}
-              />
-            </div>
-          )}
-
-          {!toolLoading && activeTool === 'links' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {Array.isArray(toolResult?.suggestions) && toolResult.suggestions.length > 0 ? (
-                <List>
-                  {toolResult.suggestions.map((s: any, idx: number) => (
-                    <ListItem key={idx} secondaryAction={
-                      <Button size="small" onClick={() => insertLinkSuggestion(s.url)}>Insert</Button>
-                    }>
-                      <ListItemText
-                        primary={s.url}
-                        secondary={`confidence: ${(s.confidence ?? 0).toFixed?.(2) ?? s.confidence} • ${s.reason ?? ''}`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              ) : (
-                <div>No suggestions yet. Make sure SIF index has your website content.</div>
+              {!toolLoading && activeTool === 'optimize' && toolResult?.optimized_content && (
+                <div className="space-y-3">
+                  {toolResult?.diff_summary && <p className="font-medium">{toolResult.diff_summary}</p>}
+                  {Array.isArray(toolResult?.changes_made) && toolResult.changes_made.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-1">
+                      {toolResult.changes_made.map((c: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-600">{c}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <TextField multiline minRows={10} value={toolResult.optimized_content} fullWidth InputProps={{ readOnly: true }} />
+                </div>
               )}
-            </div>
-          )}
-
-          {!toolLoading && activeTool === 'originality' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {toolResult?.cannibalization && (
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult.cannibalization, null, 2)}</pre>
+              {!toolLoading && activeTool === 'links' && (
+                <div className="space-y-2">
+                  {Array.isArray(toolResult?.suggestions) && toolResult.suggestions.length > 0 ? (
+                    toolResult.suggestions.map((s: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700 truncate">{s.url}</p>
+                          <p className="text-xs text-gray-500">confidence: {(s.confidence ?? 0).toFixed?.(2) ?? s.confidence}</p>
+                        </div>
+                        <button onClick={() => insertLinkSuggestion(s.url)} className="text-sm text-indigo-600 hover:text-indigo-800 ml-3 shrink-0">Insert</button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No suggestions yet. Make sure SIF index has your website content.</p>
+                  )}
+                </div>
               )}
-              {Array.isArray(toolResult?.matches) && toolResult.matches.length > 0 ? (
-                <List>
-                  {toolResult.matches.map((m: any, idx: number) => (
-                    <ListItem key={idx}>
-                      <ListItemText
-                        primary={`${m.id ?? 'unknown'} (${(m.score ?? 0).toFixed?.(3) ?? m.score})`}
-                        secondary={m.excerpt}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              ) : (
-                <div>No close matches found.</div>
+              {!toolLoading && activeTool === 'originality' && (
+                <div className="space-y-3">
+                  {toolResult?.cannibalization && <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(toolResult.cannibalization, null, 2)}</pre>}
+                  {Array.isArray(toolResult?.matches) && toolResult.matches.length > 0 ? (
+                    <div className="space-y-2">
+                      {toolResult.matches.map((m: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm font-medium">{m.id ?? 'unknown'} ({(m.score ?? 0).toFixed?.(3) ?? m.score})</p>
+                          {m.excerpt && <p className="text-xs text-gray-500 mt-1">{m.excerpt}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No close matches found.</p>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-
-          {!toolLoading && activeTool === 'fact' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {toolResult?.verification && (
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult.verification, null, 2)}</pre>
+              {!toolLoading && activeTool === 'fact' && (
+                <div className="space-y-3">
+                  {toolResult?.verification && <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(toolResult.verification, null, 2)}</pre>}
+                  {Array.isArray(toolResult?.citations) && toolResult.citations.length > 0 && (
+                    <div className="space-y-2">
+                      {toolResult.citations.map((c: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm">{c.citation_text || c.title || c.source}</p>
+                          <p className="text-xs text-gray-500">{c.source}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-              {Array.isArray(toolResult?.citations) && toolResult.citations.length > 0 && (
-                <List>
-                  {toolResult.citations.map((c: any, idx: number) => (
-                    <ListItem key={idx}>
-                      <ListItemText primary={c.citation_text || c.title || c.source} secondary={c.source} />
-                    </ListItem>
-                  ))}
-                </List>
+              {!toolLoading && activeTool === 'flow' && (
+                <pre className="text-sm whitespace-pre-wrap">{JSON.stringify(toolResult, null, 2)}</pre>
               )}
             </div>
-          )}
-
-          {!toolLoading && activeTool === 'flow' && (
-            <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(toolResult, null, 2)}</pre>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeToolDialog}>Close</Button>
-          {activeTool === 'optimize' && toolResult?.optimized_content && (
-            <Button variant="contained" onClick={applyOptimizedContent}>Replace Section Content</Button>
-          )}
-        </DialogActions>
-      </Dialog>
+            <div className="px-6 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={closeToolDialog} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">Close</button>
+              {activeTool === 'optimize' && toolResult?.optimized_content && (
+                <button onClick={applyOptimizedContent} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">Replace Section Content</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       
-      {/* Section Divider */}
-      <Divider sx={{ mt: 1.2, mb: 1, opacity: 0.3 }} />
+      <Divider sx={{ mt: 2, opacity: 0.2 }} />
+      
+      {assistiveWriting.renderSelectionMenu()}
     </div>
   );
 };

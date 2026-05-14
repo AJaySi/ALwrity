@@ -589,11 +589,8 @@ export interface AssistiveSuggestionResponse {
 }
 
 export const assistiveWritingApi = {
-  async getSuggestion(text: string, maxResults: number = 1): Promise<AssistiveSuggestionResponse> {
-    const { data } = await aiApiClient.post('/api/writing-assistant/suggest', {
-      text,
-      max_results: maxResults
-    });
+  async getSuggestion(text: string): Promise<AssistiveSuggestionResponse> {
+    const { data } = await aiApiClient.post('/api/writing-assistant/suggest', { text });
     return data;
   }
 };

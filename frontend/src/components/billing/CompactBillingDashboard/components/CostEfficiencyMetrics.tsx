@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/formatting';
 import { DashboardData } from '../../../../types/billing';
 
 interface CostEfficiencyMetricsProps {
-  currentUsage: DashboardData['current_usage'];
+  currentUsage: DashboardData['total_usage'];
   terminalTheme?: boolean;
   TypographyComponent: typeof TerminalTypography | React.ComponentType<any>;
 }

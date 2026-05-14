@@ -67,15 +67,56 @@ class PricingService:
             self.db.rollback()
         return True
 
-    def get_current_billing_period(self, user_id: str) -> Optional[str]:
-        """Return current billing period key (YYYY-MM) after ensuring subscription is current."""
+    def get_current_billing_period(self, user_id: str) -> str:
+        """Return current billing period key (YYYY-MM) based on subscription, not calendar.
+        Maintains backward compatibility with existing calendar-month data."""
         subscription = self.db.query(UserSubscription).filter(
             UserSubscription.user_id == user_id,
             UserSubscription.is_active == True
         ).first()
+        
         # Ensure subscription is current (advance if auto_renew)
         self._ensure_subscription_current(subscription)
-        # Continue to use YYYY-MM for summaries
+        
+        # Use subscription's billing period, NOT calendar month
+        if subscription and subscription.current_period_start:
+            sub_period = subscription.current_period_start.strftime("%Y-%m")
+            
+            # Check if usage data exists for this subscription period
+            from models.subscription_models import UsageSummary
+            usage_exists = self.db.query(UsageSummary).filter(
+                UsageSummary.user_id == user_id,
+                UsageSummary.billing_period == sub_period
+            ).first()
+            
+            if usage_exists:
+                return sub_period
+            
+            # If no data for subscription period, check for calendar month data
+            # This handles backward compatibility for existing users
+            calendar_period = datetime.now().strftime("%Y-%m")
+            if calendar_period != sub_period:
+                calendar_usage = self.db.query(UsageSummary).filter(
+                    UsageSummary.user_id == user_id,
+                    UsageSummary.billing_period == calendar_period
+                ).first()
+                if calendar_usage:
+                    logger.info(f"Using calendar period {calendar_period} for backward compatibility (subscription period {sub_period} has no data)")
+                    return calendar_period
+            
+            return sub_period
+        
+        # Fallback: Check if user has any usage summary and use that period
+        from models.subscription_models import UsageSummary
+        latest_summary = self.db.query(UsageSummary).filter(
+            UsageSummary.user_id == user_id
+        ).order_by(UsageSummary.billing_period.desc()).first()
+        
+        if latest_summary:
+            logger.info(f"Using latest billing period from UsageSummary: {latest_summary.billing_period}")
+            return latest_summary.billing_period
+        
+        # Last fallback to calendar month for free tier / no data
         return datetime.now().strftime("%Y-%m")
     
     @classmethod
@@ -830,6 +871,7 @@ class PricingService:
                 'serper_calls': plan.serper_calls_limit,
                 'metaphor_calls': plan.metaphor_calls_limit,
                 'firecrawl_calls': plan.firecrawl_calls_limit,
+                'exa_calls': getattr(plan, 'exa_calls_limit', 0),  # Exa research API
                 'stability_calls': plan.stability_calls_limit,
                 'video_calls': getattr(plan, 'video_calls_limit', 0),  # Support missing column
                 'image_edit_calls': getattr(plan, 'image_edit_calls_limit', 0),  # Support missing column

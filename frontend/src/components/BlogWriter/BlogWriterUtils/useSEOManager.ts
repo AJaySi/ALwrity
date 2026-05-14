@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { debug } from '../../../utils/debug';
+import { hashContent, getSeoCacheKey } from '../../../utils/contentHash';
 import { blogWriterApi, BlogSEOActionableRecommendation } from '../../../services/blogWriterApi';
 import { blogWriterCache } from '../../../services/blogWriterCache';
 
@@ -218,6 +219,44 @@ export const useSEOManager = ({
   const [seoRecommendationsApplied, setSeoRecommendationsApplied] = useState(false);
   const lastSEOModalOpenRef = useRef<number>(0);
 
+  // Restore cached SEO analysis on mount when sections are available
+  useEffect(() => {
+    const restoreCachedSEO = async () => {
+      if (seoAnalysis) return;
+
+      const title = selectedTitle || '';
+      if (!title && (!outline || outline.length === 0)) return;
+
+      const fullMarkdown = (outline || []).map(s => `## ${s.heading}\n\n${(sections || {})[s.id] || ''}`).join('\n\n');
+      if (!fullMarkdown && !title) return;
+
+      try {
+        const hash = await hashContent(`${title}\n${fullMarkdown}`);
+        const cacheKey = getSeoCacheKey(hash, title);
+        const cached = window.localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed.overall_score === 'number' && parsed.category_scores) {
+            debug.log('[SEOManager] Restored cached SEO analysis', { cacheKey, score: parsed.overall_score });
+            setSeoAnalysis(parsed);
+          }
+        }
+      } catch (e) {
+        debug.log('[SEOManager] Failed to restore cached SEO analysis', e);
+      }
+    };
+
+    restoreCachedSEO();
+
+    try {
+      const wasApplied = localStorage.getItem('blog_seo_recommendations_applied') === 'true';
+      if (wasApplied) {
+        setSeoRecommendationsApplied(true);
+        debug.log('[SEOManager] Restored seoRecommendationsApplied flag');
+      }
+    } catch {}
+  }, [selectedTitle, sections, outline, seoAnalysis, setSeoAnalysis, setSeoRecommendationsApplied]);
+
   // Helper: run same checks as analyzeSEO and open modal
   const runSEOAnalysisDirect = useCallback((): string => {
     const hasSections = !!sections && Object.keys(sections).length > 0;
@@ -387,6 +426,9 @@ export const useSEOManager = ({
     // Mark recommendations as applied (this will trigger phase navigation check)
     // But we'll stay in SEO phase to show updated content
     setSeoRecommendationsApplied(true);
+    try {
+      localStorage.setItem('blog_seo_recommendations_applied', 'true');
+    } catch {}
     debug.log('[BlogWriter] seoRecommendationsApplied set to true');
 
     // Ensure we stay in SEO phase to show updated content

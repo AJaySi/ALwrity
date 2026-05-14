@@ -5,7 +5,6 @@ import { CopilotKit } from "@copilotkit/react-core";
 import { CopilotKitHealthProvider } from '../../contexts/CopilotKitHealthContext';
 import CopilotKitDegradedBanner from '../shared/CopilotKitDegradedBanner';
 import ErrorBoundary from '../shared/ErrorBoundary';
-import { isPodcastOnlyDemoMode } from '../../utils/demoMode';
 
 interface ConditionalCopilotKitProps {
   children: React.ReactNode;
@@ -24,10 +23,12 @@ export const AuthenticatedCopilotWrapper: React.FC<AuthenticatedCopilotWrapperPr
   const { isSignedIn } = useAuth();
   const location = useLocation();
   
-  const isPodcastOnly = isPodcastOnlyDemoMode();
-  const shouldExcludeCopilot = !isSignedIn || location.pathname.startsWith('/onboarding') || isPodcastOnly;
+  // Only fully exclude CopilotKit when user is not signed in or on onboarding
+  // Feature-limited mode (blog_writer, etc.) still needs CopilotKit providers
+  // because BlogWriter uses useCopilotAction and useCopilotKitHealth hooks
+  const shouldExcludeCopilotKit = !isSignedIn || location.pathname.startsWith('/onboarding');
   
-  if (shouldExcludeCopilot) {
+  if (shouldExcludeCopilotKit) {
     return <>{children}</>;
   }
 

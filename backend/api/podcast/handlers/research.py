@@ -202,6 +202,26 @@ Listener CTA: {request.analysis.get('listener_cta', 'N/A')}
             interests = ", ".join(audience_dna.get("interests", []))
             target_audience = f"Expertise: {audience_dna.get('expertise_level', '')}. Interests: {interests}."
 
+    # Preflight subscription check for Exa
+    try:
+        pricing_service = PricingService(db)
+        can_proceed, message, usage_info = pricing_service.check_usage_limits(
+            user_id=user_id,
+            provider=APIProvider.EXA,
+            tokens_requested=0,
+            actual_provider_name="exa",
+        )
+        if not can_proceed:
+            raise HTTPException(status_code=429, detail={
+                'error': message, 'message': message,
+                'provider': 'exa', 'usage_info': usage_info or {}
+            })
+        logger.info(f"[Podcast Research] Preflight check passed for user {user_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[Podcast Research] Preflight check failed: {e}")
+
     try:
         # 1. RUN EXA SEARCH
         logger.warning(f"[Podcast Research] Calling Exa search with topic: {request.topic[:100]}...")

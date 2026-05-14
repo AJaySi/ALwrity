@@ -2,9 +2,8 @@ import os
 import asyncio
 from typing import Any, Dict, List
 from dataclasses import dataclass
-import requests
+import httpx
 from loguru import logger
-import time
 import random
 
 from services.llm_providers.main_text_generation import llm_text_gen
@@ -61,30 +60,26 @@ class WritingAssistantService:
         logger.info(f"Writing assistant API call #{self.daily_api_calls}/{self.daily_limit} today")
         return True
 
-    async def suggest(self, text: str, max_results: int = 1) -> List[WritingSuggestion]:
+    async def suggest(self, text: str, user_id: str | None = None) -> List[WritingSuggestion]:
         if not text or len(text.strip()) < 6:
             return []
 
-        # COST OPTIMIZATION: Use cached/static suggestions for common patterns
-        # This reduces API calls by 90%+ while maintaining usefulness
         cached_suggestion = self._get_cached_suggestion(text)
         if cached_suggestion:
             return [cached_suggestion]
 
-        # COST CONTROL: Check daily usage limits
         if not self._check_daily_limit():
             logger.warning("Daily API limit reached for writing assistant")
             return []
 
-        # Only make expensive API calls for unique, substantial content
-        if len(text.strip()) < 50:  # Skip API calls for very short text
+        if len(text.strip()) < 50:
             return []
 
-        # 1) Find relevant sources via Exa (reduced results for cost)
+        # 1) Find relevant sources via Exa
         sources = await self._search_sources(text)
 
-        # 2) Generate continuation suggestion via Gemini
-        suggestion_text, confidence = await self._generate_continuation(text, sources)
+        # 2) Generate continuation suggestion via LLM grounded in sources
+        suggestion_text, confidence = await self._generate_continuation(text, sources, user_id=user_id)
 
         if not suggestion_text:
             return []
@@ -110,12 +105,12 @@ class WritingAssistantService:
         }
 
         try:
-            resp = requests.post(
-                "https://api.exa.ai/search",
-                headers={"x-api-key": self.exa_api_key, "Content-Type": "application/json"},
-                json=payload,
-                timeout=self.http_timeout_seconds,
-            )
+            async with httpx.AsyncClient(timeout=self.http_timeout_seconds) as client:
+                resp = await client.post(
+                    "https://api.exa.ai/search",
+                    headers={"x-api-key": self.exa_api_key, "Content-Type": "application/json"},
+                    json=payload,
+                )
             if resp.status_code != 200:
                 raise Exception(f"Exa error {resp.status_code}: {resp.text}")
             data = resp.json()
@@ -140,8 +135,7 @@ class WritingAssistantService:
             logger.error(f"WritingAssistant _search_sources error: {e}")
             raise
 
-    async def _generate_continuation(self, text: str, sources: List[Dict[str, Any]]) -> tuple[str, float]:
-        # Build compact sources context block
+    async def _generate_continuation(self, text: str, sources: List[Dict[str, Any]], user_id: str | None = None) -> tuple[str, float]:
         source_blocks: List[str] = []
         for i, s in enumerate(sources[:5]):
             excerpt = (s.get("text", "") or "")
@@ -149,16 +143,14 @@ class WritingAssistantService:
             source_blocks.append(
                 f"Source {i+1}: {s.get('title','') or 'Source'}\nURL: {s.get('url','')}\nExcerpt: {excerpt}"
             )
-        sources_text = "\n\n".join(source_blocks) if source_blocks else "(No sources)"
+        sources_text = "\n\n".join(source_blocks)
 
-        # Provider-agnostic behavior: short continuation with one inline citation hint
         system_prompt = (
             "You are an assistive writing continuation bot. "
             "Only produce 1-2 SHORT sentences. Do not repeat or paraphrase the user's stub. "
             "Match tone and topic. Prefer concrete, current facts from the provided sources. "
             "Include exactly one brief citation hint in parentheses with an author (or 'Source') and URL in square brackets, e.g., ((Doe, 2021)[https://example.com])."
         )
-
         user_prompt = (
             f"User text to continue (do not repeat):\n{text}\n\n"
             f"Relevant sources to inform your continuation:\n{sources_text}\n\n"
@@ -166,13 +158,13 @@ class WritingAssistantService:
         )
 
         try:
-            # Inter-call jitter to reduce burst rate limits
-            time.sleep(random.uniform(0.05, 0.15))
+            await asyncio.sleep(random.uniform(0.05, 0.15))
 
             ai_resp = llm_text_gen(
                 prompt=user_prompt,
                 json_struct=None,
                 system_prompt=system_prompt,
+                user_id=user_id,
             )
             if isinstance(ai_resp, dict) and ai_resp.get("text"):
                 suggestion = (ai_resp.get("text", "") or "").strip()
@@ -180,12 +172,10 @@ class WritingAssistantService:
                 suggestion = (str(ai_resp or "")).strip()
             if not suggestion:
                 raise Exception("Assistive writer returned empty suggestion")
-            # naive confidence from number of sources present
-            confidence = 0.7 if sources else 0.5
+            confidence = 0.7
             return suggestion, confidence
         except Exception as e:
             logger.error(f"WritingAssistant _generate_continuation error: {e}")
-            # Propagate to ensure frontend does not show stale/generic content
             raise
 
 

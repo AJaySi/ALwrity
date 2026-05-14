@@ -9,10 +9,13 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 from loguru import logger
 from types import SimpleNamespace
+from sqlalchemy import text
 
 from middleware.auth_middleware import get_current_user
+from api.story_writer.utils.auth import require_authenticated_user
 from services.research.tavily_service import TavilyService
-from services.blog_writer.research.exa_provider import ExaResearchProvider
+from services.subscription import PricingService
+from models.subscription_models import APIProvider
 
 router = APIRouter(prefix="/research", tags=["Podcast Category Research"])
 
@@ -27,6 +30,75 @@ EXA_CATEGORY_MAP = {
     "research-paper": "research paper",
     "personal-site": "personal site",
 }
+
+
+def _preflight_check(user_id: str, provider: APIProvider, provider_name: str):
+    """Check subscription limits before making a research API call."""
+    from services.database import get_session_for_user
+
+    db = get_session_for_user(user_id)
+    if not db:
+        return
+    try:
+        pricing_service = PricingService(db)
+        can_proceed, message, usage_info = pricing_service.check_usage_limits(
+            user_id=user_id,
+            provider=provider,
+            tokens_requested=0,
+            actual_provider_name=provider_name,
+        )
+        if not can_proceed:
+            raise HTTPException(status_code=429, detail={
+                'error': message, 'message': message,
+                'provider': provider_name, 'usage_info': usage_info or {}
+            })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[CategoryResearch] Preflight check failed for {provider_name}: {e}")
+    finally:
+        db.close()
+
+
+def _track_research_usage(user_id: str, provider_name: str, cost: float, calls_column: str, cost_column: str):
+    """Track research API usage after successful call."""
+    from services.database import get_session_for_user
+
+    db = get_session_for_user(user_id)
+    if not db:
+        logger.warning(f"[CategoryResearch] Could not get DB session for user {user_id}")
+        return
+    try:
+        pricing_service = PricingService(db)
+        current_period = pricing_service.get_current_billing_period(user_id)
+
+        update_query = text(f"""
+            UPDATE usage_summaries 
+            SET {calls_column} = COALESCE({calls_column}, 0) + 1,
+                {cost_column} = COALESCE({cost_column}, 0) + :cost,
+                total_calls = COALESCE(total_calls, 0) + 1,
+                total_cost = COALESCE(total_cost, 0) + :cost
+            WHERE user_id = :user_id AND billing_period = :period
+        """)
+        db.execute(update_query, {
+            'cost': cost,
+            'user_id': user_id,
+            'period': current_period,
+        })
+        db.commit()
+        logger.info(f"[CategoryResearch] Tracked {provider_name} usage: user={user_id}, cost=${cost}")
+
+        # Clear dashboard cache so header stats update immediately
+        try:
+            from api.subscription.cache import clear_dashboard_cache
+            clear_dashboard_cache(user_id)
+        except Exception as cache_err:
+            logger.warning(f"[CategoryResearch] Failed to clear dashboard cache: {cache_err}")
+    except Exception as e:
+        logger.error(f"[CategoryResearch] Failed to track {provider_name} usage: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 class CategoryResearchRequest(BaseModel):
@@ -80,9 +152,12 @@ def _normalize_exa_results(results: List[Dict], query: str) -> List[CategoryTopi
     return topics
 
 
-async def _search_tavily(category: str, keyword: str, max_results: int) -> CategoryResearchResponse:
+async def _search_tavily(category: str, keyword: str, max_results: int, user_id: str) -> CategoryResearchResponse:
     logger.info(f"[CategoryResearch] Using Tavily for category={category}, keyword={keyword}")
-    
+
+    # Preflight subscription check
+    _preflight_check(user_id, APIProvider.TAVILY, "tavily")
+
     try:
         tavily = TavilyService()
         result = await tavily.search(
@@ -102,6 +177,10 @@ async def _search_tavily(category: str, keyword: str, max_results: int) -> Categ
         topics = _normalize_tavily_results(result.get("results", []))
         logger.info(f"[CategoryResearch] Tavily found {len(topics)} topics")
 
+        # Track usage
+        cost = 0.001  # basic search = 1 credit
+        _track_research_usage(user_id, "tavily", cost, "tavily_calls", "tavily_cost")
+
         return CategoryResearchResponse(
             success=True,
             category=category,
@@ -117,7 +196,7 @@ async def _search_tavily(category: str, keyword: str, max_results: int) -> Categ
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _search_exa(category: str, keyword: str, max_results: int, website_url: Optional[str] = None) -> CategoryResearchResponse:
+async def _search_exa(category: str, keyword: str, max_results: int, user_id: str, website_url: Optional[str] = None) -> CategoryResearchResponse:
     exa_category = EXA_CATEGORY_MAP.get(category, category)
     
     logger.info(f"[CategoryResearch] Exa: category={category}, exa_category={exa_category}, keyword={keyword}, website_url={website_url}")
@@ -133,6 +212,9 @@ async def _search_exa(category: str, keyword: str, max_results: int, website_url
         from exa_py import Exa
         exa = Exa(exa_api_key)
         logger.info(f"[CategoryResearch] Exa client initialized")
+
+        # Preflight subscription check
+        _preflight_check(user_id, APIProvider.EXA, "exa")
         
         # Build search parameters
         search_params = {
@@ -189,6 +271,10 @@ async def _search_exa(category: str, keyword: str, max_results: int, website_url
         
         logger.info(f"[CategoryResearch] Exa found {len(topics)} topics")
 
+        # Track usage
+        cost = 0.005  # Default Exa cost for 1-25 results
+        _track_research_usage(user_id, "exa", cost, "exa_calls", "exa_cost")
+
         return CategoryResearchResponse(
             success=True,
             category=category,
@@ -218,6 +304,7 @@ async def research_by_category(
     - news, finance: Uses Tavily
     - research-paper, personal-site: Uses Exa
     """
+    user_id = require_authenticated_user(current_user)
     category = request.category.lower()
     valid_categories = list(CATEGORY_PROVIDER_MAP.keys())
     
@@ -241,9 +328,9 @@ async def research_by_category(
 
     try:
         if provider == "tavily":
-            return await _search_tavily(category, keyword, max_results)
+            return await _search_tavily(category, keyword, max_results, user_id)
         elif provider == "exa":
-            return await _search_exa(category, keyword, max_results, website_url)
+            return await _search_exa(category, keyword, max_results, user_id, website_url)
         else:
             raise HTTPException(status_code=500, detail="Unknown provider")
     except Exception as e:

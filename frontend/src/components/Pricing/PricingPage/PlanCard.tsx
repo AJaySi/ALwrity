@@ -61,6 +61,8 @@ interface SubscriptionPlan {
     video_calls?: number;
     audio_calls?: number;
     ai_text_generation_calls_limit?: number;
+    exa_calls?: number;
+    wavespeed_calls?: number;
   };
 }
 
@@ -859,6 +861,32 @@ const PlanCard: React.FC<PlanCardProps> = ({
               <ListItemText
                 primary={`${plan.limits.tavily_calls} Research Searches`}
                 secondary="Web research, fact-checking, content discovery"
+                sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
+              />
+            </ListItem>
+          )}
+
+          {(plan.limits.exa_calls ?? 0) > 0 && (
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <SearchIcon color="primary" fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={`${plan.limits.exa_calls} Exa AI Searches`}
+                secondary="AI-powered search and content discovery"
+                sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
+              />
+            </ListItem>
+          )}
+
+          {(plan.limits.wavespeed_calls ?? 0) > 0 && (
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <AudioIcon color="primary" fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary={`${plan.limits.wavespeed_calls} WaveSpeed AI Calls`}
+                secondary="TTS, video, image, and LLM via Minimax"
                 sx={{ '& .MuiListItemText-primary': { fontSize: '0.875rem' } }}
               />
             </ListItem>

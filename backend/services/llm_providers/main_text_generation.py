@@ -45,6 +45,7 @@ def llm_text_gen(
     preferred_hf_models: Optional[List[str]] = None,
     preferred_provider: Optional[str] = None,
     flow_type: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """
     Generate text using Language Model (LLM) based on the provided prompt.
@@ -75,7 +76,8 @@ def llm_text_gen(
         gpt_provider = "google"  # Default to Google Gemini
         model = "gemini-2.0-flash-001"
         temperature = 0.7
-        max_tokens = 4000
+        if max_tokens is None:
+            max_tokens = 4000
         top_p = 0.9
         n = 1
         fp = 16
@@ -371,16 +373,27 @@ def llm_text_gen(
                         system_prompt=system_instructions
                     )
             elif gpt_provider == "wavespeed":
-                from services.llm_providers.wavespeed_provider import wavespeed_text_response
                 llm_start = time.time()
-                response_text = wavespeed_text_response(
-                    prompt=prompt,
-                    model=model or "openai/gpt-oss-120b",
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    top_p=top_p,
-                    system_prompt=system_instructions
-                )
+                if json_struct:
+                    from services.llm_providers.wavespeed_provider import wavespeed_structured_json_response
+                    response_text = wavespeed_structured_json_response(
+                        prompt=prompt,
+                        schema=json_struct,
+                        model=model or "openai/gpt-oss-120b",
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        system_prompt=system_instructions
+                    )
+                else:
+                    from services.llm_providers.wavespeed_provider import wavespeed_text_response
+                    response_text = wavespeed_text_response(
+                        prompt=prompt,
+                        model=model or "openai/gpt-oss-120b",
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        top_p=top_p,
+                        system_prompt=system_instructions
+                    )
                 llm_ms = (time.time() - llm_start) * 1000
                 logger.warning(f"[llm_text_gen][{flow_tag}] LLM API call took {llm_ms:.0f}ms for user {user_id} (wavespeed)")
             else:

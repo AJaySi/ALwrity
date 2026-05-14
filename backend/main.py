@@ -252,6 +252,8 @@ router_manager.include_core_routers()
 # Safety net: keep subscription routes available even if core inclusion flow changes
 # in special modes (e.g., demo mode). De-dup is handled by RouterManager.
 router_manager.include_router_safely(subscription_router, "subscription")
+# Include hallucination detector explicitly (router_manager may skip silently on import failure)
+router_manager.include_router_safely(hallucination_detector_router, "hallucination_detector")
 router_manager.include_optional_routers()
 
 # SEO Dashboard endpoints

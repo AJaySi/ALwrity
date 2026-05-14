@@ -135,11 +135,14 @@ class TavilyResearchProvider(BaseProvider):
     
     def track_tavily_usage(self, user_id: str, cost: float, search_depth: str):
         """Track Tavily API usage after successful call."""
-        from services.database import get_db
+        from services.database import get_session_for_user
         from services.subscription import PricingService
         from sqlalchemy import text
         
-        db = next(get_db())
+        db = get_session_for_user(user_id)
+        if not db:
+            logger.warning(f"[Tavily] Could not get DB session for user {user_id}, skipping usage tracking")
+            return
         try:
             pricing_service = PricingService(db)
             current_period = pricing_service.get_current_billing_period(user_id)

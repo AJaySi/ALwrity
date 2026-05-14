@@ -133,9 +133,9 @@ def edit_image(
             raise
         except Exception as e:
             logger.error(f"[Image Editing] ❌ Unexpected error during pre-flight validation: {e}")
-            # In podcast-only mode, allow the operation to continue on validation errors
-            if os.getenv("ALWRITY_ENABLED_FEATURES") == "podcast":
-                logger.warning(f"[Image Editing] ⚠️ Validation error in podcast mode - allowing operation to continue")
+            # In feature-limited mode, allow the operation to continue on validation errors
+            if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() not in ("", "all"):
+                logger.warning(f"[Image Editing] ⚠️ Validation error in feature-limited mode - allowing operation to continue")
             else:
                 raise HTTPException(status_code=500, detail=f"Image editing validation failed: {str(e)}")
         finally:

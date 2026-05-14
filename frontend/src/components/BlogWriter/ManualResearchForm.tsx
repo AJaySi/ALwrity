@@ -1,95 +1,37 @@
-import React, { useState, useRef } from 'react';
-import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../../services/blogWriterApi';
-import { useBlogWriterResearchPolling } from '../../hooks/usePolling';
+import React, { useRef } from 'react';
+import { BlogResearchResponse } from '../../services/blogWriterApi';
+import { useResearchSubmit } from '../../hooks/useResearchSubmit';
 import ResearchProgressModal from './ResearchProgressModal';
-import { researchCache } from '../../services/researchCache';
 
 interface ManualResearchFormProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
 }
 
-/**
- * Manual research form component that works independently of CopilotKit
- * Extracted from ResearchAction.tsx for use when CopilotKit is unavailable
- */
 export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete }) => {
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-  const [currentMessage, setCurrentMessage] = useState<string>('');
-  const [showProgressModal, setShowProgressModal] = useState<boolean>(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Refs for form inputs (uncontrolled, avoids typing issues)
   const keywordsRef = useRef<HTMLInputElement | null>(null);
   const blogLengthRef = useRef<HTMLSelectElement | null>(null);
 
-  const polling = useBlogWriterResearchPolling({
-    onProgress: (message) => {
-      setCurrentMessage(message);
-    },
-    onComplete: (result) => {
-      if (result && result.keywords) {
-        researchCache.cacheResult(
-          result.keywords,
-          result.industry || 'General',
-          result.target_audience || 'General',
-          result
-        );
-      }
-      
-      onResearchComplete?.(result);
-      setCurrentTaskId(null);
-      setCurrentMessage('');
-      setShowProgressModal(false);
-      setIsSubmitting(false);
-    },
-    onError: (error) => {
-      console.error('Research polling error:', error);
-      setCurrentTaskId(null);
-      setCurrentMessage('');
-      setShowProgressModal(false);
-      setIsSubmitting(false);
-    }
-  });
+  const {
+    startResearch,
+    isSubmitting,
+    showProgressModal,
+    setShowProgressModal,
+    currentMessage,
+    currentStatus,
+    progressMessages,
+    error,
+  } = useResearchSubmit({ onResearchComplete });
 
   const handleSubmit = async () => {
     const keywords = (keywordsRef.current?.value || '').trim();
-    const blogLength = blogLengthRef.current?.value || '1000';
-    
     if (!keywords) {
       alert('Please enter keywords or a topic for research.');
       return;
     }
-
-    setIsSubmitting(true);
-    
     try {
-      const keywordList = keywords.includes(',') 
-        ? keywords.split(',').map(k => k.trim()).filter(Boolean) 
-        : [keywords];
-      
-      // Check cache first
-      const cachedResult = researchCache.getCachedResult(keywordList, 'General', 'General');
-      if (cachedResult) {
-        onResearchComplete?.(cachedResult);
-        setIsSubmitting(false);
-        return;
-      }
-      
-      const payload: BlogResearchRequest = { 
-        keywords: keywordList, 
-        industry: 'General', 
-        target_audience: 'General',
-        word_count_target: parseInt(blogLength)
-      };
-      
-      const { task_id } = await blogWriterApi.startResearch(payload);
-      setCurrentTaskId(task_id);
-      setShowProgressModal(true);
-      polling.startPolling(task_id);
+      await startResearch(keywords, blogLengthRef.current?.value || '1000');
     } catch (error) {
-      console.error('Research failed:', error);
       alert(`Research failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setIsSubmitting(false);
     }
   };
 
@@ -170,9 +112,9 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
         <ResearchProgressModal
           open={showProgressModal}
           title="Research in progress"
-          status={polling.currentStatus}
-          messages={polling.progressMessages}
-          error={polling.error}
+          status={currentStatus}
+          messages={progressMessages}
+          error={error}
           onClose={() => setShowProgressModal(false)}
         />
       )}

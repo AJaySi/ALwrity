@@ -70,7 +70,7 @@ def should_bootstrap_linguistic_models() -> bool:
     }
     
     # Check if any linguistic-required feature is enabled
-    linguistic_features = {"content_planning", "facebook", "linkedin", "blog-writer", "persona"}
+    linguistic_features = {"content_planning", "facebook", "linkedin", "blog_writer", "persona"}
     return bool(enabled_features & linguistic_features)
 
 
@@ -287,12 +287,16 @@ from alwrity_utils import (
 def start_backend(enable_reload=False, production_mode=False):
     """Start the backend server."""
     print("==> Starting ALwrity Backend...")
-    podcast_only_demo_mode = os.getenv("ALWRITY_PODCAST_ONLY_DEMO_MODE", os.getenv("PODCAST_ONLY_DEMO_MODE", "false")).lower() in {"1", "true", "yes", "on"}
+    # Check for legacy podcast-only demo mode env vars (backward compat)
+    is_legacy_podcast_mode = os.getenv("ALWRITY_PODCAST_ONLY_DEMO_MODE", os.getenv("PODCAST_ONLY_DEMO_MODE", "false")).lower() in {"1", "true", "yes", "on"}
+    enabled = get_enabled_features()
+    is_feature_limited = "all" not in enabled
 
-    if podcast_only_demo_mode:
-        print("\n" + "=" * 60)
-        print("==> PODCAST-ONLY DEMO MODE ACTIVE")
-        print("   Non-podcast router groups are intentionally skipped.")
+    if is_legacy_podcast_mode or is_feature_limited:
+        mode_label = "legacy podcast-only" if is_legacy_podcast_mode else f"feature-limited ({', '.join(sorted(enabled))})"
+        print(f"\n{'=' * 60}")
+        print(f"==> {mode_label.upper()} MODE ACTIVE")
+        print("   Non-matching router groups are intentionally skipped.")
         print("=" * 60)
     
     # Set host based on environment and mode
@@ -385,12 +389,12 @@ def start_backend(enable_reload=False, production_mode=False):
         print(f"[DEBUG] Starting uvicorn with host={host} port={port}", flush=True)
         print("[DEBUG] >>> ABOUT TO CALL UVICORN.RUN() <<<", flush=True)
         
-        # Skip video preflight in podcast-only mode to save memory/time
-        is_podcast = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast"
-        print(f"[DEBUG] Podcast mode check: {is_podcast}", flush=True)
+        # Skip video preflight in feature-limited mode to save memory/time
+        is_feature_limited = os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() not in ("", "all")
+        print(f"[DEBUG] Feature-limited mode check: {is_feature_limited}", flush=True)
         
-        if is_podcast:
-            print("[DEBUG] Podcast mode - skipping video preflight", flush=True)
+        if is_feature_limited:
+            print("[DEBUG] Feature-limited mode - skipping video preflight", flush=True)
         else:
             # Log diagnostics and assert versions (fail fast if misconfigured)
             try:

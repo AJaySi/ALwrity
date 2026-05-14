@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from models.subscription_models import UserSubscription, SubscriptionPlan, SubscriptionTier, BillingCycle, UsageStatus, FraudWarning, ProcessedStripeEvent
 from services.subscription.pricing_service import PricingService
-from datetime import datetime
+from datetime import datetime, timedelta
 
 REQUIRED_STRIPE_PLAN_KEYS = {
     (SubscriptionTier.BASIC.value, BillingCycle.MONTHLY.value),
@@ -421,10 +421,6 @@ class StripeService:
             try:
                 sub = stripe.Subscription.retrieve(subscription_id)
                 price_id = sub['items']['data'][0]['price']['id']
-                # Map price_id to internal plan_id
-                # Note: You need a way to map Stripe Price IDs to your Plan IDs.
-                # For now, we'll assume the metadata or a lookup.
-                # Ideally, store price_id in SubscriptionPlan table or config.
                 
                 # Update DB
                 self._update_user_subscription(
@@ -434,6 +430,24 @@ class StripeService:
                     status="active",
                     price_id=price_id
                 )
+                
+                # Clear PricingService cache so next status check returns updated limits
+                try:
+                    from services.subscription import PricingService
+                    PricingService.clear_user_cache(user_id)
+                except Exception as cache_err:
+                    logger.warning(f"Failed to clear user cache after checkout for user {user_id}: {cache_err}")
+                try:
+                    from api.subscription.cache import clear_dashboard_cache
+                    clear_dashboard_cache(user_id)
+                    logger.info(f"Cleared dashboard cache for user {user_id} after checkout")
+                except Exception as cache_err:
+                    logger.warning(f"Failed to clear cache after checkout for user {user_id}: {cache_err}")
+                
+                # Expire all SQLAlchemy objects to force fresh reads
+                self.db.expire_all()
+                logger.info(f"Expired all SQLAlchemy objects for user {user_id} after checkout")
+                
             except Exception as e:
                 logger.error(f"Error processing checkout subscription: {e}")
 
@@ -457,11 +471,28 @@ class StripeService:
             logger.info(f"Payment succeeded for user {subscription.user_id}")
             subscription.status = UsageStatus.ACTIVE
             subscription.is_active = True
-            # Update period end based on invoice lines period
+            subscription.auto_renew = True
+            # Update period start/end based on invoice lines period
             if invoice.get('lines'):
+                 period_start = invoice['lines']['data'][0]['period']['start']
                  period_end = invoice['lines']['data'][0]['period']['end']
+                 subscription.current_period_start = datetime.fromtimestamp(period_start)
                  subscription.current_period_end = datetime.fromtimestamp(period_end)
             self.db.commit()
+            
+            # Clear PricingService cache so next status check returns updated limits
+            try:
+                from services.subscription import PricingService
+                PricingService.clear_user_cache(subscription.user_id)
+                logger.info(f"Cleared subscription cache for user {subscription.user_id} after payment success")
+            except Exception as cache_err:
+                logger.warning(f"Failed to clear user cache after payment success for user {subscription.user_id}: {cache_err}")
+            try:
+                from api.subscription.cache import clear_dashboard_cache
+                clear_dashboard_cache(subscription.user_id)
+            except Exception as dash_cache_err:
+                logger.warning(f"Failed to clear dashboard cache after payment success for user {subscription.user_id}: {dash_cache_err}")
+            self.db.expire_all()
 
     async def _handle_invoice_payment_failed(self, invoice: Dict[str, Any]):
         subscription_id = invoice.get("subscription")
@@ -497,6 +528,12 @@ class StripeService:
             if status in ["active", "trialing"]:
                 subscription.status = UsageStatus.ACTIVE
                 subscription.is_active = True
+                subscription.auto_renew = True
+                # Update period boundaries from Stripe event
+                current_period = subscription_obj.get("current_period", {})
+                if current_period:
+                    subscription.current_period_start = datetime.fromtimestamp(current_period.get("start", 0))
+                    subscription.current_period_end = datetime.fromtimestamp(current_period.get("end", 0))
             elif status in ["past_due", "unpaid", "incomplete", "incomplete_expired"]:
                 subscription.status = UsageStatus.PAST_DUE
                 subscription.is_active = False
@@ -506,6 +543,20 @@ class StripeService:
                 subscription.auto_renew = False
 
             self.db.commit()
+            
+            # Clear PricingService cache so next status check returns updated limits
+            try:
+                from services.subscription import PricingService
+                PricingService.clear_user_cache(subscription.user_id)
+                logger.info(f"Cleared subscription cache for user {subscription.user_id} after subscription update")
+            except Exception as cache_err:
+                logger.warning(f"Failed to clear user cache after subscription update for user {subscription.user_id}: {cache_err}")
+            try:
+                from api.subscription.cache import clear_dashboard_cache
+                clear_dashboard_cache(subscription.user_id)
+            except Exception as dash_cache_err:
+                logger.warning(f"Failed to clear dashboard cache after subscription update for user {subscription.user_id}: {dash_cache_err}")
+            self.db.expire_all()
 
     async def _handle_subscription_deleted(self, subscription_obj: Dict[str, Any]):
         """
@@ -610,6 +661,11 @@ class StripeService:
         )
 
         now = datetime.utcnow()
+        # Calculate billing period end based on cycle
+        if billing_cycle == BillingCycle.YEARLY:
+            period_end = now + timedelta(days=365)
+        else:
+            period_end = now + timedelta(days=30)
 
         if not subscription:
             subscription = UserSubscription(
@@ -617,7 +673,7 @@ class StripeService:
                 plan_id=plan.id,
                 billing_cycle=billing_cycle,
                 current_period_start=now,
-                current_period_end=now,
+                current_period_end=period_end,
                 status=UsageStatus.ACTIVE if status == "active" else UsageStatus.SUSPENDED,
                 is_active=status == "active",
                 auto_renew=True,
@@ -627,6 +683,11 @@ class StripeService:
             subscription.plan_id = plan.id
             subscription.billing_cycle = billing_cycle
             subscription.is_active = status == "active"
+            subscription.status = UsageStatus.ACTIVE if status == "active" else UsageStatus.SUSPENDED
+            # Reset billing period on upgrade/plan change
+            subscription.current_period_start = now
+            subscription.current_period_end = period_end
+            subscription.auto_renew = True
 
         subscription.stripe_customer_id = stripe_customer_id
         subscription.stripe_subscription_id = stripe_subscription_id

@@ -157,10 +157,10 @@ def _check_production_api_key_loading(
         _record_check(checks, "production_api_key_loading", True, "skipped in local deploy mode")
         return
     
-    # Also skip in podcast-only mode (no production API keys needed)
+    # Skip when in feature-limited mode (no production API keys needed)
     enabled_features = os.getenv("ALWRITY_ENABLED_FEATURES", "all").strip().lower()
-    if enabled_features == "podcast":
-        _record_check(checks, "production_api_key_loading", True, "skipped in podcast-only mode")
+    if enabled_features and enabled_features not in ("", "all"):
+        _record_check(checks, "production_api_key_loading", True, f"skipped in feature-limited mode: {enabled_features}")
         return
 
     test_tenant_id = os.getenv("ALWRITY_STARTUP_TEST_TENANT_ID", "").strip()

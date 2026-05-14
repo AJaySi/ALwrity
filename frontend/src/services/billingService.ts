@@ -318,10 +318,12 @@ export const billingService = {
       const raw = response.data.data as any;
       
       // Coerce usage stats first to ensure proper typing
-      const currentUsage = coerceUsageStats(raw?.current_usage ?? raw);
+      const totalUsage = coerceUsageStats(raw?.total_usage ?? raw);
+      const currentPeriodUsage = coerceUsageStats(raw?.current_period_usage ?? {});
       
       const coerced: DashboardData = {
-        current_usage: currentUsage,
+        total_usage: totalUsage,
+        current_period_usage: currentPeriodUsage,
         trends: raw?.trends ?? {
           periods: [],
           total_calls: [],

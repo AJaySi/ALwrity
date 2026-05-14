@@ -179,6 +179,43 @@ def get_wavespeed_api_key() -> str:
     
     return api_key
 
+
+def _retry_with_increased_tokens(
+    client: "OpenAI",
+    messages: List[Dict[str, str]],
+    model: str,
+    fallback_models: Optional[List[str]],
+    temperature: float,
+    max_tokens: int,
+) -> Optional[str]:
+    """Retry the API call with increased max_tokens when JSON parsing fails due to truncation."""
+    max_tokens = min(max_tokens, 16384)
+    last_error = None
+    for candidate_model in _fallback_model_sequence(model, fallback_models):
+        try:
+            response = client.chat.completions.create(
+                model=candidate_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = response.choices[0].message.content
+            text = text.strip() if text else ""
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            return text.strip()
+        except NotFoundError as nf_err:
+            last_error = nf_err
+            continue
+    if last_error:
+        logger.error(f"All fallback models failed on retry with increased tokens: {last_error}")
+    return None
+
+
 @retry(
     retry=retry_if_exception(_should_retry_wavespeed_error),
     wait=wait_random_exponential(min=1, max=60),
@@ -446,24 +483,69 @@ def wavespeed_structured_json_response(
                 raise last_error or Exception("WaveSpeed structured generation failed: all fallback models failed")
             
             response_text = response.choices[0].message.content
+            response_text = response_text.strip() if response_text else ""
+            
+            # If response_format returned empty content, retry without it
+            if not response_text:
+                logger.warning("WaveSpeed structured call returned empty content with response_format, retrying without it...")
+                response = None
+                last_error = None
+                for candidate_model in _fallback_model_sequence(model, fallback_models):
+                    try:
+                        response = client.chat.completions.create(
+                            model=candidate_model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens
+                        )
+                        break
+                    except NotFoundError as nf_err:
+                        last_error = nf_err
+                        continue
+                if response is not None:
+                    response_text = response.choices[0].message.content
+                    response_text = response_text.strip() if response_text else ""
             
             # Clean up response text if needed
-            response_text = response_text.strip()
             if response_text.startswith("```json"):
                 response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
             if response_text.endswith("```"):
                 response_text = response_text[:-3]
             response_text = response_text.strip()
             
             try:
-                parsed_json = json.loads(response_text)
-                logger.info("✅ WaveSpeed structured JSON response parsed successfully")
-                return parsed_json
+                parsed_json = json.loads(response_text) if response_text else None
+                if parsed_json is not None:
+                    logger.info("✅ WaveSpeed structured JSON response parsed successfully")
+                    return parsed_json
             except json.JSONDecodeError as json_err:
                 logger.error(f"❌ JSON parsing failed: {json_err}")
-                logger.error(f"Raw response: {response_text}")
+                # Retry once with increased max_tokens — likely a truncation issue
+                if max_tokens < 16384:
+                    logger.warning(f"Retrying with increased max_tokens ({max_tokens} → {max_tokens * 2}) due to JSON parse failure")
+                    response_text = _retry_with_increased_tokens(
+                        client=client,
+                        messages=messages,
+                        model=model,
+                        fallback_models=fallback_models,
+                        temperature=temperature,
+                        max_tokens=max_tokens * 2,
+                    )
+                    if response_text:
+                        try:
+                            parsed_json = json.loads(response_text)
+                            if parsed_json is not None:
+                                logger.info("✅ WaveSpeed structured JSON parsed successfully after max_tokens increase")
+                                return parsed_json
+                        except json.JSONDecodeError:
+                            logger.error("❌ JSON parsing failed even after max_tokens increase")
                 
-                # Try to extract JSON from the response using regex
+                logger.error(f"Raw response: {response_text}")
+            
+            # Try to extract JSON from the response using regex
+            if response_text:
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
                     try:
@@ -472,8 +554,8 @@ def wavespeed_structured_json_response(
                         return extracted_json
                     except json.JSONDecodeError:
                         pass
-                
-                return {"error": "Failed to parse JSON response", "raw_response": response_text}
+            
+            return {"error": "Failed to parse JSON response", "raw_response": response_text}
                 
         except Exception as e:
             logger.error(f"❌ WaveSpeed API call failed: {e}")
@@ -501,14 +583,24 @@ def wavespeed_structured_json_response(
                 if response is None:
                     raise last_error or e
                 response_text = response.choices[0].message.content
-                # ... (same parsing logic would apply, simplified here for brevity)
+                response_text = response_text.strip() if response_text else ""
+                # Parse JSON with robust cleaning
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                    response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
                 try:
-                    return json.loads(response_text)
-                except:
-                     # Regex fallback
+                    return json.loads(response_text) if response_text else {"error": "Empty response"}
+                except json.JSONDecodeError:
                     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                     if json_match:
-                         return json.loads(json_match.group())
+                        try:
+                            return json.loads(json_match.group())
+                        except json.JSONDecodeError:
+                            pass
                     return {"error": "Failed to parse JSON response", "raw_response": response_text}
             raise e
         

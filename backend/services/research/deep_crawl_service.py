@@ -83,6 +83,30 @@ class DeepCrawlService:
                             tavily_results.append(res)
                 
                 logger.info(f"Found {len(tavily_urls)} URLs from Tavily")
+
+                # Track Tavily usage
+                try:
+                    from services.subscription import PricingService
+                    from sqlalchemy import text
+                    pricing_service = PricingService(db)
+                    current_period = pricing_service.get_current_billing_period(user_id)
+                    cost = 0.005  # Tavily crawl cost estimate
+
+                    update_query = text("""
+                        UPDATE usage_summaries 
+                        SET tavily_calls = COALESCE(tavily_calls, 0) + 1,
+                            tavily_cost = COALESCE(tavily_cost, 0) + :cost,
+                            total_calls = COALESCE(total_calls, 0) + 1,
+                            total_cost = COALESCE(total_cost, 0) + :cost
+                        WHERE user_id = :user_id AND billing_period = :period
+                    """)
+                    db.execute(update_query, {
+                        'cost': cost, 'user_id': user_id, 'period': current_period,
+                    })
+                    db.commit()
+                    logger.info(f"[DeepCrawl] Tracked Tavily crawl usage: user={user_id}, cost=${cost}")
+                except Exception as track_err:
+                    logger.warning(f"[DeepCrawl] Failed to track Tavily usage: {track_err}")
             except Exception as e:
                 logger.warning(f"Tavily crawl failed: {e}")
 

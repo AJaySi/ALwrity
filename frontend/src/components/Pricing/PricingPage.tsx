@@ -21,7 +21,7 @@ import {
 import Warning from '@mui/icons-material/Warning';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
-import { restoreNavigationState, saveCurrentPhaseForTool } from '../../utils/navigationState';
+import { saveNavigationState, restoreNavigationState, saveCurrentPhaseForTool } from '../../utils/navigationState';
 import { getEnabledFeatures, getDefaultLandingRoute } from '../../utils/demoMode';
 import PlanCard from './PricingPage/PlanCard';
 
@@ -44,11 +44,12 @@ export interface SubscriptionPlan {
     firecrawl_calls: number;
     stability_calls: number;
     monthly_cost: number;
-    // New limit fields (optional for backward compatibility)
     image_edit_calls?: number;
     video_calls?: number;
     audio_calls?: number;
-    ai_text_generation_calls_limit?: number; // Unified limit for Basic tier
+    ai_text_generation_calls_limit?: number;
+    exa_calls?: number;
+    wavespeed_calls?: number;
   };
 }
 
@@ -123,7 +124,22 @@ const PricingPage: React.FC = () => {
       return;
     }
 
-    // Full mode keeps existing onboarding redirect behavior.
+    // Try to restore navigation state (saved before redirect to pricing)
+    const navState = restoreNavigationState();
+    if (navState?.path && navState.path !== '/pricing' && navState.path !== '/onboarding') {
+      console.log('[PricingPage] Redirecting to saved navigation state:', navState.path);
+      navigate(navState.path);
+      return;
+    }
+
+    // Fallback: try legacy referrer
+    const referrer = sessionStorage.getItem('subscription_referrer');
+    if (referrer && referrer !== '/pricing') {
+      navigate(referrer);
+      return;
+    }
+
+    // Final fallback
     const onboardingComplete = localStorage.getItem('onboarding_complete') === 'true';
     if (onboardingComplete) {
       navigate('/dashboard');
@@ -234,12 +250,26 @@ const PricingPage: React.FC = () => {
       if (stripePublishableKey) {
         console.log('[PricingPage] Initiating Stripe Checkout');
 
+        // Save current navigation state so we can return here after payment
+        // If we're already on /pricing, don't overwrite — the caller (e.g., SubscriptionGuard,
+        // UserBadge, PreflightBlockDialog) already saved the original page's state.
+        if (window.location.pathname !== '/pricing') {
+          saveNavigationState(window.location.pathname);
+        }
+
+        // Include return_to in success_url so InitialRouteHandler can restore navigation
+        const returnTo = window.location.pathname !== '/pricing' ? window.location.pathname : '';
+        const successUrlBase = isFeatureLimitedMode()
+          ? `${window.location.origin}${getDefaultLandingRoute()}`
+          : `${window.location.origin}/dashboard`;
+        const successUrl = returnTo
+          ? `${successUrlBase}?subscription=success&return_to=${encodeURIComponent(returnTo)}`
+          : `${successUrlBase}?subscription=success`;
+
         const response = await apiClient.post('/api/subscription/create-checkout-session', {
           tier: plan.tier,
           billing_cycle: yearlyBilling ? 'yearly' : 'monthly',
-          success_url: isFeatureLimitedMode() 
-            ? `${window.location.origin}${getDefaultLandingRoute()}?subscription=success`
-            : `${window.location.origin}/dashboard?subscription=success`,
+          success_url: successUrl,
           cancel_url: `${window.location.origin}/pricing?subscription=cancel`,
         });
 

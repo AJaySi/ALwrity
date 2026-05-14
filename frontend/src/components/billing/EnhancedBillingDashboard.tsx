@@ -330,7 +330,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
               {/* Active Providers Chips */}
               {dashboardData && (
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                  {Object.entries(dashboardData.current_usage.provider_breakdown)
+                  {Object.entries(dashboardData.total_usage.provider_breakdown)
                     .filter(([_, data]) => data && data.cost > 0)
                     .map(([provider, data]) => {
                       const providerData = data!; // Safe after filter
@@ -493,7 +493,7 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
               {/* Top Row */}
               <Grid item xs={12} md={4}>
                 <BillingOverview 
-                  usageStats={dashboardData.current_usage}
+                  usageStats={dashboardData.total_usage}
                   onRefresh={fetchDashboardData}
                   terminalTheme={terminalTheme}
                 />
@@ -519,8 +519,8 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
               {/* Middle Row */}
               <Grid item xs={12} md={6}>
                 <CostBreakdown 
-                  providerBreakdown={dashboardData.current_usage.provider_breakdown}
-                  totalCost={dashboardData.current_usage.total_cost}
+                  providerBreakdown={dashboardData.total_usage.provider_breakdown}
+                  totalCost={dashboardData.total_usage.total_cost}
                 />
               </Grid>
               
@@ -542,8 +542,8 @@ const EnhancedBillingDashboard: React.FC<EnhancedBillingDashboardProps> = ({ use
               {/* Bottom Row - Comprehensive API Breakdown */}
               <Grid item xs={12} md={6}>
                 <ComprehensiveAPIBreakdown 
-                  providerBreakdown={dashboardData.current_usage.provider_breakdown}
-                  totalCost={dashboardData.current_usage.total_cost}
+                  providerBreakdown={dashboardData.total_usage.provider_breakdown}
+                  totalCost={dashboardData.total_usage.total_cost}
                 />
               </Grid>
 

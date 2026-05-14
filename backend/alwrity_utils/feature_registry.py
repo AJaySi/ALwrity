@@ -51,6 +51,13 @@ FEATURE_GROUPS: Dict[str, FeatureGroup] = {
             "api.content_planning.strategy_copilot:router",
         ),
     ),
+    "blog_writer": FeatureGroup(
+        features=("blog_writer",),
+        routers=(
+            "api.blog_writer.router:router",
+            "api.blog_writer.seo_analysis:router",
+        ),
+    ),
 }
 
 
@@ -59,5 +66,6 @@ PROFILE_GROUP_MAP: Dict[str, Tuple[str, ...]] = {
     "core": ("core",),
     "podcast": ("core", "podcast"),
     "youtube": ("core", "youtube"),
+    "blog_writer": ("core", "blog_writer"),
     "planning": ("core", "content_planning"),
 }

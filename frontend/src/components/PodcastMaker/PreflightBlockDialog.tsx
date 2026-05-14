@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 import { PreflightCheckResponse } from '../../services/billingService';
 import { useNavigate } from 'react-router-dom';
+import { saveNavigationState } from '../../utils/navigationState';
 
 interface PreflightBlockDialogProps {
   open: boolean;
@@ -41,6 +42,7 @@ export const PreflightBlockDialog: React.FC<PreflightBlockDialogProps> = ({
   const limitInfo = blockedOperation?.limit_info;
 
   const handleUpgrade = () => {
+    saveNavigationState(window.location.pathname);
     navigate('/pricing');
     onClose();
   };

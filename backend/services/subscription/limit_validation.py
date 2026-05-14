@@ -157,39 +157,38 @@ class LimitValidator:
             user_tier = limits.get('tier', 'free') if limits else 'free'
             
             # Get current usage for this billing period with error handling
-            # Use targeted expiry instead of expire_all() to avoid nuking the entire session cache
+            # Use subscription period, not calendar month
+            current_period = self.pricing_service.get_current_billing_period(user_id)
+            
+            # Only expire specific objects that might have changed after renewal
+            # (subscription was already checked above; plan was expired above)
+            # The usage record is the main object we need fresh, and we query it directly below
+            if subscription:
+                self.db.expire(subscription)
+            
+            # Use raw SQL query first to bypass ORM cache, fallback to ORM if SQL fails
+            usage = None
             try:
-                current_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
-                
-                # Only expire specific objects that might have changed after renewal
-                # (subscription was already checked above; plan was expired above)
-                # The usage record is the main object we need fresh, and we query it directly below
-                if subscription:
-                    self.db.expire(subscription)
-                
-                # Use raw SQL query first to bypass ORM cache, fallback to ORM if SQL fails
-                usage = None
-                try:
-                    from sqlalchemy import text
-                    sql_query = text("SELECT * FROM usage_summaries WHERE user_id = :user_id AND billing_period = :period LIMIT 1")
-                    result = self.db.execute(sql_query, {'user_id': user_id, 'period': current_period}).first()
-                    if result:
-                        # Map result to UsageSummary object
-                        usage = self.db.query(UsageSummary).filter(
-                            UsageSummary.user_id == user_id,
-                            UsageSummary.billing_period == current_period
-                        ).first()
-                        if usage:
-                            self.db.refresh(usage)  # Ensure fresh data
-                except Exception as sql_error:
-                    logger.debug(f"[Subscription Check] Raw SQL query failed, using ORM: {sql_error}")
-                    # Fallback to ORM query
+                from sqlalchemy import text
+                sql_query = text("SELECT * FROM usage_summaries WHERE user_id = :user_id AND billing_period = :period LIMIT 1")
+                result = self.db.execute(sql_query, {'user_id': user_id, 'period': current_period}).first()
+                if result:
+                    # Map result to UsageSummary object
                     usage = self.db.query(UsageSummary).filter(
                         UsageSummary.user_id == user_id,
                         UsageSummary.billing_period == current_period
                     ).first()
                     if usage:
                         self.db.refresh(usage)  # Ensure fresh data
+            except Exception as sql_error:
+                logger.debug(f"[Subscription Check] Raw SQL query failed, using ORM: {sql_error}")
+                # Fallback to ORM query
+                usage = self.db.query(UsageSummary).filter(
+                    UsageSummary.user_id == user_id,
+                    UsageSummary.billing_period == current_period
+                ).first()
+                if usage:
+                    self.db.refresh(usage)  # Ensure fresh data
                 
                 if not usage:
                     # First usage this period, create summary
@@ -448,7 +447,7 @@ class LimitValidator:
             logger.info(f"[Pre-flight Check] 📋 Validating {len(operations)} operation(s) before making any API calls")
             
             # Get current usage and limits once
-            current_period = self.pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
+            current_period = self.pricing_service.get_current_billing_period(user_id)
             
             logger.info(f"[Pre-flight Check] 📅 Billing Period: {current_period} (for user {user_id})")
             

@@ -70,22 +70,22 @@ STRATEGIC REQUIREMENTS:
 - Ensure engaging, actionable content throughout
 
 Return JSON format:
-{
+{{
     "title_options": [
         "Title option 1",
         "Title option 2",
         "Title option 3"
     ],
     "outline": [
-        {
+        {{
             "heading": "Section heading with primary keyword",
             "subheadings": ["Subheading 1", "Subheading 2", "Subheading 3"],
             "key_points": ["Key point 1", "Key point 2", "Key point 3"],
             "target_words": 300,
             "keywords": ["primary keyword", "secondary keyword"]
-        }
+        }}
     ]
-}"""
+}}"""
     
     def get_outline_schema(self) -> Dict[str, Any]:
         """Get the structured JSON schema for outline generation."""

@@ -27,11 +27,11 @@ load_dotenv(backend_dir / '.env', override=False)
 load_dotenv(project_root / '.env', override=False)
 load_dotenv(override=False)
 
-# Set LOG_LEVEL early to WARNING to suppress DEBUG persona logs in podcast mode
+# Set LOG_LEVEL early to WARNING in feature-only modes to suppress DEBUG persona logs
 import os
-if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() == "podcast":
+if os.getenv("ALWRITY_ENABLED_FEATURES", "").strip().lower() not in ("", "all"):
     os.environ["LOG_LEVEL"] = "WARNING"
-    
+
 print(f"[app.py] Starting... ALWRITY_ENABLED_FEATURES={os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
 
 
@@ -43,21 +43,20 @@ def get_enabled_features() -> set:
     return {f.strip() for f in env_value.split(",") if f.strip()}
 
 
+def _is_full_mode() -> bool:
+    """Check if running in full mode (all features enabled)."""
+    enabled = get_enabled_features()
+    return "all" in enabled
+
+
+def _is_feature_enabled(feature: str) -> bool:
+    """Check if a specific feature is enabled (including in 'all' mode)."""
+    enabled = get_enabled_features()
+    return feature in enabled or "all" in enabled
+
+
 # Print env var IMMEDIATELY at module start
 print(f"[app.py] ALWRITY_ENABLED_FEATURES at start: {os.getenv('ALWRITY_ENABLED_FEATURES')}", flush=True)
-
-def is_podcast_only_demo_mode() -> bool:
-    """Check if podcast-only mode is enabled."""
-    import os
-    env_val = os.getenv("ALWRITY_ENABLED_FEATURES", "all")
-    enabled = get_enabled_features()
-    result = "podcast" in enabled and "all" not in enabled
-    # Removed debug print - too verbose during startup
-    return result
-
-
-# Podcast-only check BEFORE heavy imports
-PODCAST_ONLY_DEMO_MODE = is_podcast_only_demo_mode()
 
 
 # Import onboarding models (after env is loaded, before heavy imports)
@@ -90,26 +89,16 @@ _log_memory_usage()
 logger.info("app.py: Early memory checkpoint after env load")
 
 
-# Import modular utilities (skip OnboardingManager import in podcast-only mode)
+# Import modular utilities (skip OnboardingManager import in feature-only modes)
 from alwrity_utils import HealthChecker, RateLimiter, FrontendServing, RouterManager
-if not is_podcast_only_demo_mode():
+if _is_full_mode():
     from alwrity_utils import OnboardingManager
 
-# Skip monitoring middleware in podcast-only mode to save memory
-if not is_podcast_only_demo_mode():
+# Skip monitoring middleware in feature-only modes to save memory
+if _is_full_mode():
     from services.subscription import monitoring_middleware
 else:
     monitoring_middleware = None
-
-
-def should_include_non_podcast_features() -> bool:
-    """Check if non-podcast features should be included."""
-    enabled = get_enabled_features()
-    return "all" in enabled or "core" in enabled
-
-
-# Legacy constant for backwards compatibility
-PODCAST_ONLY_DEMO_MODE = is_podcast_only_demo_mode()
 
 
 # Set up clean logging for end users
@@ -119,27 +108,27 @@ setup_clean_logging()
 # Import middleware
 from middleware.auth_middleware import get_current_user
 
-# Import component logic endpoints (skip in podcast-only mode - uses seo_analyzer)
+# Import component logic endpoints (skip in feature-only modes - uses seo_analyzer)
 component_logic_router = None
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     from api.component_logic import router as component_logic_router
 
 # Import subscription API endpoints
 from api.subscription import router as subscription_router
 
-# Import Step 3 onboarding routes (skip in podcast-only mode)
+# Import Step 3 onboarding routes (skip in feature-only modes)
 step3_routes = None
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     from api.onboarding_utils.step3_routes import router as step3_routes
 
-# Import SEO tools router (skip in podcast-only mode - uses seo_analyzer)
+# Import SEO tools router (skip in feature-only modes - uses seo_analyzer)
 seo_tools_router = None
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     from routers.seo_tools import router as seo_tools_router
 
-# Skip Facebook Writer, LinkedIn, and other non-podcast routes in podcast-only mode
+# Skip Facebook Writer, LinkedIn, and other non-essential routes in feature-only modes
 # Also skip other heavy services that trigger PersonaAnalysisService initialization
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     from api.facebook_writer.routers import facebook_router
     from routers.linkedin import router as linkedin_router
     from api.linkedin_image_generation import router as linkedin_image_router
@@ -150,7 +139,7 @@ if not PODCAST_ONLY_DEMO_MODE:
     from routers.product_marketing import router as product_marketing_router
     from routers.campaign_creator import router as campaign_creator_router
 else:
-    # In podcast-only mode, only load essential podcast assets router
+    # In feature-only modes, only load essential assets router
     from api.assets_serving import router as assets_serving_router
     brainstorm_router = None
     images_router = None
@@ -158,31 +147,31 @@ else:
     product_marketing_router = None
     campaign_creator_router = None
 
-# Import hallucination detector router (skip in podcast-only mode - triggers heavy ML)
-if not PODCAST_ONLY_DEMO_MODE:
+# Import hallucination detector router (skip in feature-only modes - triggers heavy ML)
+if _is_full_mode():
     from api.hallucination_detector import router as hallucination_detector_router
     from api.writing_assistant import router as writing_assistant_router
 else:
     hallucination_detector_router = None
     writing_assistant_router = None
 
-# Import research configuration router (skip in podcast-only mode)
-if not is_podcast_only_demo_mode():
+# Import research configuration router (skip in feature-only modes)
+if _is_full_mode():
     from api.research_config import router as research_config_router
 else:
     research_config_router = None
 
 # Import user data endpoints
-# Import content planning endpoints (skip in podcast-only mode)
-if not is_podcast_only_demo_mode():
+# Import content planning endpoints (skip in feature-only modes)
+if _is_full_mode():
     from api.content_planning.api.router import router as content_planning_router
     from api.content_planning.strategy_copilot import router as strategy_copilot_router
 else:
     content_planning_router = None
     strategy_copilot_router = None
 
-# Import user data endpoints (skip in podcast-only mode to save memory)
-if not is_podcast_only_demo_mode():
+# Import user data endpoints (skip in feature-only modes to save memory)
+if _is_full_mode():
     from api.user_data import router as user_data_router
 else:
     user_data_router = None
@@ -197,14 +186,14 @@ from services.startup_health import (
 
 # Trigger reload for monitoring fix
 
-# Import OAuth token monitoring routes (skip in podcast-only mode)
-if not is_podcast_only_demo_mode():
+# Import OAuth token monitoring routes (skip in feature-only modes)
+if _is_full_mode():
     from api.oauth_token_monitoring_routes import router as oauth_token_monitoring_router
 else:
     oauth_token_monitoring_router = None
 
-# Import SEO Dashboard endpoints (skip in podcast-only mode to save memory)
-if not is_podcast_only_demo_mode():
+# Import SEO Dashboard endpoints (skip in feature-only modes to save memory)
+if _is_full_mode():
     from api.seo_dashboard import (
         get_seo_dashboard_data,
         get_seo_health_score,
@@ -318,8 +307,8 @@ router_manager = RouterManager(app)
 router_group_status: Dict[str, Dict[str, Any]] = {}
 
 onboarding_manager = None
-# Only create OnboardingManager if NOT in podcast-only mode
-if not PODCAST_ONLY_DEMO_MODE:
+# Only create OnboardingManager in full mode
+if _is_full_mode():
     from alwrity_utils import OnboardingManager
     onboarding_manager = OnboardingManager(app)
 
@@ -346,7 +335,8 @@ app.middleware("http")(api_key_injection_middleware)
 async def health():
     """Health check endpoint."""
     health_data = health_checker.basic_health_check()
-    health_data["podcast_only_demo_mode"] = PODCAST_ONLY_DEMO_MODE
+    health_data["feature_mode"] = "single" if not _is_full_mode() else "full"
+    health_data["enabled_features"] = list(get_enabled_features())
     return health_data
 
 @app.get("/health/database")
@@ -363,7 +353,8 @@ async def comprehensive_health():
 async def readiness(current_user: dict = Depends(get_current_user)):
     """Readiness check that validates tenant DB resolution/session under auth context."""
     return {
-        "podcast_only_demo_mode": PODCAST_ONLY_DEMO_MODE,
+        "feature_mode": "single" if not _is_full_mode() else "full",
+        "enabled_features": list(get_enabled_features()),
         "startup": get_startup_status(),
         "tenant": readiness_under_auth_context(current_user),
     }
@@ -395,7 +386,8 @@ async def router_status():
     status = router_manager.get_router_status()
     status.update(
         {
-            "podcast_only_demo_mode": PODCAST_ONLY_DEMO_MODE,
+            "feature_mode": "single" if not _is_full_mode() else "full",
+            "enabled_features": list(get_enabled_features()),
             "router_groups": router_group_status,
         }
     )
@@ -410,53 +402,19 @@ async def feature_profile_status():
 @app.get("/api/onboarding/status")
 async def onboarding_status():
     """Get onboarding manager status (or demo-mode disabled state)."""
-    if PODCAST_ONLY_DEMO_MODE:
+    if not _is_full_mode():
         return {
             "enabled": False,
             "status": "disabled",
-            "message": "Onboarding is disabled for podcast-only demo mode.",
-            "demo_mode": "podcast_only",
+            "message": f"Onboarding is disabled in feature-only mode. Enabled features: {list(get_enabled_features())}",
+            "feature_mode": "single",
         }
     return onboarding_manager.get_onboarding_status()
 
 # Include routers using modular utilities
-if PODCAST_ONLY_DEMO_MODE:
-    # In podcast-only mode, include only podcast-enabled routers from core registry
-    from alwrity_utils.router_manager import CORE_ROUTER_REGISTRY
-    podcast_routers = [r for r in CORE_ROUTER_REGISTRY if "podcast" in r.get("features", set())]
-    logger.info(f"[PODCAST-ONLY] Found {len(podcast_routers)} podcast routers: {[r['name'] for r in podcast_routers]}")
-    
-    # Try to include step4_assets for voice cloning (may fail if nltk not installed)
-    step4_entry = next((r for r in CORE_ROUTER_REGISTRY if r.get("name") == "step4_assets"), None)
-    if step4_entry:
-        try:
-            logger.info(f"[PODCAST-ONLY] Attempting to load step4_assets for voice cloning")
-            router = router_manager._load_router_from_registry(step4_entry)
-            router_manager.include_router_safely(router, step4_entry["name"], step4_entry.get("include_kwargs"))
-        except ImportError as e:
-            logger.warning(f"[PODCAST-ONLY] Skipping step4_assets (missing optional dependency): {e}")
-        except Exception as e:
-            logger.error(f"[PODCAST-ONLY] Failed to mount step4_assets: {e}")
-    
-    # Load other podcast routers
-    for entry in podcast_routers:
-        if entry.get("name") == "step4_assets":
-            continue  # Already loaded above
-        try:
-            logger.info(f"[PODCAST-ONLY] Loading router: {entry['name']}")
-            router = router_manager._load_router_from_registry(entry)
-            router_manager.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
-        except Exception as e:
-            logger.error(f"[PODCAST-ONLY] Failed to mount {entry.get('name', 'unknown')}: {e}")
-    router_group_status["modular_core"] = {
-        "mounted": True,
-        "reason": "Podcast routers only in podcast-only mode",
-    }
-    router_group_status["modular_optional"] = {
-        "mounted": False,
-        "reason": "Skipped in podcast-only demo mode",
-    }
-else:
+enabled_features = get_enabled_features()
+if "all" in enabled_features:
+    # Full mode: load all core and optional routers
     router_group_status["modular_core"] = {
         "mounted": router_manager.include_core_routers(),
         "reason": "Full mode",
@@ -465,6 +423,72 @@ else:
         "mounted": router_manager.include_optional_routers(),
         "reason": "Full mode",
     }
+else:
+    # Feature-only mode: load only routers matching enabled features
+    from alwrity_utils.router_manager import CORE_ROUTER_REGISTRY
+
+    # Filter core routers that match any enabled feature
+    matching_core = [
+        r for r in CORE_ROUTER_REGISTRY
+        if r.get("features", set()) & enabled_features
+    ]
+    logger.info(
+        f"[FEATURE-MODE] Enabled features: {enabled_features}, "
+        f"matching {len(matching_core)} core routers: {[r['name'] for r in matching_core]}"
+    )
+
+    # Try to include step4_assets for voice cloning (may fail if nltk not installed)
+    step4_entry = next((r for r in matching_core if r.get("name") == "step4_assets"), None)
+    if step4_entry:
+        try:
+            logger.info(f"[FEATURE-MODE] Attempting to load step4_assets")
+            router = router_manager._load_router_from_registry(step4_entry)
+            router_manager.include_router_safely(router, step4_entry["name"], step4_entry.get("include_kwargs"))
+        except ImportError as e:
+            logger.warning(f"[FEATURE-MODE] Skipping step4_assets (missing optional dependency): {e}")
+        except Exception as e:
+            logger.error(f"[FEATURE-MODE] Failed to mount step4_assets: {e}")
+
+    # Load other matching core routers
+    for entry in matching_core:
+        if entry.get("name") == "step4_assets":
+            continue  # Already loaded above
+        if entry.get("name") == "subscription":
+            continue  # Loaded separately below
+        try:
+            logger.info(f"[FEATURE-MODE] Loading router: {entry['name']}")
+            router = router_manager._load_router_from_registry(entry)
+            router_manager.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
+        except Exception as e:
+            logger.error(f"[FEATURE-MODE] Failed to mount {entry.get('name', 'unknown')}: {e}")
+
+    router_group_status["modular_core"] = {
+        "mounted": True,
+        "reason": f"Feature-only mode: {enabled_features}",
+    }
+
+    # Load optional routers matching enabled features
+    from alwrity_utils.router_manager import OPTIONAL_ROUTER_REGISTRY
+    matching_optional = [
+        r for r in OPTIONAL_ROUTER_REGISTRY
+        if r.get("features", set()) & enabled_features
+    ]
+    for entry in matching_optional:
+        try:
+            logger.info(f"[FEATURE-MODE] Loading optional router: {entry['name']}")
+            router = router_manager._load_router_from_registry(entry)
+            router_manager.include_router_safely(router, entry["name"], entry.get("include_kwargs"))
+        except Exception as e:
+            logger.error(f"[FEATURE-MODE] Failed to mount optional {entry.get('name', 'unknown')}: {e}")
+
+    router_group_status["modular_optional"] = {
+        "mounted": True,
+        "reason": f"Feature-only mode: {enabled_features}",
+    }
+
+# Safety net: explicitly include hallucination detector (router_manager may skip silently)
+if hallucination_detector_router:
+    router_manager.include_router_safely(hallucination_detector_router, "hallucination_detector")
 
 # Log startup summary
 router_manager.log_startup_summary()
@@ -480,8 +504,8 @@ router_group_status["assets_serving"] = {
     "reason": "Required for podcast media assets",
 }
 
-# SEO Dashboard endpoints (skip in podcast-only mode)
-if not is_podcast_only_demo_mode():
+# SEO Dashboard endpoints (skip in feature-only modes)
+if _is_full_mode():
     @app.get("/api/seo-dashboard/data")
     async def seo_dashboard_data():
         """Get complete SEO dashboard data."""
@@ -619,7 +643,7 @@ if not is_podcast_only_demo_mode():
         return await analyze_urls_ai(request, current_user)
 
 # Include platform analytics router
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     from routers.platform_analytics import router as platform_analytics_router
     app.include_router(platform_analytics_router)
     # Include Bing Analytics Storage router to expose storage-backed endpoints
@@ -644,25 +668,38 @@ if not PODCAST_ONLY_DEMO_MODE:
 else:
     router_group_status["platform_extensions"] = {
         "mounted": False,
-        "reason": "Skipped in podcast-only demo mode",
+        "reason": "Skipped in feature-only mode",
     }
 
-# Include Podcast Maker router (always needed for podcast mode)
-from api.podcast.router import router as podcast_router
-logger.info(f"[PODCAST] Including podcast_router with prefixes: {podcast_router.routes}")
-app.include_router(podcast_router)
-router_group_status["podcast_maker"] = {
-    "mounted": True,
-    "reason": "Always mounted",
-}
+# Include Podcast Maker router (only when podcast feature is enabled)
+if _is_feature_enabled("podcast") and "all" not in get_enabled_features():
+    from api.podcast.router import router as podcast_router
+    logger.info(f"[ROUTER] Including podcast_router")
+    app.include_router(podcast_router)
+    router_group_status["podcast_maker"] = {
+        "mounted": True,
+        "reason": "Podcast feature enabled",
+    }
+elif "all" in get_enabled_features():
+    # In full mode, podcast is loaded via optional router registry
+    router_group_status["podcast_maker"] = {
+        "mounted": True,
+        "reason": "Full mode (loaded via registry)",
+    }
+else:
+    router_group_status["podcast_maker"] = {
+        "mounted": False,
+        "reason": "Podcast feature not enabled",
+    }
 
-if not PODCAST_ONLY_DEMO_MODE:
+if _is_full_mode():
     # Include YouTube Creator Studio router
     from api.youtube.router import router as youtube_router
     app.include_router(youtube_router, prefix="/api")
 
     # Include research configuration router
-    app.include_router(research_config_router, prefix="/api/research", tags=["research"])
+    if research_config_router:
+        app.include_router(research_config_router, prefix="/api/research", tags=["research"])
 
     # Include Research Engine router (standalone AI research module)
     from api.research.router import router as research_engine_router
@@ -688,7 +725,7 @@ if not PODCAST_ONLY_DEMO_MODE:
 else:
     router_group_status["advanced_workflows"] = {
         "mounted": False,
-        "reason": "Skipped in podcast-only demo mode",
+        "reason": "Skipped in feature-only mode",
     }
 
 # Setup frontend serving using modular utilities
@@ -715,20 +752,23 @@ async def startup_event():
         # Note: Pricing is initialized per-user in services/database.py:init_user_database()
         # which runs on first database access for each user. No global seeding needed at startup.
         
-        # Skip startup health checks in podcast-only mode to avoid unnecessary DB errors
-        if not is_podcast_only_demo_mode():
+        enabled_features = get_enabled_features()
+        is_single_mode = "all" not in enabled_features
+        
+        # Skip startup health checks in feature-only modes to avoid unnecessary DB errors
+        if _is_full_mode():
             startup_report = run_startup_health_routine(app)
             if startup_report.get("status") != "healthy":
                 logger.error(f"Startup readiness finished with failures: {startup_report.get('errors', [])}")
         else:
-            logger.info("[Podcast] Skipping startup health routine (podcast-only mode)")
+            logger.info(f"[FEATURE-MODE] Skipping startup health routine (features: {enabled_features})")
 
-        # Start task scheduler only if NOT in podcast-only mode
-        if not is_podcast_only_demo_mode():
+        # Start task scheduler only in full mode
+        if _is_full_mode():
             from services.scheduler import get_scheduler
             await get_scheduler().start()
         else:
-            logger.info("[Podcast] Skipping scheduler startup (podcast-only mode)")
+            logger.info(f"[FEATURE-MODE] Skipping scheduler startup (features: {enabled_features})")
 
         # Check Wix API key configuration
         wix_api_key = os.getenv('WIX_API_KEY')
@@ -740,9 +780,12 @@ async def startup_event():
         elapsed = time.time() - startup_start
         logger.info(f"ALwrity backend started successfully in {elapsed:.1f}s")
         
-        # Critical router mount assertions for podcast-only demo mode
+        # Critical router mount assertions for feature-only modes
         _assert_router_mounted("subscription")
-        _assert_router_mounted("podcast")
+        if _is_feature_enabled("podcast"):
+            _assert_router_mounted("podcast")
+        if _is_feature_enabled("blog_writer"):
+            _assert_router_mounted("blog_writer")
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         # Don't raise - let the server start anyway
@@ -757,6 +800,7 @@ def _assert_router_mounted(router_name: str) -> None:
     router_path_indicators = {
         "subscription": ["/api/subscription/plans", "/api/subscription/preflight"],
         "podcast": ["/api/podcast/projects", "/api/podcast/"],
+        "blog_writer": ["/api/blog/health", "/api/blog/research/start"],
     }
     
     expected_paths = router_path_indicators.get(router_name, [])
@@ -767,10 +811,9 @@ def _assert_router_mounted(router_name: str) -> None:
     else:
         error_msg = f"❌ CRITICAL: Router '{router_name}' is NOT mounted! Expected paths: {expected_paths}"
         logger.error(error_msg)
-        if PODCAST_ONLY_DEMO_MODE:
-            # In demo mode, podcast router MUST be mounted
-            if router_name == "podcast":
-                raise RuntimeError(error_msg)
+        # In feature-only mode, only fail if the feature is expected
+        if not _is_full_mode() and _is_feature_enabled(router_name):
+            raise RuntimeError(error_msg)
 
 # Shutdown event
 @app.on_event("shutdown")

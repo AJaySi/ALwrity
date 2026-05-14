@@ -21,7 +21,7 @@ import {
   Avatar
 } from '@mui/material';
 import { apiClient } from '../../../api/client';
-import { isPodcastOnlyDemoMode } from '../../../utils/demoMode';
+import { isFeatureOnlyMode } from '../../../utils/demoMode';
 import {
   CheckCircle as HealthyIcon,
   Warning as WarningIcon,
@@ -91,8 +91,8 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
   const [, setCachePerf] = useState<{ hits: number; misses: number; hit_rate: number } | null>(null);
 
   const fetchStatus = async () => {
-    // Skip system status checks in podcast-only mode (endpoint not available)
-    if (isPodcastOnlyDemoMode()) {
+    // Skip system status checks in feature-limited mode (endpoint not available)
+    if (isFeatureOnlyMode()) {
       setStatusData({
         status: 'unknown',
         icon: '⚪',
@@ -131,8 +131,8 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
   };
 
   const fetchDetailedStats = async () => {
-    // Skip detailed stats in podcast-only mode (endpoint not available)
-    if (isPodcastOnlyDemoMode()) {
+    // Skip detailed stats in feature-limited mode (endpoint not available)
+    if (isFeatureOnlyMode()) {
       setChartData([]);
       return;
     }
@@ -182,8 +182,8 @@ const SystemStatusIndicator: React.FC<SystemStatusIndicatorProps> = ({ className
 
   useEffect(() => {
     fetchStatus();
-    // Skip detailed stats in podcast-only mode
-    if (!isPodcastOnlyDemoMode()) {
+    // Skip detailed stats in feature-limited mode
+    if (!isFeatureOnlyMode()) {
       fetchDetailedStats();
     }
 

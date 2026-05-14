@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { researchCache } from '../../../services/researchCache';
 import { WizardState } from '../types/research.types';
 import { researchEngineApi, ResearchEngineRequest } from '../../../services/researchEngineApi';
@@ -17,6 +17,8 @@ export const useResearchExecution = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   
+  const keywordsRef = useRef<string[]>([]);
+
   // Intent-driven research state
   const [isAnalyzingIntent, setIsAnalyzingIntent] = useState(false);
   const [intentAnalysis, setIntentAnalysis] = useState<AnalyzeIntentResponse | null>(null);
@@ -45,9 +47,9 @@ export const useResearchExecution = () => {
 
   const polling = useResearchPolling({
     onComplete: (result) => {
-      if (result && result.keywords) {
+      if (result) {
         researchCache.cacheResult(
-          result.keywords,
+          keywordsRef.current,
           'General',
           'General',
           result
@@ -68,6 +70,8 @@ export const useResearchExecution = () => {
     setError(null);
 
     try {
+      keywordsRef.current = state.keywords;
+
       // Check cache first
       const cachedResult = researchCache.getCachedResult(
         state.keywords,

@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 // Core data structures for billing and usage tracking
 export interface DashboardData {
-  current_usage: UsageStats;
+  total_usage: UsageStats;
+  current_period_usage: UsageStats;
   trends: UsageTrends;
   limits: SubscriptionLimits;
   alerts: UsageAlert[];
@@ -267,7 +268,8 @@ export const UsageStatsSchema = z.object({
 });
 
 export const DashboardDataSchema = z.object({
-  current_usage: UsageStatsSchema,
+  total_usage: UsageStatsSchema,
+  current_period_usage: UsageStatsSchema,
   trends: z.object({
     periods: z.array(z.string()),
     total_calls: z.array(z.number()),

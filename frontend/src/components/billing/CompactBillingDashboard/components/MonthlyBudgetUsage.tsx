@@ -9,7 +9,7 @@ import { formatCurrency } from '../utils/formatting';
 import { DashboardData } from '../../../../types/billing';
 
 interface MonthlyBudgetUsageProps {
-  currentUsage: DashboardData['current_usage'];
+  currentUsage: DashboardData['total_usage'];
   limits: DashboardData['limits'];
   terminalTheme?: boolean;
   TypographyComponent: typeof TerminalTypography | React.ComponentType<any>;

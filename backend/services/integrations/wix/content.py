@@ -256,17 +256,16 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
             quote_content = ' '.join(quote_lines)
             text_nodes = parse_markdown_inline(quote_content)
             # CRITICAL: TEXT nodes must be wrapped in PARAGRAPH nodes within BLOCKQUOTE
+            # Wix API: omit empty data objects, don't include them as {}
             paragraph_node = {
                 'id': str(uuid.uuid4()),
                 'type': 'PARAGRAPH',
                 'nodes': text_nodes,
-                'paragraphData': {}
             }
             blockquote_node = {
                 'id': node_id,
                 'type': 'BLOCKQUOTE',
                 'nodes': [paragraph_node],
-                'blockquoteData': {}
             }
             nodes.append(blockquote_node)
         
@@ -332,7 +331,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                     'id': str(uuid.uuid4()),
                     'type': 'PARAGRAPH',
                     'nodes': text_nodes,
-                    'paragraphData': {}
                 }
                 list_item_node = {
                     'id': item_node_id,
@@ -345,7 +343,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                 'id': node_id,
                 'type': 'BULLETED_LIST',
                 'nodes': list_node_items,
-                'bulletedListData': {}
             }
             nodes.append(bulleted_list_node)
         
@@ -373,7 +370,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                     'id': str(uuid.uuid4()),
                     'type': 'PARAGRAPH',
                     'nodes': text_nodes,
-                    'paragraphData': {}
                 }
                 list_item_node = {
                     'id': item_node_id,
@@ -386,7 +382,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                 'id': node_id,
                 'type': 'ORDERED_LIST',
                 'nodes': list_node_items,
-                'orderedListData': {}
             }
             nodes.append(ordered_list_node)
         
@@ -442,7 +437,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                     'id': node_id,
                     'type': 'PARAGRAPH',
                     'nodes': text_nodes,
-                    'paragraphData': {}
                 }
                 nodes.append(paragraph_node)
     
@@ -461,7 +455,6 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                     'decorations': []
                 }
             }],
-            'paragraphData': {}
         }
         nodes.append(fallback_paragraph)
     
