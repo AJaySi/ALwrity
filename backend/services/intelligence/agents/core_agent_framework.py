@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Callable, Tuple
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 
@@ -169,6 +169,31 @@ class AgentPerformance:
     success_rate: float
     last_action_at: str
     efficiency_score: float  # 0.0 to 1.0
+
+
+
+@dataclass
+class PromptLayerAudit:
+    """Audit details for an individual prompt composition layer."""
+    name: str
+    budget_tokens: int
+    original_tokens: int
+    final_tokens: int
+    truncated: bool
+
+
+@dataclass
+class PromptCompositionAudit:
+    """Observability payload for composed prompts."""
+    composed_at: str
+    user_id: str
+    agent_type: str
+    model_name: str
+    composition_order: List[str]
+    layer_audits: List[PromptLayerAudit]
+    unsafe_override_keys_blocked: List[str]
+    metadata_tags: Dict[str, Any]
+    final_prompt_tokens: int
 
 class BaseALwrityAgent(ABC):
     """Base class for all ALwrity marketing agents"""
@@ -494,22 +519,164 @@ class BaseALwrityAgent(ABC):
                 value = value.replace(placeholder, str(v))
         return value
 
+    _PROMPT_LAYER_TOKEN_BUDGETS = {
+        "base_prompt": 900,
+        "safety": 450,
+        "goal_overrides": 500,
+        "local_context": 350,
+    }
+    _UNSAFE_OVERRIDE_KEYS = {
+        "disable_safety",
+        "bypass_safety",
+        "safety_disabled",
+        "ignore_safety",
+        "skip_safety",
+        "allow_unsafe",
+    }
+
+    def _estimate_tokens(self, text: str) -> int:
+        # Lightweight heuristic (about 4 chars/token), stable for budget enforcement.
+        value = str(text or "").strip()
+        if not value:
+            return 0
+        return max(1, (len(value) + 3) // 4)
+
+    def _truncate_to_budget(self, text: str, budget_tokens: int) -> Tuple[str, int, int, bool]:
+        value = str(text or "").strip()
+        original = self._estimate_tokens(value)
+        if original <= budget_tokens:
+            return value, original, original, False
+        max_chars = max(0, budget_tokens * 4)
+        truncated = value[:max_chars].rstrip()
+        if truncated and len(truncated) < len(value):
+            truncated = f"{truncated}\n\n[TRUNCATED_FOR_BUDGET]"
+        final_tokens = self._estimate_tokens(truncated)
+        return truncated, original, final_tokens, True
+
+    def _sanitize_goal_overrides(self, overrides: Optional[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[str]]:
+        safe_overrides = dict(overrides or {})
+        blocked: List[str] = []
+        for key in list(safe_overrides.keys()):
+            if str(key).strip().lower() in self._UNSAFE_OVERRIDE_KEYS:
+                blocked.append(key)
+                safe_overrides.pop(key, None)
+        return safe_overrides, blocked
+
+    def compose_system_prompt(
+        self,
+        default_prompt: str,
+        safety_prompt: str = "",
+        goal_overrides: Optional[Dict[str, Any]] = None,
+        local_context: Optional[Dict[str, Any]] = None,
+        metadata_tags: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[str, PromptCompositionAudit]:
+        safe_goal_overrides, blocked_keys = self._sanitize_goal_overrides(goal_overrides)
+
+        base_prompt = self._render_prompt_template(
+            (self._agent_profile or {}).get("system_prompt")
+            if (self._agent_profile or {}).get("system_prompt")
+            else default_prompt
+        )
+        safety_layer = self._render_prompt_template(safety_prompt or "")
+        goal_layer = json.dumps(safe_goal_overrides, ensure_ascii=False, indent=2) if safe_goal_overrides else ""
+
+        combined_context = {**(self._prompt_context or {}), **(local_context or {})}
+        context_layer = json.dumps(combined_context, ensure_ascii=False, indent=2) if combined_context else ""
+
+        layers = {
+            "base_prompt": base_prompt,
+            "safety": safety_layer,
+            "goal_overrides": goal_layer,
+            "local_context": context_layer,
+        }
+
+        layer_audits: List[PromptLayerAudit] = []
+        composed_sections: List[str] = []
+        for layer_name in ["base_prompt", "safety", "goal_overrides", "local_context"]:
+            truncated_text, original_tokens, final_tokens, truncated = self._truncate_to_budget(
+                layers[layer_name], self._PROMPT_LAYER_TOKEN_BUDGETS[layer_name]
+            )
+            layer_audits.append(
+                PromptLayerAudit(
+                    name=layer_name,
+                    budget_tokens=self._PROMPT_LAYER_TOKEN_BUDGETS[layer_name],
+                    original_tokens=original_tokens,
+                    final_tokens=final_tokens,
+                    truncated=truncated,
+                )
+            )
+            if truncated_text:
+                if layer_name == "goal_overrides":
+                    composed_sections.append(f"Goal Overrides:\n{truncated_text}")
+                elif layer_name == "local_context":
+                    composed_sections.append(f"Local Context:\n{truncated_text}")
+                else:
+                    composed_sections.append(truncated_text)
+
+        tags = {
+            "agent_id": self.agent_id,
+            "agent_type": self.agent_type,
+            "user_id": self.user_id,
+            "model_name": self.model_name,
+            "composition_version": "v1",
+            **(metadata_tags or {}),
+        }
+        metadata_header = f"[PROMPT_METADATA::{json.dumps(tags, ensure_ascii=False)}]"
+        final_prompt = "\n\n".join([metadata_header] + composed_sections)
+
+        audit = PromptCompositionAudit(
+            composed_at=datetime.utcnow().isoformat(),
+            user_id=self.user_id,
+            agent_type=self.agent_type,
+            model_name=self.model_name,
+            composition_order=["base_prompt", "safety", "goal_overrides", "local_context"],
+            layer_audits=layer_audits,
+            unsafe_override_keys_blocked=blocked_keys,
+            metadata_tags=tags,
+            final_prompt_tokens=self._estimate_tokens(final_prompt),
+        )
+        self.last_prompt_composition_audit = asdict(audit)
+        return final_prompt, audit
+
     def get_effective_system_prompt(self, default_prompt: str) -> str:
-        override = (self._agent_profile or {}).get("system_prompt")
-        selected = override if (override is not None and str(override).strip()) else default_prompt
-        return self._render_prompt_template(selected)
+        composed_prompt, _ = self.compose_system_prompt(default_prompt=default_prompt)
+        return composed_prompt
 
     def get_effective_task_prompt_template(self, default_template: str = "") -> str:
         override = (self._agent_profile or {}).get("task_prompt_template")
         selected = override if (override is not None and str(override).strip()) else default_template
         return self._render_prompt_template(selected)
 
-    def build_task_prompt(self, instruction: str, task_context: Optional[Dict[str, Any]] = None, default_template: str = "") -> str:
+    def build_task_prompt(
+        self,
+        instruction: str,
+        task_context: Optional[Dict[str, Any]] = None,
+        default_template: str = "",
+        safety_prompt: str = "",
+        goal_overrides: Optional[Dict[str, Any]] = None,
+        metadata_tags: Optional[Dict[str, Any]] = None,
+        return_audit: bool = False,
+    ) -> Any:
         template = self.get_effective_task_prompt_template(default_template or "")
         context_json = json.dumps(task_context or {}, ensure_ascii=False)
         if template and template.strip():
-            return f"{template}\n\nInstruction: {instruction}\nContext: {context_json}"
-        return f"Task: {instruction}\nContext: {context_json}\n\nPlease execute this task using your specialized tools and provide a detailed report."
+            base_task_prompt = f"{template}\n\nInstruction: {instruction}\nContext: {context_json}"
+        else:
+            base_task_prompt = (
+                f"Task: {instruction}\nContext: {context_json}\n\n"
+                "Please execute this task using your specialized tools and provide a detailed report."
+            )
+
+        composed_prompt, audit = self.compose_system_prompt(
+            default_prompt=base_task_prompt,
+            safety_prompt=safety_prompt,
+            goal_overrides=goal_overrides,
+            local_context=task_context,
+            metadata_tags=metadata_tags,
+        )
+        if return_audit:
+            return composed_prompt, asdict(audit)
+        return composed_prompt
     
     @abstractmethod
     def _create_txtai_agent(self) -> Agent:
