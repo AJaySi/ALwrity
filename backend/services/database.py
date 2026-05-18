@@ -45,6 +45,7 @@ import models.website_analysis_monitoring_models
 import models.platform_insights_monitoring_models
 import models.agent_activity_models
 import models.daily_workflow_models
+import models.social_spaces
 
 # Database configuration
 # Get project root (3 levels up from services/database.py: services -> backend -> root)
