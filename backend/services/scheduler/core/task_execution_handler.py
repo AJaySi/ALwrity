@@ -4,10 +4,17 @@ Handles asynchronous execution of individual tasks with proper session isolation
 """
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
+from datetime import datetime
 from sqlalchemy.orm import object_session
 
 from services.database import get_db_session
+from services.intelligence.agents.market_signal_detector import get_market_signal_summary
 from utils.logger_utils import get_service_logger
+from ..utils.traffic_control import (
+    apply_recalibrated_window_to_task,
+    compute_recalibrated_deployment_window,
+    upsert_deferral_metadata,
+)
 from .exception_handler import (
     SchedulerException, TaskExecutionError, DatabaseError, SchedulerConfigError
 )
@@ -16,6 +23,27 @@ if TYPE_CHECKING:
     from .scheduler import TaskScheduler
 
 logger = get_service_logger("task_execution_handler")
+
+NCI_HIGH_THRESHOLD = 0.65
+PUBLISH_TASK_TYPES = {"publish", "content_publish", "social_publish", "daily_publish_task"}
+
+
+def _is_publish_capable_task(task_type: str, task: Any) -> bool:
+    if task_type in PUBLISH_TASK_TYPES or "publish" in (task_type or ""):
+        return True
+    if getattr(task, "pillar_id", None) == "publish":
+        return True
+    if getattr(task, "action_type", None) == "publish":
+        return True
+    return bool(getattr(task, "can_publish", False))
+
+
+def _extract_nci(summary: Dict[str, Any]) -> float:
+    high_priority = float(summary.get("high_priority_signals", 0) or 0)
+    total = float(summary.get("total_signals", 0) or 0)
+    avg_impact = float(summary.get("average_impact_score", 0) or 0)
+    urgency_ratio = (high_priority / total) if total > 0 else 0.0
+    return min(1.0, max(0.0, (urgency_ratio * 0.7) + (avg_impact * 0.3)))
 
 
 async def execute_task_async(
@@ -143,6 +171,49 @@ async def execute_task_async(
             scheduler._update_user_stats(user_id, success=False)
             return
         
+        # Pre-flight hook for publish-capable tasks:
+        # evaluate market volatility/NCI before dispatching publish execution.
+        if _is_publish_capable_task(task_type, task) and user_id:
+            market_summary = await get_market_signal_summary(str(user_id))
+            nci_score = _extract_nci(market_summary)
+            if nci_score >= NCI_HIGH_THRESHOLD:
+                task_db_id = getattr(task, "id", "unknown")
+                reason_code = "high_nci"
+                marker_epoch = datetime.utcnow().strftime("%Y%m%d%H")
+                deferral_marker = f"{task_type}:{task_db_id}:{reason_code}:{marker_epoch}"
+
+                recalibrated_window = compute_recalibrated_deployment_window()
+                apply_recalibrated_window_to_task(task, recalibrated_window)
+
+                metadata = {
+                    "deferral_marker": deferral_marker,
+                    "reason": reason_code,
+                    "nci_score": nci_score,
+                    "market_signal_summary": {
+                        "total_signals": market_summary.get("total_signals", 0),
+                        "high_priority_signals": market_summary.get("high_priority_signals", 0),
+                        "average_impact_score": market_summary.get("average_impact_score", 0),
+                    },
+                    "recalibrated_window": recalibrated_window,
+                    "deferred_at": datetime.utcnow().isoformat(),
+                }
+                upsert_deferral_metadata(task, metadata)
+
+                if hasattr(task, "status"):
+                    task.status = "deferred"
+                db.commit()
+
+                scheduler.stats['tasks_skipped'] += 1
+                scheduler._update_user_stats(user_id, success=True)
+                if summary:
+                    summary.setdefault('skipped', 0)
+                    summary['skipped'] += 1
+                logger.info(
+                    f"[Scheduler] ⏸️ Deferred publish task {task_type}_{task_db_id} due to high NCI "
+                    f"(nci={nci_score:.3f}, threshold={NCI_HIGH_THRESHOLD})"
+                )
+                return
+
         # Execute task with its own session (with error handling)
         try:
             result = await executor.execute_task(task, db)
@@ -221,4 +292,3 @@ async def execute_task_async(
         # Remove from active executions
         if task_id in scheduler.active_executions:
             del scheduler.active_executions[task_id]
-
