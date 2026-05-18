@@ -15,23 +15,16 @@ from sqlalchemy import text
 
 from services.database import init_user_database, ensure_user_workspace_db_directory
 from services.workspace_dirs import ensure_user_workspace_dirs
+from services.workspace_paths import get_workspace_root, get_user_workspace_dir
 
 class UserWorkspaceManager:
     """Manages user-specific workspaces and progressive setup."""
     
     def __init__(self, db_session: Session):
         self.db = db_session
-        # Use environment-safe paths for production
-        if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
-            # In production, use temp directories or skip file operations
-            self.base_workspace_dir = Path("/tmp/alwrity_workspace")
-            self.user_workspaces_dir = self.base_workspace_dir / "users"
-        else:
-            # In development, use project root 'workspace' directory
-            # services/user_workspace_manager.py -> services -> backend -> root
-            root_dir = Path(__file__).parent.parent.parent
-            self.base_workspace_dir = root_dir / "workspace"
-            self.user_workspaces_dir = self.base_workspace_dir
+        # Use shared workspace root authority for all environments.
+        self.base_workspace_dir = get_workspace_root()
+        self.user_workspaces_dir = self.base_workspace_dir
         
     def _sanitize_user_id(self, user_id: str) -> str:
         """Sanitize user_id to be safe for filesystem (matches database.py logic)."""
@@ -63,7 +56,7 @@ class UserWorkspaceManager:
             
             # Create user-specific directories
             # Format: workspaces/workspace_{user_id}
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            user_dir = get_user_workspace_dir(user_id)
             user_dir.mkdir(parents=True, exist_ok=True)
 
             # Ensure canonical DB directory and migrate legacy layout if needed
@@ -161,7 +154,7 @@ class UserWorkspaceManager:
     def get_user_workspace(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user workspace information."""
         safe_user_id = self._sanitize_user_id(user_id)
-        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+        user_dir = get_user_workspace_dir(user_id)
         
         if not user_dir.exists():
             return None
@@ -181,7 +174,7 @@ class UserWorkspaceManager:
         """Update user configuration."""
         try:
             safe_user_id = self._sanitize_user_id(user_id)
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            user_dir = get_user_workspace_dir(user_id)
             config_file = user_dir / "config" / "user_config.json"
             
             if config_file.exists():
@@ -331,7 +324,7 @@ class UserWorkspaceManager:
         """Clean up user workspace (for account deletion)."""
         try:
             safe_user_id = self._sanitize_user_id(user_id)
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            user_dir = get_user_workspace_dir(user_id)
             if user_dir.exists():
                 shutil.rmtree(user_dir)
             
