@@ -35,6 +35,7 @@ from .platform_insights_task_restoration import restore_platform_insights_tasks
 from .advertools_task_restoration import restore_advertools_tasks
 from .check_cycle_handler import check_and_execute_due_tasks
 from .task_execution_handler import execute_task_async
+from .traffic_control import SchedulerTrafficControl
 
 logger = get_service_logger("task_scheduler")
 
@@ -137,6 +138,9 @@ class TaskScheduler:
         # Execution lease registry (prevents duplicate redispatch across check cycles)
         self._task_leases: Dict[str, str] = {}
         self._task_lease_ttl_seconds = int(os.getenv("SCHEDULER_TASK_LEASE_TTL_SECONDS", "900"))
+
+        # Pre-execution traffic-control hook
+        self.traffic_control = SchedulerTrafficControl()
     
     def _get_trigger_for_interval(self, interval_minutes: int):
         """
@@ -721,6 +725,20 @@ class TaskScheduler:
                 if not self._acquire_task_lease(lease_key):
                     continue
 
+                decision = self.traffic_control.evaluate_pre_execution(task, db)
+                if not decision.execute_now:
+                    # Release lease so deferred task can naturally re-enter future check cycles
+                    self._release_task_lease(lease_key)
+                    logger.info(
+                        "[Scheduler] Deferred %s task %s | reason=%s | prior=%s | next=%s",
+                        task_type,
+                        task_id,
+                        decision.defer_reason,
+                        decision.prior_schedule,
+                        decision.next_schedule,
+                    )
+                    continue
+
                 execution_task = asyncio.create_task(
                     execute_task_async(
                         self,
@@ -729,6 +747,7 @@ class TaskScheduler:
                         summary,
                         execution_source="scheduler",
                         user_id=user_id,
+                        execution_key=lease_key,
                     )
                 )
                 self.active_executions[lease_key] = execution_task

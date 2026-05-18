@@ -24,7 +24,8 @@ async def execute_task_async(
     task: Any,
     summary: Optional[Dict[str, Any]] = None,
     execution_source: str = "scheduler",  # "scheduler" or "manual"
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    execution_key: Optional[str] = None
 ):
     """
     Execute a single task asynchronously with user isolation.
@@ -219,6 +220,11 @@ async def execute_task_async(
                 logger.error(f"Error closing database session for task {task_id}: {e}")
         
         # Remove from active executions
-        if task_id in scheduler.active_executions:
-            del scheduler.active_executions[task_id]
+        removal_key = execution_key or task_id
+        if removal_key in scheduler.active_executions:
+            del scheduler.active_executions[removal_key]
+
+        # Release in-memory lease if this execution originated from scheduler dispatch
+        if execution_key:
+            scheduler._release_task_lease(execution_key)
 
