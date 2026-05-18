@@ -7,7 +7,7 @@ Built on txtai's native agent framework
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 
@@ -40,6 +40,8 @@ from services.intelligence.agents.safety_framework import (
 from services.intelligence.agents.performance_monitor import (
     PerformanceMetric, AgentStatus, AgentPerformanceMonitor, performance_service
 )
+from models.agent_activity_models import GoalInstance, GoalCheckpoint, GoalActionLog
+from services.database import get_session_for_user
 
 logger = get_service_logger(__name__)
 
@@ -320,6 +322,22 @@ class ALwrityAgentOrchestrator:
         """Execute coordinated marketing strategy using agent team"""
         try:
             logger.info(f"Executing marketing strategy for user {self.user_id}")
+            invocation_id = str(market_context.get("invocation_id") or market_context.get("run_id") or "").strip()
+            if not invocation_id:
+                raise ValueError("market_context must include invocation_id for checkpoint orchestration")
+
+            goal_instance, checkpoint = self._get_or_create_goal_state(
+                invocation_id=invocation_id,
+                goal_input=market_context
+            )
+            if checkpoint is None:
+                return {
+                    "success": True,
+                    "status": "complete",
+                    "invocation_id": invocation_id,
+                    "message": "All checkpoints are already completed",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
             
             # Prepare comprehensive context
             context = await self._prepare_orchestrator_context(market_context)
@@ -342,6 +360,7 @@ class ALwrityAgentOrchestrator:
                 
             orchestrator_prompt = self.orchestrator_agent.build_task_prompt(instruction=instruction, task_context=context)
             result = await self.orchestrator_agent.run(orchestrator_prompt)
+            self._persist_checkpoint_completion(goal_instance, checkpoint, result)
             
             # Record performance metrics for the orchestration itself
             if self.config.enable_performance_monitoring:
@@ -353,6 +372,8 @@ class ALwrityAgentOrchestrator:
             return {
                 "success": True,
                 "strategy": result,
+                "invocation_id": invocation_id,
+                "checkpoint": checkpoint.checkpoint_key,
                 "timestamp": datetime.utcnow().isoformat(),
                 # In a real system, we might parse the result to extract structured data
             }
@@ -365,6 +386,93 @@ class ALwrityAgentOrchestrator:
                 "error": str(e),
                 "timestamp": datetime.utcnow().isoformat()
             }
+
+    def _get_or_create_goal_state(self, invocation_id: str, goal_input: Dict[str, Any]):
+        """Return goal instance and next actionable checkpoint (one per invocation)."""
+        db = get_session_for_user(self.user_id)
+        try:
+            goal_instance = (
+                db.query(GoalInstance)
+                .filter(
+                    GoalInstance.user_id == self.user_id,
+                    GoalInstance.invocation_id == invocation_id,
+                )
+                .first()
+            )
+            now = datetime.utcnow()
+            if not goal_instance:
+                goal_instance = GoalInstance(
+                    user_id=self.user_id,
+                    invocation_id=invocation_id,
+                    status="active",
+                    goal_input=goal_input,
+                )
+                db.add(goal_instance)
+                db.flush()
+                for key, delta in (("T+2h", timedelta(hours=2)), ("T+24h", timedelta(hours=24)), ("T+7d", timedelta(days=7))):
+                    db.add(
+                        GoalCheckpoint(
+                            goal_instance_id=goal_instance.id,
+                            checkpoint_key=key,
+                            status="pending",
+                            due_at=now + delta,
+                            payload={"cadence": key},
+                        )
+                    )
+                db.add(GoalActionLog(goal_instance_id=goal_instance.id, action="goal_initialized", status="completed", payload={"invocation_id": invocation_id}))
+                db.commit()
+                db.refresh(goal_instance)
+
+            checkpoints = (
+                db.query(GoalCheckpoint)
+                .filter(GoalCheckpoint.goal_instance_id == goal_instance.id)
+                .order_by(GoalCheckpoint.due_at.asc())
+                .all()
+            )
+            next_checkpoint = next((cp for cp in checkpoints if cp.status in {"pending", "failed"}), None)
+            if next_checkpoint and next_checkpoint.status != "running":
+                next_checkpoint.status = "running"
+                next_checkpoint.started_at = now
+                db.add(next_checkpoint)
+                db.add(GoalActionLog(goal_instance_id=goal_instance.id, checkpoint_id=next_checkpoint.id, action="checkpoint_started", status="running", payload={"checkpoint_key": next_checkpoint.checkpoint_key}))
+                db.commit()
+                db.refresh(next_checkpoint)
+            return goal_instance, next_checkpoint
+        finally:
+            db.close()
+
+    def _persist_checkpoint_completion(self, goal_instance: GoalInstance, checkpoint: GoalCheckpoint, result: Any) -> None:
+        """Persist completion outputs and advance goal state idempotently."""
+        db = get_session_for_user(self.user_id)
+        try:
+            instance = db.query(GoalInstance).filter(GoalInstance.id == goal_instance.id).first()
+            cp = db.query(GoalCheckpoint).filter(GoalCheckpoint.id == checkpoint.id).first()
+            if not instance or not cp:
+                return
+            if cp.status == "completed":
+                return
+
+            cp.status = "completed"
+            cp.completed_at = datetime.utcnow()
+            cp.output = {"result": result}
+            instance.latest_output = cp.output
+            db.add(GoalActionLog(goal_instance_id=instance.id, checkpoint_id=cp.id, action="checkpoint_completed", status="completed", payload={"checkpoint_key": cp.checkpoint_key}))
+
+            remaining = (
+                db.query(GoalCheckpoint)
+                .filter(
+                    GoalCheckpoint.goal_instance_id == instance.id,
+                    GoalCheckpoint.status.in_(["pending", "failed", "running"]),
+                )
+                .count()
+            )
+            if remaining <= 1:
+                instance.status = "completed"
+                instance.completed_at = datetime.utcnow()
+                db.add(GoalActionLog(goal_instance_id=instance.id, action="goal_completed", status="completed"))
+            db.commit()
+        finally:
+            db.close()
     
     async def process_market_signals(self) -> List[MarketSignal]:
         """Process market signals and generate agent responses"""
