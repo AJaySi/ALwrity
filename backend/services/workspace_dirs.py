@@ -6,7 +6,7 @@ Centralizes directory creation so API/service imports stay side-effect free.
 from pathlib import Path
 from typing import Iterable, Optional, Set
 
-from services.database import WORKSPACE_DIR
+from services.workspace_paths import get_user_workspace_dir
 
 
 GLOBAL_OPERATIONAL_DIRS = {
@@ -42,10 +42,6 @@ USER_CAPABILITY_DIRS = {
 }
 
 
-def _sanitize_user_id(user_id: str) -> str:
-    return "".join(c for c in user_id if c.isalnum() or c in ("-", "_"))
-
-
 def ensure_global_operational_dirs(dir_names: Optional[Iterable[str]] = None) -> None:
     """Create only operational global directories (logs/temp), on demand."""
     targets = set(dir_names or GLOBAL_OPERATIONAL_DIRS.keys())
@@ -62,8 +58,7 @@ def ensure_user_workspace_dirs(user_id: str, capabilities: Optional[Iterable[str
         user_id: tenant/user identifier.
         capabilities: iterable of capability keys from USER_CAPABILITY_DIRS.
     """
-    safe_user_id = _sanitize_user_id(user_id)
-    user_dir = Path(WORKSPACE_DIR) / f"workspace_{safe_user_id}"
+    user_dir = get_user_workspace_dir(user_id)
 
     requested = set(capabilities or {"core"})
     requested.add("core")

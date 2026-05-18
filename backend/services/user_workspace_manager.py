@@ -3,10 +3,8 @@ User Workspace Manager
 Handles user-specific workspace creation, configuration, and progressive setup.
 """
 
-import os
 import json
 import shutil
-from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from loguru import logger
@@ -14,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from services.database import init_user_database, ensure_user_workspace_db_directory
+from services.workspace_paths import get_workspace_root, get_user_workspace_dir
 from services.workspace_dirs import ensure_user_workspace_dirs
 
 class UserWorkspaceManager:
@@ -21,22 +20,10 @@ class UserWorkspaceManager:
     
     def __init__(self, db_session: Session):
         self.db = db_session
-        # Use environment-safe paths for production
-        if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
-            # In production, use temp directories or skip file operations
-            self.base_workspace_dir = Path("/tmp/alwrity_workspace")
-            self.user_workspaces_dir = self.base_workspace_dir / "users"
-        else:
-            # In development, use project root 'workspace' directory
-            # services/user_workspace_manager.py -> services -> backend -> root
-            root_dir = Path(__file__).parent.parent.parent
-            self.base_workspace_dir = root_dir / "workspace"
-            self.user_workspaces_dir = self.base_workspace_dir
+        # Use canonical workspace root in all environments
+        self.base_workspace_dir = get_workspace_root()
+        self.user_workspaces_dir = self.base_workspace_dir
         
-    def _sanitize_user_id(self, user_id: str) -> str:
-        """Sanitize user_id to be safe for filesystem (matches database.py logic)."""
-        return "".join(c for c in user_id if c.isalnum() or c in ('-', '_'))
-
     def _ensure_workspace_db_directory(self, user_id: str) -> None:
         """Ensure workspace uses canonical `db/` layout via database service authority."""
         ensure_user_workspace_db_directory(user_id)
@@ -47,23 +34,8 @@ class UserWorkspaceManager:
         try:
             logger.info(f"Creating workspace for user {user_id}")
             
-            # Sanitize user_id
-            safe_user_id = self._sanitize_user_id(user_id)
-            
-            # Check if we're in production and skip file operations if needed
-            if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
-                logger.info("Production environment detected - skipping file workspace creation")
-                return {
-                    "user_id": user_id,
-                    "workspace_path": "/tmp/alwrity_workspace/users/user_" + safe_user_id,
-                    "config": self._create_user_config(user_id),
-                    "created_at": datetime.utcnow().isoformat(),
-                    "production_mode": True
-                }
-            
-            # Create user-specific directories
-            # Format: workspaces/workspace_{user_id}
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            # Create user-specific directories (canonical layout)
+            user_dir = get_user_workspace_dir(user_id)
             user_dir.mkdir(parents=True, exist_ok=True)
 
             # Ensure canonical DB directory and migrate legacy layout if needed
@@ -160,8 +132,7 @@ class UserWorkspaceManager:
     
     def get_user_workspace(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user workspace information."""
-        safe_user_id = self._sanitize_user_id(user_id)
-        user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+        user_dir = get_user_workspace_dir(user_id)
         
         if not user_dir.exists():
             return None
@@ -180,8 +151,7 @@ class UserWorkspaceManager:
     def update_user_config(self, user_id: str, updates: Dict[str, Any]) -> bool:
         """Update user configuration."""
         try:
-            safe_user_id = self._sanitize_user_id(user_id)
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            user_dir = get_user_workspace_dir(user_id)
             config_file = user_dir / "config" / "user_config.json"
             
             if config_file.exists():
@@ -330,8 +300,7 @@ class UserWorkspaceManager:
     def cleanup_user_workspace(self, user_id: str) -> bool:
         """Clean up user workspace (for account deletion)."""
         try:
-            safe_user_id = self._sanitize_user_id(user_id)
-            user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
+            user_dir = get_user_workspace_dir(user_id)
             if user_dir.exists():
                 shutil.rmtree(user_dir)
             

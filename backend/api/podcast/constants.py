@@ -5,14 +5,13 @@ Centralized constants and directory configuration for podcast module.
 All workspace paths use utils.storage_paths for root resolution.
 """
 
-import os
 from pathlib import Path
 from typing import Literal
 from loguru import logger
 from services.story_writer.audio_generation_service import StoryAudioGenerationService
-from utils.storage_paths import get_repo_root, sanitize_user_id as _sanitize_user_id
+from services.workspace_paths import get_workspace_root, get_user_workspace_dir
 
-ROOT_DIR = get_repo_root()
+ROOT_DIR = get_workspace_root().parent
 
 # Video subdirectory (relative to workspace media dir)
 AI_VIDEO_SUBDIR = Path("AI_Videos")
@@ -45,15 +44,10 @@ def get_podcast_media_dir(
     }[media_type]
 
     if user_id:
-        sanitized = _sanitize_user_id(user_id)
-        resolved_dir = (
-            ROOT_DIR / "workspace" / f"workspace_{sanitized}" / "media" / media_subdir
-        ).resolve()
+        resolved_dir = (get_user_workspace_dir(user_id) / "media" / media_subdir).resolve()
     else:
         logger.warning(f"[Podcast] get_podcast_media_dir called without user_id for {media_type} — using default workspace. This should not happen in production.")
-        resolved_dir = (
-            ROOT_DIR / "workspace" / "workspace_alwrity" / "media" / media_subdir
-        ).resolve()
+        resolved_dir = (get_workspace_root() / "workspace_alwrity" / "media" / media_subdir).resolve()
 
     if ensure_exists:
         resolved_dir.mkdir(parents=True, exist_ok=True)
