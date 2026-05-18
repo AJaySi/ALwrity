@@ -29,7 +29,7 @@ export interface ContentAsset {
 
 export interface AssetFilters {
   asset_type?: 'text' | 'image' | 'video' | 'audio';
-  source_module?: string | string[]; // Support single or multiple source modules
+  source_module?: string | string[]; // Supports single or multiple source modules
   search?: string;
   tags?: string[];
   favorites_only?: boolean;
@@ -146,8 +146,10 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
       if (currentFilters.source_module) {
         // Handle both string and array cases
         if (Array.isArray(currentFilters.source_module)) {
-          // For arrays, use the first value (backend doesn't support multiple yet)
-          params.append('source_module', currentFilters.source_module[0]);
+          // Send every selected source module as repeated query params
+          currentFilters.source_module.forEach((module) => {
+            params.append('source_module', module);
+          });
         } else {
           params.append('source_module', currentFilters.source_module);
         }

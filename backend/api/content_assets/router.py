@@ -5,7 +5,7 @@ API endpoints for managing unified content assets across all modules.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -47,6 +47,33 @@ class AssetResponse(BaseModel):
         from_attributes = True
 
 
+
+
+def _parse_source_modules(source_module: Optional[List[str]]) -> Optional[List[AssetSource]]:
+    """Parse source_module query values from repeated params and/or comma-separated values."""
+    if not source_module:
+        return None
+
+    parsed_values: List[AssetSource] = []
+    seen: Set[AssetSource] = set()
+
+    for raw_value in source_module:
+        for value in raw_value.split(","):
+            normalized = value.strip().lower()
+            if not normalized:
+                continue
+            try:
+                module = AssetSource(normalized)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid source module: {value.strip()}")
+
+            if module not in seen:
+                seen.add(module)
+                parsed_values.append(module)
+
+    return parsed_values or None
+
+
 class AssetListResponse(BaseModel):
     """Response model for asset list."""
     assets: List[AssetResponse]
@@ -58,7 +85,7 @@ class AssetListResponse(BaseModel):
 @router.get("/", response_model=AssetListResponse)
 async def get_assets(
     asset_type: Optional[str] = Query(None, description="Filter by asset type"),
-    source_module: Optional[str] = Query(None, description="Filter by source module"),
+    source_module: Optional[List[str]] = Query(None, description="Filter by source module(s); supports repeated params and comma-separated values"),
     search: Optional[str] = Query(None, description="Search query"),
     tags: Optional[str] = Query(None, description="Comma-separated tags"),
     favorites_only: bool = Query(False, description="Only favorites"),
@@ -89,12 +116,7 @@ async def get_assets(
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid asset type: {asset_type}")
         
-        source_module_enum = None
-        if source_module:
-            try:
-                source_module_enum = AssetSource(source_module.lower())
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid source module: {source_module}")
+        source_modules_enum = _parse_source_modules(source_module)
         
         tags_list = None
         if tags:
@@ -126,7 +148,7 @@ async def get_assets(
         assets, total = service.get_user_assets(
             user_id=user_id,
             asset_type=asset_type_enum,
-            source_module=source_module_enum,
+            source_modules=source_modules_enum,
             search_query=search,
             tags=tags_list,
             favorites_only=favorites_only,
@@ -200,7 +222,7 @@ async def create_asset(
         asset = service.create_asset(
             user_id=user_id,
             asset_type=asset_type_enum,
-            source_module=source_module_enum,
+            source_modules=source_modules_enum,
             filename=asset_data.filename,
             file_url=asset_data.file_url,
             file_path=asset_data.file_path,
