@@ -1,9 +1,32 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from copy import deepcopy
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 
 AgentCatalogEntry = Dict[str, Any]
+GoalType = Literal["growth", "defensive", "launch", "maintenance"]
+
+
+class GoalCheckpointRule(TypedDict, total=False):
+    checkpoint_policy: str
+    require_approval: bool
+    escalation: str
+
+
+class GoalPromptOverrides(TypedDict, total=False):
+    system_prompt_prefix: str
+    system_prompt_suffix: str
+    task_prompt_prefix: str
+    task_prompt_suffix: str
+
+
+class GoalConfiguration(TypedDict):
+    schema_version: str
+    objective: str
+    required_roles: List[str]
+    prompt_overrides: GoalPromptOverrides
+    rule_matrix: Dict[str, GoalCheckpointRule]
 
 
 AGENT_TEAM_CATALOG: List[AgentCatalogEntry] = [
@@ -213,6 +236,135 @@ AGENT_TEAM_CATALOG: List[AgentCatalogEntry] = [
         },
     },
 ]
+
+GOAL_CONFIG_SCHEMA_VERSION = "1.0"
+
+GOAL_REQUIRED_ROLES: Dict[GoalType, List[str]] = {
+    "growth": ["Team Lead", "Content Strategist", "SEO Specialist", "Social Media Manager"],
+    "defensive": ["Team Lead", "Competitor Analyst", "SEO Specialist"],
+    "launch": ["Team Lead", "Content Strategist", "Social Media Manager", "Competitor Analyst"],
+    "maintenance": ["Team Lead", "Content Strategist", "SEO Specialist"],
+}
+
+GOAL_CONFIGURATION_DEFAULTS: Dict[str, Any] = {
+    "schema_version": GOAL_CONFIG_SCHEMA_VERSION,
+    "objective": "",
+    "required_roles": [],
+    "prompt_overrides": {
+        "system_prompt_prefix": "",
+        "system_prompt_suffix": "",
+        "task_prompt_prefix": "",
+        "task_prompt_suffix": "",
+    },
+    "rule_matrix": {
+        "pre_execution": {
+            "checkpoint_policy": "standard",
+            "require_approval": False,
+            "escalation": "none",
+        },
+        "post_execution": {
+            "checkpoint_policy": "standard",
+            "require_approval": False,
+            "escalation": "none",
+        },
+    },
+}
+
+GOAL_CONFIGURATION_CATALOG: Dict[GoalType, GoalConfiguration] = {
+    "growth": {
+        "schema_version": GOAL_CONFIG_SCHEMA_VERSION,
+        "objective": "Accelerate audience and traffic growth with prioritized execution.",
+        "required_roles": GOAL_REQUIRED_ROLES["growth"],
+        "prompt_overrides": {
+            "system_prompt_prefix": "Favor high-impact opportunities with measurable upside.",
+            "task_prompt_prefix": "Prioritize experiments with fast learning loops.",
+        },
+        "rule_matrix": {
+            "pre_execution": {"checkpoint_policy": "strict", "require_approval": False, "escalation": "team_lead"},
+            "post_execution": {"checkpoint_policy": "strict", "require_approval": False, "escalation": "team_lead"},
+        },
+    },
+    "defensive": {
+        "schema_version": GOAL_CONFIG_SCHEMA_VERSION,
+        "objective": "Protect rankings and market position against emerging threats.",
+        "required_roles": GOAL_REQUIRED_ROLES["defensive"],
+        "prompt_overrides": {
+            "system_prompt_prefix": "Favor risk reduction and brand protection.",
+            "task_prompt_suffix": "Highlight downside risk if actions are delayed.",
+        },
+        "rule_matrix": {
+            "pre_execution": {"checkpoint_policy": "strict", "require_approval": True, "escalation": "security_review"},
+            "post_execution": {"checkpoint_policy": "strict", "require_approval": True, "escalation": "security_review"},
+        },
+    },
+    "launch": {
+        "schema_version": GOAL_CONFIG_SCHEMA_VERSION,
+        "objective": "Coordinate go-to-market execution with rapid cross-channel alignment.",
+        "required_roles": GOAL_REQUIRED_ROLES["launch"],
+        "prompt_overrides": {
+            "system_prompt_prefix": "Coordinate launch-critical actions first.",
+            "task_prompt_prefix": "Sequence actions by launch dependencies.",
+        },
+        "rule_matrix": {
+            "pre_execution": {"checkpoint_policy": "strict", "require_approval": True, "escalation": "team_lead"},
+            "post_execution": {"checkpoint_policy": "standard", "require_approval": False, "escalation": "none"},
+        },
+    },
+    "maintenance": {
+        "schema_version": GOAL_CONFIG_SCHEMA_VERSION,
+        "objective": "Sustain baseline performance with reliable weekly optimization.",
+        "required_roles": GOAL_REQUIRED_ROLES["maintenance"],
+        "prompt_overrides": {},
+        "rule_matrix": {
+            "pre_execution": {"checkpoint_policy": "standard", "require_approval": False, "escalation": "none"},
+            "post_execution": {"checkpoint_policy": "standard", "require_approval": False, "escalation": "none"},
+        },
+    },
+}
+
+
+def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def validate_goal_override_payload(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    override_payload = payload or {}
+    if not isinstance(override_payload, dict):
+        raise ValueError("Goal override payload must be a dictionary.")
+
+    allowed_root_keys = {"schema_version", "objective", "required_roles", "prompt_overrides", "rule_matrix"}
+    unknown_root_keys = set(override_payload.keys()) - allowed_root_keys
+    if unknown_root_keys:
+        raise ValueError(f"Unsupported goal override fields: {sorted(unknown_root_keys)}")
+
+    if "schema_version" in override_payload and not isinstance(override_payload["schema_version"], str):
+        raise ValueError("schema_version must be a string.")
+    if "objective" in override_payload and not isinstance(override_payload["objective"], str):
+        raise ValueError("objective must be a string.")
+    if "required_roles" in override_payload:
+        roles = override_payload["required_roles"]
+        if not isinstance(roles, list) or any(not isinstance(role, str) for role in roles):
+            raise ValueError("required_roles must be a list of strings.")
+    if "prompt_overrides" in override_payload and not isinstance(override_payload["prompt_overrides"], dict):
+        raise ValueError("prompt_overrides must be a dictionary.")
+    if "rule_matrix" in override_payload and not isinstance(override_payload["rule_matrix"], dict):
+        raise ValueError("rule_matrix must be a dictionary.")
+
+    return override_payload
+
+
+def get_goal_configuration(goal_type: str, override_payload: Optional[Dict[str, Any]] = None) -> GoalConfiguration:
+    goal_key = (goal_type or "").strip().lower()
+    base = GOAL_CONFIGURATION_CATALOG.get(goal_key) or GOAL_CONFIGURATION_CATALOG["maintenance"]
+    validated_override = validate_goal_override_payload(override_payload)
+    merged = _deep_merge_dict(_deep_merge_dict(GOAL_CONFIGURATION_DEFAULTS, base), validated_override)
+    return merged
 
 
 def get_agent_catalog_entry(agent_key: str) -> Optional[AgentCatalogEntry]:
