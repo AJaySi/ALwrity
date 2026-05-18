@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 
@@ -550,6 +551,195 @@ class AgentOrchestrationService:
         except Exception as e:
             logger.error(f"Error processing market signals for user {user_id}: {e}")
             return []
+
+    async def process_goal_checkpoint(self, goal_instance_id: str, checkpoint_id: str) -> Dict[str, Any]:
+        """Process a goal checkpoint using persisted runtime state only (DB + VFS)."""
+        started_at = datetime.utcnow().isoformat()
+        runtime = self._load_goal_runtime_state(goal_instance_id, checkpoint_id)
+        goal = runtime["goal"]
+        checkpoint = runtime["checkpoint"]
+
+        if str(checkpoint.get("status") or "").lower() == "completed":
+            logger.info(
+                "goal_checkpoint_skipped goal_instance_id=%s checkpoint_id=%s reason=already_completed",
+                goal_instance_id,
+                checkpoint_id,
+            )
+            return {
+                "success": True,
+                "goal_instance_id": goal_instance_id,
+                "checkpoint_id": checkpoint_id,
+                "status": "skipped",
+                "reason": "already_completed",
+                "team_config": runtime.get("team_config", {}),
+                "started_at": started_at,
+                "completed_at": datetime.utcnow().isoformat(),
+            }
+
+        checkpoint["status"] = "in_progress"
+        checkpoint["started_at"] = started_at
+        executed_actions = self._execute_checkpoint_actions(checkpoint, goal, runtime)
+
+        checkpoint["status"] = "completed"
+        checkpoint["completed_at"] = datetime.utcnow().isoformat()
+        checkpoint["outputs"] = executed_actions
+        goal["status"] = self._compute_goal_status(goal)
+        goal["updated_at"] = datetime.utcnow().isoformat()
+        next_checkpoint = self._compute_next_checkpoint(goal, checkpoint_id)
+        goal["next_checkpoint_id"] = next_checkpoint.get("checkpoint_id") if next_checkpoint else None
+
+        runtime.setdefault("telemetry", []).append(
+            {
+                "type": "goal_checkpoint_processed",
+                "goal_instance_id": goal_instance_id,
+                "checkpoint_id": checkpoint_id,
+                "action_count": len(executed_actions),
+                "goal_status": goal.get("status"),
+                "next_checkpoint_id": goal.get("next_checkpoint_id"),
+                "created_at": datetime.utcnow().isoformat(),
+            }
+        )
+
+        self._persist_goal_runtime_state(goal_instance_id, runtime)
+
+        logger.info(
+            "goal_checkpoint_processed goal_instance_id=%s checkpoint_id=%s actions=%s goal_status=%s next_checkpoint_id=%s",
+            goal_instance_id,
+            checkpoint_id,
+            len(executed_actions),
+            goal.get("status"),
+            goal.get("next_checkpoint_id"),
+        )
+
+        return {
+            "success": True,
+            "goal_instance_id": goal_instance_id,
+            "checkpoint_id": checkpoint_id,
+            "status": "completed",
+            "goal_status": goal.get("status"),
+            "next_checkpoint": next_checkpoint,
+            "team_config": runtime.get("team_config", {}),
+            "outputs": executed_actions,
+            "started_at": started_at,
+            "completed_at": checkpoint.get("completed_at"),
+        }
+
+    def _load_goal_runtime_state(self, goal_instance_id: str, checkpoint_id: str) -> Dict[str, Any]:
+        """Load goal/checkpoint/telemetry state from DB with VFS file fallback."""
+        db_payload: Dict[str, Any] = {}
+        db = None
+        try:
+            from sqlalchemy import text
+            from services.database import get_db
+
+            db = next(get_db())
+            row = db.execute(
+                text("SELECT payload FROM goal_runtime_states WHERE goal_instance_id = :goal_instance_id LIMIT 1"),
+                {"goal_instance_id": goal_instance_id},
+            ).fetchone()
+            if row and row[0]:
+                db_payload = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        except Exception as e:
+            logger.warning("goal_checkpoint_db_load_failed goal_instance_id=%s error=%s", goal_instance_id, e)
+        finally:
+            if db:
+                db.close()
+
+        vfs_path = Path("backend/workspace/goal_runtime") / f"{goal_instance_id}.json"
+        vfs_payload: Dict[str, Any] = {}
+        if vfs_path.exists():
+            try:
+                vfs_payload = json.loads(vfs_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning("goal_checkpoint_vfs_load_failed path=%s error=%s", vfs_path, e)
+
+        runtime = db_payload or vfs_payload or {}
+        goal = runtime.get("goal") or {"goal_instance_id": goal_instance_id, "status": "active", "metadata": {}}
+        checkpoints = goal.get("checkpoints") or []
+        checkpoint = next((cp for cp in checkpoints if str(cp.get("checkpoint_id")) == str(checkpoint_id)), None)
+        if checkpoint is None:
+            raise ValueError(f"Checkpoint '{checkpoint_id}' not found for goal '{goal_instance_id}'")
+
+        runtime["goal"] = goal
+        runtime["checkpoint"] = checkpoint
+        runtime.setdefault("telemetry", runtime.get("prior_telemetry") or [])
+        runtime["team_config"] = self._build_virtual_team_config(goal.get("metadata") or {}, runtime)
+        return runtime
+
+    def _build_virtual_team_config(self, goal_metadata: Dict[str, Any], runtime_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Build effective team config from goal metadata + team catalog/profile overrides."""
+        from services.intelligence.agents.team_catalog import AGENT_TEAM_CATALOG
+
+        overrides = (goal_metadata.get("team_overrides") or runtime_state.get("team_overrides") or {})
+        virtual_team = []
+        for entry in AGENT_TEAM_CATALOG:
+            key = entry.get("agent_key")
+            defaults = entry.get("defaults") or {}
+            override = overrides.get(key) if isinstance(overrides, dict) else {}
+            if not isinstance(override, dict):
+                override = {}
+            merged = {
+                "agent_key": key,
+                "agent_type": entry.get("agent_type"),
+                "role": entry.get("role"),
+                "enabled": bool(override.get("enabled", defaults.get("enabled", True))),
+                "schedule": override.get("schedule", defaults.get("schedule")),
+                "display_name": override.get("display_name", defaults.get("display_name_template", key)),
+            }
+            virtual_team.append(merged)
+
+        return {
+            "goal_type": goal_metadata.get("goal_type"),
+            "campaign_id": goal_metadata.get("campaign_id"),
+            "virtual_team": virtual_team,
+        }
+
+    def _execute_checkpoint_actions(self, checkpoint: Dict[str, Any], goal: Dict[str, Any], runtime_state: Dict[str, Any]) -> List[Dict[str, Any]]:
+        actions = checkpoint.get("actions") or []
+        outputs: List[Dict[str, Any]] = []
+        for index, action in enumerate(actions):
+            action_id = str(action.get("action_id") or f"action_{index + 1}")
+            if str(action.get("status") or "").lower() == "completed":
+                outputs.append({"action_id": action_id, "status": "skipped", "reason": "already_completed"})
+                continue
+
+            result = {
+                "action_id": action_id,
+                "status": "completed",
+                "action_type": action.get("action_type") or "generic",
+                "summary": action.get("summary") or action.get("instruction") or "Executed checkpoint action",
+                "executed_at": datetime.utcnow().isoformat(),
+            }
+            action["status"] = "completed"
+            action["result"] = result
+            outputs.append(result)
+        return outputs
+
+    def _compute_goal_status(self, goal: Dict[str, Any]) -> str:
+        checkpoints = goal.get("checkpoints") or []
+        if checkpoints and all(str(cp.get("status") or "").lower() == "completed" for cp in checkpoints):
+            return "completed"
+        return "active"
+
+    def _compute_next_checkpoint(self, goal: Dict[str, Any], current_checkpoint_id: str) -> Optional[Dict[str, Any]]:
+        checkpoints = goal.get("checkpoints") or []
+        if not checkpoints:
+            return None
+        for cp in checkpoints:
+            if str(cp.get("status") or "").lower() != "completed":
+                return {"checkpoint_id": cp.get("checkpoint_id"), "status": cp.get("status")}
+        return None
+
+    def _persist_goal_runtime_state(self, goal_instance_id: str, runtime_state: Dict[str, Any]) -> None:
+        payload = {
+            "goal": runtime_state.get("goal"),
+            "telemetry": runtime_state.get("telemetry") or [],
+            "team_config": runtime_state.get("team_config") or {},
+        }
+        vfs_dir = Path("backend/workspace/goal_runtime")
+        vfs_dir.mkdir(parents=True, exist_ok=True)
+        vfs_path = vfs_dir / f"{goal_instance_id}.json"
+        vfs_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     
     def get_execution_history(self, user_id: str = None, limit: int = 100) -> List[Dict[str, Any]]:
         """Get execution history"""
