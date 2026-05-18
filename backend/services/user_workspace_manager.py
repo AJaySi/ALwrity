@@ -13,7 +13,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from services.database import init_user_database, ensure_user_workspace_db_directory
+from services.database import WORKSPACE_DIR, init_user_database, ensure_user_workspace_db_directory
 from services.workspace_dirs import ensure_user_workspace_dirs
 
 class UserWorkspaceManager:
@@ -21,17 +21,9 @@ class UserWorkspaceManager:
     
     def __init__(self, db_session: Session):
         self.db = db_session
-        # Use environment-safe paths for production
-        if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
-            # In production, use temp directories or skip file operations
-            self.base_workspace_dir = Path("/tmp/alwrity_workspace")
-            self.user_workspaces_dir = self.base_workspace_dir / "users"
-        else:
-            # In development, use project root 'workspace' directory
-            # services/user_workspace_manager.py -> services -> backend -> root
-            root_dir = Path(__file__).parent.parent.parent
-            self.base_workspace_dir = root_dir / "workspace"
-            self.user_workspaces_dir = self.base_workspace_dir
+        # Always rely on canonical workspace root used by services.database.
+        self.base_workspace_dir = Path(WORKSPACE_DIR)
+        self.user_workspaces_dir = self.base_workspace_dir
         
     def _sanitize_user_id(self, user_id: str) -> str:
         """Sanitize user_id to be safe for filesystem (matches database.py logic)."""
@@ -46,41 +38,29 @@ class UserWorkspaceManager:
         """Create a complete user workspace with progressive setup."""
         try:
             logger.info(f"Creating workspace for user {user_id}")
-            
+
             # Sanitize user_id
             safe_user_id = self._sanitize_user_id(user_id)
-            
-            # Check if we're in production and skip file operations if needed
-            if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"):
-                logger.info("Production environment detected - skipping file workspace creation")
-                return {
-                    "user_id": user_id,
-                    "workspace_path": "/tmp/alwrity_workspace/users/user_" + safe_user_id,
-                    "config": self._create_user_config(user_id),
-                    "created_at": datetime.utcnow().isoformat(),
-                    "production_mode": True
-                }
-            
-            # Create user-specific directories
-            # Format: workspaces/workspace_{user_id}
             user_dir = self.user_workspaces_dir / f"workspace_{safe_user_id}"
-            user_dir.mkdir(parents=True, exist_ok=True)
 
-            # Ensure canonical DB directory and migrate legacy layout if needed
+            production_env = bool(os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("HEROKU"))
+            filesystem_minimal_mode = bool(os.getenv("ALWRITY_FILESYSTEM_MINIMAL_MODE"))
+            mode = "filesystem_minimal" if filesystem_minimal_mode else ("production" if production_env else "development")
+
+            # Always create canonical tenant path and required subdirectories.
+            user_dir.mkdir(parents=True, exist_ok=True)
             self._ensure_workspace_db_directory(user_id)
-            
-            # Create user-specific directories lazily via centralized helper
             user_dir = ensure_user_workspace_dirs(
                 user_id,
                 capabilities={"core", "content", "research", "media", "assets"},
             )
-            
+
             # Create user-specific configuration
             config = self._create_user_config(user_id)
             config_file = user_dir / "config" / "user_config.json"
             with open(config_file, 'w') as f:
                 json.dump(config, f, indent=2)
-            
+
             # Create user-specific database tables
             # Use database.py's init_user_database to ensure proper schema
             try:
@@ -92,12 +72,20 @@ class UserWorkspaceManager:
                 # If DB init fails, the app might not work.
                 raise db_err
             
-            logger.info(f"✅ User workspace created: {user_dir}")
+            dirs_created = ["db", "assets", "media", "content", "config/user_config.json"]
+            logger.info(
+                "✅ User workspace created",
+                mode=mode,
+                workspace_path=str(user_dir),
+                dirs_created=dirs_created,
+            )
             return {
                 "user_id": user_id,
                 "workspace_path": str(user_dir),
                 "config": config,
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
+                "mode": mode,
+                "dirs_created": dirs_created,
             }
             
         except Exception as e:
