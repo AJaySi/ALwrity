@@ -6,14 +6,19 @@ Tracks agent performance, efficiency, and provides optimization recommendations
 import asyncio
 import json
 import logging
+import os
+import shutil
+import tempfile
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 from collections import defaultdict, deque
 
+from sqlalchemy import text
+
 from utils.logger_utils import get_service_logger
-from services.database import get_session_for_user
+from services.database import get_session_for_user, WORKSPACE_DIR
 
 logger = get_service_logger(__name__)
 
@@ -108,6 +113,8 @@ class AgentPerformanceMonitor:
         self.agent_snapshots: Dict[str, AgentPerformanceSnapshot] = {}
         self.recommendations: List[OptimizationRecommendation] = []
         self.performance_history: deque = deque(maxlen=1000)  # Keep last 1000 data points
+        self.telemetry_root = os.path.join(WORKSPACE_DIR, f"workspace_{self.user_id}", "telemetry")
+        self.telemetry_retention_days = 30
         
         # Performance thresholds and targets
         self.performance_targets = {
@@ -126,6 +133,7 @@ class AgentPerformanceMonitor:
         }
         
         logger.info(f"Initialized AgentPerformanceMonitor for user: {user_id}")
+        self._ensure_telemetry_index_table()
     
     async def record_performance_data(self, agent_id: str, metric_type: PerformanceMetric, value: float, context: Dict[str, Any] = None) -> bool:
         """Record a performance data point"""
@@ -145,6 +153,7 @@ class AgentPerformanceMonitor:
             # Store in performance data
             self.performance_data[agent_id].append(data_point)
             self.performance_history.append(data_point)
+            self._write_telemetry_artifact(agent_id=agent_id, data_point=data_point, context=context)
             
             # Keep only recent data (last 24 hours for real-time analysis)
             cutoff_time = datetime.utcnow().timestamp() - (24 * 60 * 60)
@@ -159,6 +168,156 @@ class AgentPerformanceMonitor:
         except Exception as e:
             logger.error(f"Error recording performance data for agent {agent_id}: {e}")
             return False
+
+    def _ensure_telemetry_index_table(self) -> None:
+        """Create telemetry metadata index table for fast lookups."""
+        db = get_session_for_user(self.user_id)
+        if not db:
+            return
+        try:
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS telemetry_artifact_index (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL,
+                    goal_id TEXT NOT NULL,
+                    post_id TEXT NOT NULL,
+                    checkpoint_id TEXT NOT NULL,
+                    artifact_path TEXT NOT NULL,
+                    artifact_type TEXT NOT NULL,
+                    metric_type TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.0,
+                    timestamp TEXT NOT NULL
+                )
+            """))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_telemetry_lookup ON telemetry_artifact_index(user_id, agent_id, goal_id, post_id, checkpoint_id, timestamp)"))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to ensure telemetry index table for user {self.user_id}: {e}")
+        finally:
+            db.close()
+
+    def _write_telemetry_artifact(self, agent_id: str, data_point: PerformanceDataPoint, context: Dict[str, Any]) -> None:
+        """Persist telemetry artifact and index metadata with atomic write semantics."""
+        goal_id = str(context.get("goal_id") or context.get("goal") or "default-goal")
+        post_id = str(context.get("post_id") or context.get("post") or "default-post")
+        checkpoint_id = str(context.get("checkpoint_id") or context.get("checkpoint") or "default-checkpoint")
+        artifact_type = str(context.get("artifact_type") or "checkpoint")
+        confidence = float(context.get("confidence", 0.0) or 0.0)
+        diagnosis = context.get("diagnosis") or "No diagnosis provided."
+        baseline_value = context.get("baseline_value")
+        baseline_delta = data_point.value - baseline_value if isinstance(baseline_value, (int, float)) else None
+
+        artifact_dir = os.path.join(self.telemetry_root, goal_id, post_id, checkpoint_id)
+        os.makedirs(artifact_dir, exist_ok=True)
+        timestamp_slug = datetime.utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        artifact_filename = f"{agent_id}_{data_point.metric_type.value}_{artifact_type}_{timestamp_slug}.json"
+        artifact_path = os.path.join(artifact_dir, artifact_filename)
+
+        artifact_payload = {
+            "metrics": {
+                "metric_type": data_point.metric_type.value,
+                "value": data_point.value,
+                "agent_id": agent_id,
+                "user_id": self.user_id
+            },
+            "baseline_deltas": {
+                "baseline_value": baseline_value,
+                "delta_from_baseline": baseline_delta
+            },
+            "diagnosis": diagnosis,
+            "confidence": confidence,
+            "timestamp": data_point.timestamp,
+            "context": context
+        }
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile("w", delete=False, dir=artifact_dir, suffix=".tmp", encoding="utf-8") as tmp:
+                tmp_path = tmp.name
+                json.dump(artifact_payload, tmp, indent=2)
+            os.replace(tmp_path, artifact_path)
+            if not self._validate_telemetry_artifact(artifact_path):
+                raise ValueError("Telemetry artifact validation failed")
+            self._upsert_telemetry_metadata_index(
+                agent_id=agent_id,
+                goal_id=goal_id,
+                post_id=post_id,
+                checkpoint_id=checkpoint_id,
+                artifact_path=artifact_path,
+                artifact_type=artifact_type,
+                metric_type=data_point.metric_type.value,
+                confidence=confidence,
+                timestamp=data_point.timestamp
+            )
+            self._enforce_telemetry_retention()
+        except Exception as e:
+            logger.error(f"Error writing telemetry artifact {artifact_path}: {e}")
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if os.path.exists(artifact_path):
+                failed_path = f"{artifact_path}.failed"
+                try:
+                    shutil.move(artifact_path, failed_path)
+                except Exception:
+                    pass
+
+    def _validate_telemetry_artifact(self, artifact_path: str) -> bool:
+        required_keys = {"metrics", "baseline_deltas", "diagnosis", "confidence", "timestamp"}
+        try:
+            if not os.path.exists(artifact_path) or os.path.getsize(artifact_path) == 0:
+                return False
+            with open(artifact_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            return required_keys.issubset(payload.keys())
+        except Exception:
+            return False
+
+    def _upsert_telemetry_metadata_index(self, **kwargs: Any) -> None:
+        db = get_session_for_user(self.user_id)
+        if not db:
+            return
+        try:
+            db.execute(text("""
+                INSERT INTO telemetry_artifact_index
+                (user_id, agent_id, goal_id, post_id, checkpoint_id, artifact_path, artifact_type, metric_type, confidence, timestamp)
+                VALUES
+                (:user_id, :agent_id, :goal_id, :post_id, :checkpoint_id, :artifact_path, :artifact_type, :metric_type, :confidence, :timestamp)
+            """), {"user_id": self.user_id, **kwargs})
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to index telemetry artifact metadata: {e}")
+        finally:
+            db.close()
+
+    def _enforce_telemetry_retention(self) -> None:
+        cutoff = datetime.utcnow() - timedelta(days=self.telemetry_retention_days)
+        archive_root = os.path.join(self.telemetry_root, "archive")
+        os.makedirs(archive_root, exist_ok=True)
+        db = get_session_for_user(self.user_id)
+        if not db:
+            return
+        try:
+            rows = db.execute(text("""
+                SELECT id, artifact_path, timestamp
+                FROM telemetry_artifact_index
+                WHERE user_id = :user_id
+            """), {"user_id": self.user_id}).fetchall()
+            for row in rows:
+                ts = datetime.fromisoformat(row.timestamp)
+                if ts < cutoff and os.path.exists(row.artifact_path):
+                    archive_path = os.path.join(archive_root, os.path.basename(row.artifact_path))
+                    shutil.move(row.artifact_path, archive_path)
+                    db.execute(text("UPDATE telemetry_artifact_index SET artifact_path=:archive_path WHERE id=:id"),
+                               {"archive_path": archive_path, "id": row.id})
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed enforcing telemetry retention for user {self.user_id}: {e}")
+        finally:
+            db.close()
     
     async def update_agent_snapshot(self, agent_id: str, status: AgentStatus, action_result: Dict[str, Any] = None) -> AgentPerformanceSnapshot:
         """Update performance snapshot for an agent"""
