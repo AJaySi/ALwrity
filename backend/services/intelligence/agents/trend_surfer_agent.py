@@ -38,6 +38,7 @@ class TrendSurferAgent(SIFBaseAgent):
 
             # 2. Detect internal market signals (competitors, SERP, etc.)
             signals = await self.signal_detector.detect_market_signals()
+            nci = self.signal_detector.compute_noise_congestion_index()
             
             # 3. Analyze real-time trends and convert to signals if actionable
             trend_signals = await self._analyze_realtime_trends(realtime_trends)
@@ -54,11 +55,13 @@ class TrendSurferAgent(SIFBaseAgent):
             ]
             
             logger.info(f"[{self.__class__.__name__}] Found {len(actionable_trends)} actionable trends")
+            logger.info(f"[{self.__class__.__name__}] NCI score={nci.get('score')} band={nci.get('band')} version={nci.get('version')}")
             
             opportunities = []
             for trend in actionable_trends:
                 opp = await self._analyze_opportunity(trend)
                 if opp:
+                    opp["nci"] = nci
                     opportunities.append(opp)
             
             return opportunities

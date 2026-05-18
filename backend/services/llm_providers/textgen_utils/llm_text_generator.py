@@ -35,6 +35,7 @@ def llm_text_gen(
     preferred_hf_models: Optional[List[str]] = None,
     preferred_provider: Optional[str] = None,
     flow_type: str = "default",
+    publication_preflight_log: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate text using Language Model (LLM) based on the provided prompt.
@@ -47,6 +48,7 @@ def llm_text_gen(
         preferred_hf_models (list, optional): Preferred HuggingFace models to use.
         preferred_provider (str, optional): Preferred provider to use.
         flow_type (str): Type of flow for logging and routing.
+        publication_preflight_log (dict, optional): Mutable preflight log payload.
         
     Returns:
         str: Generated text based on the prompt.
@@ -239,6 +241,18 @@ def llm_text_gen(
                     actual_provider_name or provider_enum.value,
                     estimated_total_tokens,
                 )
+
+                if publication_preflight_log is not None:
+                    nci_payload = publication_preflight_log.get("nci") or {}
+                    publication_preflight_log["nci"] = {
+                        "score": nci_payload.get("score"),
+                        "version": nci_payload.get("version"),
+                    }
+                    logger.info(
+                        "[llm_text_gen][publication_preflight] nci_score={} nci_version={}",
+                        publication_preflight_log["nci"].get("score"),
+                        publication_preflight_log["nci"].get("version"),
+                    )
 
                 # Get current usage for limit checking only
                 current_period = pricing_service.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")

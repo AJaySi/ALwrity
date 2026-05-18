@@ -15,6 +15,8 @@ from enum import Enum
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor
 from services.intelligence.semantic_cache import SemanticCacheManager
 from services.seo_analyzer import ComprehensiveSEOAnalyzer
+from services.intelligence.nci import compute_nci
+from config.nci_calibration import get_nci_calibration_config
 from utils.logger_utils import get_service_logger
 
 logger = get_service_logger(__name__)
@@ -108,6 +110,33 @@ class MarketSignalDetector:
         self.baseline_metrics: Dict[str, float] = {}
         
         logger.info(f"Initialized MarketSignalDetector for user: {user_id}")
+
+    def compute_noise_congestion_index(self, context: Optional[SignalContext] = None) -> Dict[str, Any]:
+        """Compute Noise Congestion Index (NCI) for current market conditions."""
+        context = context or SignalContext(
+            user_id=self.user_id,
+            competitor_data={},
+            semantic_health={},
+            seo_performance={},
+            content_analysis={},
+            historical_data={},
+        )
+        competitors = context.competitor_data.get("competitors", []) or []
+        competitor_velocity = min(len(competitors) / 10.0, 1.0)
+        feed_density = min(float(context.semantic_health.get("active_alerts", 0)) / 20.0, 1.0)
+        topic_overlap = min(float(context.content_analysis.get("semantic_overlap", 0.0)), 1.0)
+        authority_weighting = min(
+            sum(float(c.get("authority_score", 0.0)) for c in competitors) / max(len(competitors), 1),
+            1.0,
+        )
+
+        return compute_nci(
+            competitor_velocity=competitor_velocity,
+            feed_density=feed_density,
+            topic_overlap=topic_overlap,
+            authority_weighting=authority_weighting,
+            config=get_nci_calibration_config(),
+        )
     
     async def detect_market_signals(self) -> List[MarketSignal]:
         """Detect all current market signals"""
