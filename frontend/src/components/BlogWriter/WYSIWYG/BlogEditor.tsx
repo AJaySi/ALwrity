@@ -1,13 +1,21 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { createTheme, ThemeProvider, Paper, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, Divider, TextField } from '@mui/material';
+import { createTheme, ThemeProvider, Paper, IconButton, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, Box, TextField, Chip } from '@mui/material';
 import {
   AutoAwesome as AutoAwesomeIcon,
   MoreHoriz as MoreHorizIcon,
+  BarChart as BarChartIcon,
+  Hub as HubIcon,
+  FactCheck as FactCheckIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { BlogOutlineSection, BlogResearchResponse, blogWriterApi } from '../../../services/blogWriterApi';
 import BlogSection from './BlogSection';
 import EditorSidebar from './EditorSidebar';
 import HoverMenu from './HoverMenu';
+import { useMarkdownProcessor } from '../../../hooks/useMarkdownProcessor';
+import BlogPreviewModal from '../BlogPreviewModal';
+import PlayAllTTSButton from '../PlayAllTTSButton';
+import OnThisPageNav from './OnThisPageNav';
 
 const theme = createTheme({
   typography: {
@@ -31,6 +39,8 @@ interface BlogEditorProps {
   continuityRefresh?: number;
   flowAnalysisResults?: any;
   sectionImages?: Record<string, string>;
+  sourceMappingStats?: any;
+  groundingInsights?: any;
 }
 
 const BlogEditor: React.FC<BlogEditorProps> = ({ 
@@ -45,7 +55,9 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   onSave,
   continuityRefresh,
   flowAnalysisResults,
-  sectionImages = {}
+  sectionImages = {},
+  sourceMappingStats,
+  groundingInsights
 }) => {
   const [blogTitle, setBlogTitle] = useState(initialTitle || 'Your Amazing Blog Title');
   const [introduction, setIntroduction] = useState('');
@@ -58,8 +70,11 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingIntro, setEditingIntro] = useState(false);
   const [titleMenuAnchor, setTitleMenuAnchor] = useState<HTMLElement | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [currentSectionId, setCurrentSectionId] = useState<string | number | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const introInputRef = useRef<HTMLInputElement>(null);
+  const contentContainerRef = useRef<HTMLDivElement>(null);
 
   const totalWords = useMemo(() =>
     sections.reduce((sum, s) => sum + (s.content?.split(/\s+/).filter(Boolean).length || 0), 0),
@@ -67,6 +82,55 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   );
 
   const readingTime = useMemo(() => Math.max(1, Math.ceil(totalWords / 200)), [totalWords]);
+
+  // Initialize markdown processor for preview functionality
+  const sectionsForProcessor = useMemo(() => {
+    const result: Record<string, string> = {};
+    sections.forEach(s => {
+      result[s.id] = s.content || '';
+    });
+    return result;
+  }, [sections]);
+  
+  const { convertMarkdownToHTML } = useMarkdownProcessor(outline, sectionsForProcessor);
+
+  // Track current section based on scroll position
+  useEffect(() => {
+    const container = contentContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const sectionElements = container.querySelectorAll('[data-section-id]');
+      let currentId: string | number | null = null;
+      
+      sectionElements.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= 150) {
+          currentId = el.getAttribute('data-section-id');
+        }
+      });
+      
+      if (currentId) {
+        setCurrentSectionId(currentId);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    handleScroll();
+    
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [sections]);
+
+  // Navigate to section
+  const handleNavigateToSection = useCallback((sectionId: string | number) => {
+    const container = contentContainerRef.current;
+    if (!container) return;
+    
+    const targetElement = container.querySelector(`[data-section-id="${sectionId}"]`);
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   useEffect(() => {
     if (outline && outline.length > 0) {
@@ -220,16 +284,26 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
     });
   }, []);
 
+  const handleDeleteSection = useCallback((sectionId: any) => {
+    setSections(prev => prev.filter(s => s.id !== sectionId));
+    if (onContentUpdate) {
+      // Update parent with filtered sections
+      setTimeout(() => {
+        // Give React time to update state
+      }, 0);
+    }
+  }, [onContentUpdate]);
+
   return (
     <ThemeProvider theme={theme}>
       <div className="min-h-screen bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex gap-8">
             {/* Main editor column */}
-            <div className="flex-1 min-w-0 max-w-4xl">
+            <div className="flex-1 min-w-0 max-w-4xl" ref={contentContainerRef}>
               <Paper elevation={0} className="bg-white p-8 md:p-10 rounded-xl border border-gray-200/60">
                 {/* Title */}
-                <div className="mb-6 pb-6 border-b border-gray-100">
+                <div className="mb-6 pb-6 border-b border-gray-100" data-section-id="title">
                   <div className="flex items-start gap-2 group">
                     {editingTitle ? (
                       <TextField
@@ -257,6 +331,11 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                       </h1>
                     )}
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-1 shrink-0 flex items-center gap-1">
+                      <Tooltip title="Preview full blog">
+                        <IconButton onClick={() => setShowPreviewModal(true)} size="small">
+                          <VisibilityIcon className="text-green-600" fontSize="small"/>
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Title actions">
                         <IconButton size="small" onClick={(e) => setTitleMenuAnchor(e.currentTarget)}>
                           <MoreHorizIcon className="text-gray-400" fontSize="small"/>
@@ -278,7 +357,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                   </div>
 
                   {/* Introduction */}
-                  <div className="mt-4 group/intro">
+                  <div className="mt-4 group/intro" data-section-id="intro">
                     <div className="flex items-start gap-2">
                       {editingIntro ? (
                         <TextField
@@ -333,45 +412,186 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                     const imageId = imageIdByIndex || outlineSection?.id || section.id;
                     const sectionImage = sectionImages?.[imageId] || null;
                     return (
-                      <BlogSection 
-                        key={section.id} 
-                        {...section} 
-                        onContentUpdate={onContentUpdate}
-                        expandedSections={expandedSections}
-                        toggleSectionExpansion={toggleSectionExpansion}
-                        refreshToken={continuityRefresh}
-                        flowAnalysisResults={flowAnalysisResults}
-                        sectionImage={sectionImage}
-                      />
+                      <div key={section.id} data-section-id={section.id}>
+                        <BlogSection 
+                          {...section} 
+                          onContentUpdate={onContentUpdate}
+                          onDeleteSection={handleDeleteSection}
+                          expandedSections={expandedSections}
+                          toggleSectionExpansion={toggleSectionExpansion}
+                          refreshToken={continuityRefresh}
+                          flowAnalysisResults={flowAnalysisResults}
+                          sectionImage={sectionImage}
+                          convertMarkdownToHTML={convertMarkdownToHTML}
+                        />
+                      </div>
                     );
                   })}
                 </div>
 
-                {/* Stats bar */}
-                <div className="mt-8 pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between text-sm text-gray-400">
-                    <div className="flex items-center gap-4">
-                      <span>{sections.length} {sections.length === 1 ? 'section' : 'sections'}</span>
-                      <span className="text-gray-300">|</span>
-                      <span>{totalWords.toLocaleString()} words</span>
-                      <span className="text-gray-300">|</span>
-                      <span>{readingTime} min read</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, (totalWords / Math.max(1, sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0))) * 100)}%` }}
-                        />
+                {/* Compact Stats Bar - Vertical Stack */}
+                <Paper elevation={0} sx={{ 
+                  mt: 4, 
+                  p: 2, 
+                  borderRadius: 3,
+                  border: '1px solid #e2e8f0',
+                  bgcolor: 'linear-gradient(135deg, #fafbfc 0%, #f1f5f9 100%)',
+                  background: 'linear-gradient(135deg, #fafbfc 0%, #f1f5f9 100%)',
+                }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                    {/* Left: Stats */}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <Tooltip title="Total sections in your blog">
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#4f46e5', cursor: 'help' }}>
+                            📊 {sections.length} {sections.length === 1 ? 'section' : 'sections'}
+                          </span>
+                        </Tooltip>
+                        <span style={{ color: '#cbd5e1' }}>•</span>
+                        <Tooltip title="Total word count across all sections">
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#2563eb', cursor: 'help' }}>
+                            📝 {totalWords.toLocaleString()} words
+                          </span>
+                        </Tooltip>
+                        <span style={{ color: '#cbd5e1' }}>•</span>
+                        <Tooltip title="Estimated reading time (200 words/minute)">
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#d97706', cursor: 'help' }}>
+                            ⏱️ {readingTime} min read
+                          </span>
+                        </Tooltip>
                       </div>
-                      <span className="text-xs text-gray-400">
-                        {totalWords > 0
-                          ? `${Math.round(Math.min(100, (totalWords / Math.max(1, sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0))) * 100))}%`
-                          : '0%'}
-                      </span>
+                    </div>
+                    
+                    {/* Right: Circular Progress + Play All TTS */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {(() => {
+                      const targetWords = sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0);
+                      const progress = targetWords > 0 ? Math.min(100, Math.round((totalWords / targetWords) * 100)) : 0;
+                      const remaining = Math.max(0, targetWords - totalWords);
+                      
+                      return (
+                        <Tooltip 
+                          title={
+                            <div style={{ padding: 4 }}>
+                              <div style={{ fontWeight: 600, marginBottom: 4 }}>Writing Progress</div>
+                              <div style={{ fontSize: '0.75rem' }}>
+                                ✅ Completed: {totalWords.toLocaleString()} words<br/>
+                                🎯 Target: {targetWords.toLocaleString()} words<br/>
+                                📝 Remaining: {remaining.toLocaleString()} words<br/>
+                                📊 Progress: {progress}%
+                              </div>
+                            </div>
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <div style={{ position: 'relative', width: 56, height: 56, cursor: 'help' }}>
+                            <svg width="56" height="56" style={{ transform: 'rotate(-90deg)' }}>
+                              <circle
+                                cx="28"
+                                cy="28"
+                                r="24"
+                                fill="none"
+                                stroke="#e2e8f0"
+                                strokeWidth="4"
+                              />
+                              <circle
+                                cx="28"
+                                cy="28"
+                                r="24"
+                                fill="none"
+                                stroke={progress >= 90 ? '#10b981' : '#6366f1'}
+                                strokeWidth="4"
+                                strokeLinecap="round"
+                                strokeDasharray={`${2 * Math.PI * 24}`}
+                                strokeDashoffset={`${2 * Math.PI * 24 * (1 - progress / 100)}`}
+                                style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                              />
+                            </svg>
+                            <span style={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: progress >= 90 ? '#10b981' : '#6366f1',
+                            }}>
+                              {progress}%
+                            </span>
+                          </div>
+                        </Tooltip>
+                      );
+                    })()}
+                      
+                      {/* Play All TTS Button */}
+                      <PlayAllTTSButton
+                        title={blogTitle}
+                        introduction={introduction}
+                        sections={sections.map(s => ({ title: s.title, content: s.content }))}
+                      />
                     </div>
                   </div>
-                </div>
+                  
+                  {/* Research Tools - Compact Chips */}
+                  {(research || sourceMappingStats || groundingInsights) && (
+                    <div style={{ 
+                      marginTop: 8, 
+                      paddingTop: 8, 
+                      borderTop: '1px solid #e2e8f0',
+                      display: 'flex', 
+                      gap: 4, 
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                    }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginRight: 4 }}>
+                        🔬 Research Tools:
+                      </span>
+                      {research && (
+                        <Chip 
+                          icon={<BarChartIcon />} 
+                          label="Keywords" 
+                          size="small"
+                          onClick={() => console.log('Open keywords')}
+                          sx={{ 
+                            height: 24, 
+                            fontSize: '0.7rem',
+                            cursor: 'pointer',
+                            '&:hover': { bgcolor: '#e0e7ff' },
+                          }}
+                        />
+                      )}
+                      {sourceMappingStats && (
+                        <Chip 
+                          icon={<HubIcon />} 
+                          label={`Sources (${sourceMappingStats.total_sources || 0})`} 
+                          size="small"
+                          onClick={() => console.log('Open sources')}
+                          sx={{ 
+                            height: 24, 
+                            fontSize: '0.7rem',
+                            cursor: 'pointer',
+                            '&:hover': { bgcolor: '#dbeafe' },
+                          }}
+                        />
+                      )}
+                      {groundingInsights && (
+                        <Chip 
+                          icon={<FactCheckIcon />} 
+                          label="Grounding" 
+                          size="small"
+                          onClick={() => console.log('Open grounding')}
+                          sx={{ 
+                            height: 24, 
+                            fontSize: '0.7rem',
+                            cursor: 'pointer',
+                            '&:hover': { bgcolor: '#fef3c7' },
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </Paper>
               </Paper>
             </div>
 
@@ -383,6 +603,15 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
             </div>
           </div>
         </div>
+
+        {/* On This Page Navigation */}
+        <OnThisPageNav
+          title={blogTitle}
+          introduction={introduction}
+          sections={sections}
+          onNavigate={handleNavigateToSection}
+          currentSectionId={currentSectionId}
+        />
 
         {/* Title Selection Modal */}
         <Dialog open={showTitleModal} onClose={() => setShowTitleModal(false)} maxWidth="md" fullWidth>
@@ -505,6 +734,19 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
             <Button onClick={() => setShowIntroductionModal(false)}>Cancel</Button>
           </DialogActions>
         </Dialog>
+
+        {/* Full Blog Preview Modal */}
+        <BlogPreviewModal
+          isOpen={showPreviewModal}
+          onClose={() => setShowPreviewModal(false)}
+          title={blogTitle}
+          introduction={introduction}
+          sections={sections.map(s => ({
+            title: s.title,
+            content: s.content,
+          }))}
+          convertMarkdownToHTML={convertMarkdownToHTML}
+        />
       </div>
     </ThemeProvider>
   );

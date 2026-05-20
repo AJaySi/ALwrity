@@ -6,21 +6,22 @@ import {
   TextField, 
   Tooltip, 
   CircularProgress,
-  Divider
+  Divider,
+  Box
 } from '@mui/material';
 import {
   Edit as EditIcon,
   DeleteOutline as DeleteOutlineIcon,
   FileCopyOutlined as FileCopyOutlinedIcon,
-  Link as LinkIcon,
-  AutoAwesome as AutoAwesomeIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   MoreHoriz as MoreHorizIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import useBlogTextSelectionHandler from './BlogTextSelectionHandler';
 import HoverMenu from './HoverMenu';
 import { blogWriterApi } from '../../../services/blogWriterApi';
+import { TextToSpeechButton } from '../../shared/TextToSpeechButton';
 
 interface BlogSectionProps {
   id: any;
@@ -36,11 +37,13 @@ interface BlogSectionProps {
     targetWords: number;
   };
   onContentUpdate?: (sections: any[]) => void;
+  onDeleteSection?: (sectionId: any) => void;
   expandedSections: Set<any>;
   toggleSectionExpansion: (sectionId: any) => void;
   refreshToken?: number;
   flowAnalysisResults?: any;
   sectionImage?: string;
+  convertMarkdownToHTML?: (md: string) => string;
 }
 
 const BlogSection: React.FC<BlogSectionProps> = ({ 
@@ -50,13 +53,16 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   sources, 
   outlineData, 
   onContentUpdate,
+  onDeleteSection,
   expandedSections,
   toggleSectionExpansion,
   refreshToken,
   flowAnalysisResults,
-  sectionImage
+  sectionImage,
+  convertMarkdownToHTML
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const [sectionTitle, setSectionTitle] = useState(title);
   const [content, setContent] = useState(initialContent);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -224,26 +230,187 @@ const BlogSection: React.FC<BlogSectionProps> = ({
             {sectionTitle}
           </h2>
         )}
+        
+        {/* Section Toolbar - Shows on hover, positioned next to title */}
+        <div 
+          className="section-toolbar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            opacity: isHovered ? 1 : 0,
+            transition: 'opacity 0.2s ease',
+            pointerEvents: isHovered ? 'auto' : 'none',
+          }}
+        >
+          {/* Preview/Edit Toggle */}
+          {convertMarkdownToHTML && (
+            <Tooltip title={isPreviewing ? 'Edit content' : 'Preview content'}>
+              <IconButton 
+                size="small" 
+                onClick={() => setIsPreviewing(!isPreviewing)} 
+                sx={{ 
+                  width: 32, 
+                  height: 32,
+                  bgcolor: isPreviewing ? '#4f46e5' : 'white',
+                  color: isPreviewing ? 'white' : '#475569',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  '&:hover': {
+                    bgcolor: isPreviewing ? '#4338ca' : '#f8fafc',
+                    borderColor: isPreviewing ? '#4338ca' : '#cbd5e1',
+                    transform: 'translateY(-1px)',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {isPreviewing ? <EditIcon sx={{ fontSize: 16 }} /> : <VisibilityIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
+          )}
+          
+          {/* Copy Button */}
+          <Tooltip title="Copy section">
+            <IconButton size="small" sx={{ 
+              width: 32, 
+              height: 32,
+              bgcolor: 'white',
+              color: '#64748b',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              '&:hover': {
+                bgcolor: '#f8fafc',
+                borderColor: '#cbd5e1',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+              },
+              transition: 'all 0.2s ease',
+            }}>
+              <FileCopyOutlinedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          
+          {/* More Actions */}
+          <Tooltip title="Section actions">
+            <IconButton size="small" onClick={(e) => setToolsAnchorEl(e.currentTarget)} sx={{ 
+              width: 32, 
+              height: 32,
+              bgcolor: 'white',
+              color: '#64748b',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              '&:hover': {
+                bgcolor: '#f8fafc',
+                borderColor: '#cbd5e1',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+              },
+              transition: 'all 0.2s ease',
+            }}>
+              <MoreHorizIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          
+          {/* Delete Button */}
+          <Tooltip title="Delete section">
+            <IconButton size="small" onClick={() => {
+              if (window.confirm(`Are you sure you want to delete "${sectionTitle}"? This cannot be undone.`)) {
+                onDeleteSection?.(id);
+              }
+            }} sx={{ 
+              width: 32, 
+              height: 32,
+              bgcolor: 'white',
+              color: '#ef4444',
+              border: '1px solid #fecaca',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              '&:hover': {
+                bgcolor: '#fef2f2',
+                borderColor: '#fca5a5',
+                transform: 'translateY(-1px)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+              },
+              transition: 'all 0.2s ease',
+            }}>
+              <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          
+          {/* Text-to-Speech Button */}
+          {content && content.trim().length > 0 && (
+            <TextToSpeechButton 
+              text={content}
+              size="small"
+              showSettings={false}
+              disabled={isPreviewing}
+            />
+          )}
+        </div>
       </div>
 
-      {sectionImage && (
+{sectionImage && (
         <div className="mb-4">
           <div className="rounded-lg overflow-hidden border border-gray-100 bg-white">
             <img 
-              src={`data:image/png;base64,${sectionImage}`} 
-              alt={`Cover image for ${sectionTitle}`}
+              src={sectionImage.startsWith('http') || sectionImage.startsWith('/api/') ? sectionImage : `data:image/png;base64,${sectionImage}`}
+              alt={`Image for ${sectionTitle}`}
               className="w-full h-auto max-h-96 object-contain"
             />
           </div>
         </div>
-      )}
-      
+)}
+
       {isGenerating ? (
         <div className="flex items-center gap-3 p-6 bg-indigo-50/50 rounded-lg border border-indigo-100/50 mb-3">
           <CircularProgress size={20} className="text-indigo-400" />
           <span className="text-sm text-indigo-600 font-medium">Generating content...</span>
         </div>
+      ) : isPreviewing && convertMarkdownToHTML ? (
+        // Preview Mode
+        <div className="relative">
+          <Box
+            className="preview-content"
+            sx={{
+              p: 3,
+              bgcolor: '#fafbfc',
+              borderRadius: 2,
+              border: '1px solid #e5e7eb',
+              fontFamily: 'Georgia, serif',
+              lineHeight: 1.8,
+              color: '#1f2937',
+              '& h1, & h2, & h3': { color: '#111827', mt: 2, mb: 1 },
+              '& h2': { fontSize: '1.5rem', fontWeight: 600, borderBottom: '1px solid #e5e7eb', pb: 1 },
+              '& p': { mb: 1.5 },
+              '& strong': { fontWeight: 600 },
+              '& em': { fontStyle: 'italic' },
+              '& a': { color: '#4f46e5', textDecoration: 'underline' },
+              '& blockquote': {
+                borderLeft: '4px solid #e5e7eb',
+                pl: 2,
+                py: 1,
+                color: '#6b7280',
+                fontStyle: 'italic',
+                bgcolor: '#f9fafb',
+              },
+              '& code': {
+                bgcolor: '#f1f5f9',
+                px: 1,
+                py: 0.5,
+                borderRadius: 0.25,
+                fontFamily: 'monospace',
+                fontSize: '0.9em',
+              },
+              '& ul, & ol': { pl: 2, mb: 1.5 },
+              '& li': { mb: 0.5 },
+              '& hr': { borderColor: '#e5e7eb', my: 2 },
+              '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1 },
+            }}
+            dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(content) }}
+          />
+        </div>
       ) : (
+        // Edit Mode
         <div className="relative">
           <TextField
             multiline
@@ -332,36 +499,40 @@ const BlogSection: React.FC<BlogSectionProps> = ({
         </div>
       )}
       
-      {/* Bottom toolbar */}
-      <div className="flex items-center justify-between mt-2">
+      {/* Bottom word count - compact */}
+      <div className="flex items-center justify-between mt-2" style={{ opacity: isHovered || isFocused ? 1 : 0, transition: 'opacity 0.2s' }}>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{wordCount_} words</span>
+          <span className="text-xs" style={{ fontWeight: 600, color: '#94a3b8' }}>
+            📝 {wordCount_} words
+          </span>
           {outlineData?.targetWords && outlineData.targetWords > 0 && (
             <>
               <span className="text-gray-300 text-xs">/</span>
-              <span className="text-xs text-gray-400">{outlineData.targetWords} target</span>
+              <span className="text-xs" style={{ 
+                fontWeight: 600, 
+                color: wordCount_ >= outlineData.targetWords * 0.9 ? '#10b981' : '#94a3b8',
+              }}>
+                {outlineData.targetWords} target
+              </span>
             </>
           )}
         </div>
-        <div className="flex items-center gap-0.5" style={{ opacity: isHovered ? 1 : 0, transition: 'opacity 0.2s' }}>
+        <div className="flex items-center gap-1">
           {outlineData && (
             <Tooltip title={expandedSections.has(id) ? 'Hide outline info' : 'Show outline info'}>
-              <IconButton size="small" onClick={() => toggleSectionExpansion(id)} sx={{ width: 28, height: 28 }}>
-                {expandedSections.has(id) ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+              <IconButton size="small" onClick={() => toggleSectionExpansion(id)} sx={{ 
+                width: 28, 
+                height: 28,
+                bgcolor: 'transparent',
+                color: '#64748b',
+                '&:hover': {
+                  bgcolor: '#f1f5f9',
+                },
+              }}>
+                {expandedSections.has(id) ? <ExpandLessIcon sx={{ fontSize: 14 }} /> : <ExpandMoreIcon sx={{ fontSize: 14 }} />}
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title="Section actions">
-            <IconButton size="small" onClick={(e) => setToolsAnchorEl(e.currentTarget)} sx={{ width: 28, height: 28 }}>
-              <MoreHorizIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
-          <IconButton size="small" sx={{ width: 28, height: 28 }}>
-            <FileCopyOutlinedIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-          <IconButton size="small" sx={{ width: 28, height: 28 }}>
-            <DeleteOutlineIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
-          </IconButton>
         </div>
       </div>
 

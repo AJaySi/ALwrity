@@ -3,6 +3,8 @@ import { useAuth } from '@clerk/clerk-react';
 import { setAuthTokenGetter, setClerkSignOut } from '../../api/client';
 import { setMediaAuthTokenGetter } from '../../utils/fetchMediaBlobUrl';
 import { setBillingAuthTokenGetter } from '../../services/billingService';
+import { hallucinationDetectorService } from '../../services/hallucinationDetectorService';
+import { writingAssistantService } from '../../services/writingAssistantService';
 
 const TokenInstaller: React.FC = () => {
   const { getToken, userId, isSignedIn, signOut } = useAuth();
@@ -35,6 +37,8 @@ const TokenInstaller: React.FC = () => {
     setAuthTokenGetter(tokenGetter);
     setBillingAuthTokenGetter(tokenGetter);
     setMediaAuthTokenGetter(tokenGetter);
+    hallucinationDetectorService.setAuthTokenGetter(tokenGetter);
+    writingAssistantService.setAuthTokenGetter(tokenGetter);
   }, [getToken]);
   
   useEffect(() => {

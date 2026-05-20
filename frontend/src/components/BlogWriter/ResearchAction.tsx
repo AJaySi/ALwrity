@@ -1,8 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { BlogResearchResponse } from '../../services/blogWriterApi';
 import { useResearchSubmit } from '../../hooks/useResearchSubmit';
 import ResearchProgressModal from './ResearchProgressModal';
+import { BrainstormButton } from './BrainstormButton';
 
 const useCopilotActionTyped = useCopilotAction as any;
 
@@ -12,8 +13,8 @@ interface ResearchActionProps {
 }
 
 export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase }) => {
-  const keywordsRef = useRef<HTMLInputElement | null>(null);
-  const blogLengthRef = useRef<HTMLSelectElement | null>(null);
+  const [copilotKeywords, setCopilotKeywords] = useState('');
+  const [copilotBlogLength, setCopilotBlogLength] = useState('1000');
   const hasNavigatedRef = useRef<boolean>(false);
 
   const {
@@ -111,7 +112,8 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
               type="text"
               id="research-keywords-input"
               placeholder="e.g., artificial intelligence, machine learning, AI trends"
-              ref={keywordsRef}
+              value={copilotKeywords}
+              onChange={(e) => setCopilotKeywords(e.target.value)}
               disabled={isSubmitting}
               style={{ width: '100%', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', opacity: isSubmitting ? 0.6 : 1 }}
             />
@@ -121,8 +123,8 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#333' }}>Blog Length (words)</label>
             <select
               id="research-blog-length-select"
-              defaultValue="1000"
-              ref={blogLengthRef}
+              value={copilotBlogLength}
+              onChange={(e) => setCopilotBlogLength(e.target.value)}
               disabled={isSubmitting}
               style={{ width: '100%', padding: '12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', opacity: isSubmitting ? 0.6 : 1 }}
             >
@@ -134,17 +136,22 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
           </div>
           
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <BrainstormButton
+              keywords={copilotKeywords}
+              onKeywordsChange={setCopilotKeywords}
+              disabled={isSubmitting}
+            />
             <button
-                onClick={async () => {
-                  const keywords = (keywordsRef.current?.value || '').trim();
-                  const blogLength = blogLengthRef.current?.value || '1000';
-                  if (!keywords) return;
-                  try {
-                    await startResearch(keywords, blogLength);
-                  } catch (error) {
-                    console.error(`Research failed: ${error}`);
-                  }
-                }}
+onClick={async () => {
+                   const kw = copilotKeywords.trim();
+                   const bl = copilotBlogLength;
+                   if (!kw) return;
+                   try {
+                     await startResearch(kw, bl);
+                   } catch (error) {
+                     console.error(`Research failed: ${error}`);
+                   }
+                 }}
                 disabled={isSubmitting}
               style={{ padding: '12px 24px', backgroundColor: isSubmitting ? '#ccc' : '#1976d2', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
             >

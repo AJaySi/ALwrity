@@ -418,4 +418,25 @@ html.blog-writer-page {
 
 .blog-writer-container .MuiTextField-root .MuiOutlinedInput-root fieldset {
   border-color: rgba(26, 26, 26, 0.23) !important;
+}
+
+/* Hide CopilotKit Web Inspector button and announcement globally */
+cpk-web-inspector {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  left: -9999px !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+[class*="copilotkit"] [class*="announcement"],
+[class*="copilotkit"] [class*="announce"],
+.announcement-preview,
+[data-announcement],
+.cpk-announcement {
+  display: none !important;
+  visibility: hidden !important;
 } 

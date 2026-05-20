@@ -269,16 +269,18 @@ class MediumBlogGenerator:
                     db=db,
                     user_id=user_id,
                     content=full_content,
-                    source_module="medium_blog_writer",
+                    source_module="blog_writer",
                     title=result.title,
-                    description=f"Generated medium blog: {result.title}",
-                    tags=req.researchKeywords or ["medium_blog", "ai_generated"],
+                    description=f"Blog: {result.title}",
+                    tags=req.researchKeywords or ["blog", "ai_generated"],
                     asset_metadata={
+                        "blog_type": "medium",
                         "model": result.model,
                         "generation_time_ms": result.generation_time_ms,
-                        "word_count": sum(s.wordCount for s in result.sections)
+                        "word_count": sum(s.wordCount for s in result.sections),
+                        "section_count": len(result.sections),
                     },
-                    subdirectory="medium_blogs"
+                    subdirectory="blogs"
                 )
                 logger.info(f"Saved medium blog content to user workspace for user {user_id}")
             except Exception as e:

@@ -65,17 +65,32 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('wix_connected') === 'true') {
-      console.log('Wix connected via URL param in modal');
       setIsConnecting(false);
       setError(null);
       if (onConnectionSuccess) {
         onConnectionSuccess();
       }
       onClose();
-      // Clean URL
-      const clean = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, clean || '/');
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     }
+  }, [isOpen, onClose, onConnectionSuccess]);
+
+  // Cross-tab: detect localStorage signal from OAuth in new tab
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handler = (e: StorageEvent) => {
+      if (e.key === 'wix_connected' && e.newValue === 'true') {
+        setIsConnecting(false);
+        setError(null);
+        if (onConnectionSuccess) {
+          onConnectionSuccess();
+        }
+        onClose();
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
   }, [isOpen, onClose, onConnectionSuccess]);
 
   const handleConnectClick = async () => {
@@ -90,16 +105,10 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
       const currentHash = window.location.hash || '#publish'; // Default to publish phase if no hash
       const currentSearch = window.location.search;
       
-      // Determine the correct origin - if using ngrok, use ngrok origin; otherwise use current origin
-      // This ensures consistency between where OAuth starts and where callback happens
-      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const isUsingNgrok = window.location.origin.includes('localhost') || 
-                           window.location.origin.includes('127.0.0.1') ||
-                           window.location.origin === NGROK_ORIGIN;
-      const redirectOrigin = isUsingNgrok ? NGROK_ORIGIN : window.location.origin;
-      
-      // Build redirect URL with normalized origin
-      const redirectUrl = `${redirectOrigin}${currentPath}${currentHash}${currentSearch}`;
+      // Build redirect URL using the user's ACTUAL origin (where browser data lives).
+      // Wix OAuth callback URI uses NGROK_ORIGIN (for Wix to reach us), but after OAuth
+      // we must redirect back to the user's real origin so their localStorage data is available.
+      const redirectUrl = `${window.location.origin}${currentPath}${currentHash}${currentSearch}`;
       
       try {
         // Always override any existing redirect URL when connecting from Blog Writer
@@ -107,8 +116,6 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
         console.log('[WixConnectModal] Stored redirect URL (overriding any existing):', {
           redirectUrl,
           currentOrigin: window.location.origin,
-          redirectOrigin,
-          isUsingNgrok
         });
       } catch (e) {
         console.warn('[WixConnectModal] Failed to store redirect URL:', e);

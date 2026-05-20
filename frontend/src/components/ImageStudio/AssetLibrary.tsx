@@ -35,7 +35,11 @@ import {
   Star,
   Refresh,
   Warning,
+  ArrowBack,
+  Add,
+  InfoOutlined,
 } from '@mui/icons-material';
+import { Tooltip } from '@mui/material';
 import { ImageStudioLayout } from './ImageStudioLayout';
 import { DashboardHeaderProps } from '../shared/types';
 import { useContentAssets, AssetFilters, ContentAsset } from '../../hooks/useContentAssets';
@@ -134,7 +138,6 @@ export const AssetLibrary: React.FC = () => {
       case 'blog_writer':
         return {
           title: 'Blog Posts',
-          subtitle: 'Manage and review your published blog posts.',
         };
       case 'research_tools':
         return {
@@ -377,38 +380,66 @@ export const AssetLibrary: React.FC = () => {
       >
         <Stack spacing={3}>
           {/* Header */}
-          <Box>
-            <Typography
-              variant="h3"
-              fontWeight={800}
-              sx={{
-                background: 'linear-gradient(120deg,#ede9fe,#c7d2fe)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                mb: 1,
-              }}
-            >
-              Asset Library
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Unified content archive for all ALwrity tools: Story Studio, Image Studio, Blog Writer, LinkedIn, Facebook, SEO Tools, and more.
-            </Typography>
-          </Box>
+          <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography
+                variant="h3"
+                fontWeight={800}
+                sx={{
+                  background: 'linear-gradient(120deg,#ede9fe,#c7d2fe)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                {urlSourceModule === 'blog_writer' ? 'Blog Posts' : 'Asset Library'}
+              </Typography>
+              <Tooltip
+                title="Unified content archive for all ALwrity tools: Story Studio, Image Studio, Blog Writer, LinkedIn, Facebook, SEO Tools, and more. Your outputs are stored permanently. Download and organize them for easy access across all your projects."
+                arrow
+                placement="bottom-start"
+              >
+                <InfoOutlined sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 20, cursor: 'help' }} />
+              </Tooltip>
+            </Stack>
 
-          {/* Reminder Banner */}
-          <Alert
-            severity="warning"
-            icon={<Warning />}
-            sx={{
-              background: 'rgba(245,158,11,0.1)',
-              border: '1px solid rgba(245,158,11,0.3)',
-              color: '#fbbf24',
-            }}
-          >
-            <Typography variant="body2" fontWeight={600}>
-              Your outputs are stored permanently. Download and organize them for easy access across all your projects.
-            </Typography>
-          </Alert>
+            {/* Context-aware navigation for blog_writer source */}
+            {urlSourceModule === 'blog_writer' && (
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ArrowBack />}
+                  onClick={() => navigate('/blog-writer')}
+                  sx={{
+                    color: '#c7d2fe',
+                    borderColor: 'rgba(99,102,241,0.4)',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: 'rgba(99,102,241,0.8)',
+                      background: 'rgba(99,102,241,0.1)',
+                    },
+                  }}
+                >
+                  Back to Blog Writer
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<Add />}
+                  onClick={() => navigate('/blog-writer?new=true')}
+                  sx={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+                    textTransform: 'none',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                    },
+                  }}
+                >
+                  New Blog
+                </Button>
+              </Stack>
+            )}
+          </Stack>
 
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 

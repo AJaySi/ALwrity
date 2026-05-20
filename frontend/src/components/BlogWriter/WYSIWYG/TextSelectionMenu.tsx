@@ -36,6 +36,8 @@ interface TextSelectionMenuProps {
   suggestionIndex: number;
   showContinueWritingPrompt: boolean;
   onCheckFacts: (text: string) => void;
+  onGenerateChart: (text: string) => void;
+  onFindLinks: (text: string) => void;
   onCloseFactCheckResults: () => void;
   onQuickEdit: (editType: string, selectedText: string) => void;
   onAcceptSuggestion: () => void;
@@ -56,6 +58,8 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   suggestionIndex,
   showContinueWritingPrompt,
   onCheckFacts,
+  onGenerateChart,
+  onFindLinks,
   onCloseFactCheckResults,
   onQuickEdit,
   onAcceptSuggestion,
@@ -145,6 +149,72 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
                 🔍 Fact Check
               </>
             )}
+          </button>
+
+          {/* Generate Chart Button */}
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onGenerateChart(selectionMenu.text);
+            }}
+            style={{
+              background: 'rgba(124, 58, 237, 0.2)',
+              border: '1px solid rgba(124, 58, 237, 0.4)',
+              borderRadius: '8px',
+              padding: '8px 16px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: '100%',
+              justifyContent: 'center'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(124, 58, 237, 0.35)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(124, 58, 237, 0.2)';
+            }}
+          >
+            📊 Generate Chart
+          </button>
+
+          {/* Find Links Button */}
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onFindLinks(selectionMenu.text);
+            }}
+            style={{
+              background: 'rgba(16, 185, 129, 0.2)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: '8px',
+              padding: '8px 16px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              width: '100%',
+              justifyContent: 'center'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(16, 185, 129, 0.35)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
+            }}
+          >
+            🔗 Find Links
           </button>
 
           {/* Quick Edit Options */}

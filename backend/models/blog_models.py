@@ -157,6 +157,9 @@ class BlogOutlineSection(BaseModel):
     references: List[ResearchSource] = []
     target_words: Optional[int] = None
     keywords: List[str] = []
+    chart_data: Optional[Dict[str, Any]] = None
+    chart_url: Optional[str] = None
+    chart_id: Optional[str] = None
 
 
 class BlogOutlineRequest(BaseModel):

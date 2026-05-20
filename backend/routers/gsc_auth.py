@@ -8,6 +8,7 @@ from loguru import logger
 import os
 
 from services.gsc_service import GSCService
+from services.gsc_brainstorm_service import GSCBrainstormService
 from middleware.auth_middleware import get_current_user
 
 # Initialize router
@@ -15,12 +16,17 @@ router = APIRouter(prefix="/gsc", tags=["Google Search Console"])
 
 # Initialize GSC service
 gsc_service = GSCService()
+brainstorm_service = GSCBrainstormService(gsc_service)
 
 # Pydantic models
 class GSCAnalyticsRequest(BaseModel):
     site_url: str
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+
+class GSCBrainstormRequest(BaseModel):
+    keywords: str
+    site_url: Optional[str] = None
 
 class GSCStatusResponse(BaseModel):
     connected: bool
@@ -198,6 +204,49 @@ async def get_gsc_analytics(
     except Exception as e:
         logger.error(f"Error getting GSC analytics: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting analytics: {str(e)}")
+
+@router.post("/brainstorm")
+async def brainstorm_topics(
+    request: GSCBrainstormRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Brainstorm blog topic suggestions based on the user's GSC data.
+
+    The user must have GSC connected. If no site_url is provided,
+    the first verified site is used automatically.
+    """
+    try:
+        user_id = user.get('id')
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        tokens = request.keywords.strip().split()
+        if len(tokens) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Please provide at least 3 words for brainstorming topic suggestions.",
+            )
+
+        logger.info(f"GSC brainstorm for user: {user_id}, keywords: {request.keywords!r}")
+
+        result = brainstorm_service.brainstorm_topics(
+            user_id=user_id,
+            keywords=request.keywords,
+            site_url=request.site_url,
+        )
+
+        if "error" in result and not result.get("content_opportunities"):
+            status = 400 if "No GSC sites" in result["error"] else 500
+            raise HTTPException(status_code=status, detail=result["error"])
+
+        logger.info(f"GSC brainstorm completed for user: {user_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in GSC brainstorm: {e}")
+        raise HTTPException(status_code=500, detail=f"Error brainstorming topics: {str(e)}")
 
 @router.get("/sitemaps/{site_url:path}")
 async def get_gsc_sitemaps(

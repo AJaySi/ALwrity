@@ -140,7 +140,10 @@ export const useTextToSpeech = (): UseTextToSpeechReturn => {
     };
 
     utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event.error);
+      // Ignore 'interrupted' errors (happens when stopping speech or switching sections)
+      if (event.error !== 'interrupted') {
+        console.error('Speech synthesis error:', event.error);
+      }
       globalIsSpeaking = false;
       globalIsPaused = false;
       globalCurrentText = null;

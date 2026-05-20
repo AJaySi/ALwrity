@@ -429,6 +429,23 @@ def llm_text_gen(
         except Exception as provider_error:
             logger.error(f"[llm_text_gen] Provider {gpt_provider} failed: {str(provider_error)}")
             
+            # Surface balance/quota errors immediately without fallback
+            error_str = str(provider_error).lower()
+            if "insufficient_balance" in error_str or "balance_not_enough" in error_str or ("403" in error_str and "balance" in error_str):
+                logger.error(f"[llm_text_gen] Balance/quota error from {gpt_provider}, not attempting fallback")
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "insufficient_balance",
+                        "message": f"Your {gpt_provider.capitalize()} API balance is insufficient. Please top up your account or switch providers.",
+                        "usage_info": {
+                            "error_type": "insufficient_balance",
+                            "provider": gpt_provider,
+                            "suggestion": f"Set GPT_PROVIDER=google in your environment to use Gemini instead, or add credits to your {gpt_provider.capitalize()} account."
+                        }
+                    }
+                )
+            
             # CIRCUIT BREAKER: Only try ONE fallback to prevent expensive API calls
             fallback_providers = ["google", "huggingface"]
             fallback_providers = [p for p in fallback_providers if p in available_providers and p != gpt_provider]

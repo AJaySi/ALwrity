@@ -21,6 +21,12 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
 
   const getUserFriendlyMessage = (message: string): string => {
     // Map technical backend messages to user-friendly ones
+    if (message.includes('insufficient_balance') || message.includes('balance_not_enough') || (message.includes('403') && message.includes('balance'))) {
+      return '💳 Your API balance is insufficient. Please top up your account or switch providers in your settings.';
+    }
+    if (message.includes('All LLM providers failed') || message.includes('All configured LLM providers failed')) {
+      return '⚠️ All AI providers are currently unavailable. Please check your API keys or try again later.';
+    }
     if (message.includes('Starting outline generation')) {
       return '🧩 Starting to create your blog outline...';
     }

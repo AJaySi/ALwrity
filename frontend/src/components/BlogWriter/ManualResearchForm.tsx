@@ -1,15 +1,16 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { BlogResearchResponse } from '../../services/blogWriterApi';
 import { useResearchSubmit } from '../../hooks/useResearchSubmit';
 import ResearchProgressModal from './ResearchProgressModal';
+import { BrainstormButton } from './BrainstormButton';
 
 interface ManualResearchFormProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
 }
 
 export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete }) => {
-  const keywordsRef = useRef<HTMLInputElement | null>(null);
-  const blogLengthRef = useRef<HTMLSelectElement | null>(null);
+  const [keywords, setKeywords] = useState('');
+  const [blogLength, setBlogLength] = useState('1000');
 
   const {
     startResearch,
@@ -23,15 +24,15 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
   } = useResearchSubmit({ onResearchComplete });
 
   const handleSubmit = async () => {
-    const keywords = (keywordsRef.current?.value || '').trim();
-    if (!keywords) {
+    const trimmed = keywords.trim();
+    if (!trimmed) {
       alert('Please enter keywords or a topic for research.');
       return;
     }
     try {
-      await startResearch(keywords, blogLengthRef.current?.value || '1000');
-    } catch (error) {
-      alert(`Research failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      await startResearch(trimmed, blogLength);
+    } catch (err) {
+      alert(`Research failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -49,7 +50,8 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
             type="text"
             id="research-keywords-input"
             placeholder="e.g., artificial intelligence, machine learning, AI trends"
-            ref={keywordsRef}
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
             disabled={isSubmitting}
             style={{ 
               width: '100%', 
@@ -67,8 +69,8 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#333' }}>Blog Length (words)</label>
           <select
             id="research-blog-length-select"
-            defaultValue="1000"
-            ref={blogLengthRef}
+            value={blogLength}
+            onChange={(e) => setBlogLength(e.target.value)}
             disabled={isSubmitting}
             style={{ 
               width: '100%', 
@@ -88,6 +90,11 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
         </div>
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <BrainstormButton
+            keywords={keywords}
+            onKeywordsChange={setKeywords}
+            disabled={isSubmitting}
+          />
           <button
             onClick={handleSubmit}
             disabled={isSubmitting}
@@ -123,4 +130,3 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
 };
 
 export default ManualResearchForm;
-

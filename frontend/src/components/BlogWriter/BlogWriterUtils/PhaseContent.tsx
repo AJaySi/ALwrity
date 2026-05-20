@@ -7,6 +7,7 @@ import OutlineCtaBanner from './OutlineCtaBanner';
 import ManualResearchForm from '../ManualResearchForm';
 import ManualOutlineButton from '../ManualOutlineButton';
 import ManualContentButton from '../ManualContentButton';
+import PublishContent from './PublishContent';
 
 interface PhaseContentProps {
   currentPhase: string;
@@ -40,6 +41,8 @@ interface PhaseContentProps {
   onResearchComplete?: (research: any) => void; // Callback when research completes (for manual form)
   onOutlineGenerationStart?: (taskId: string) => void; // Callback when outline generation starts
   onContentGenerationStart?: (taskId: string) => void; // Callback when content generation starts
+  buildFullMarkdown?: () => string;
+  convertMarkdownToHTML?: (md: string) => string;
 }
 
 export const PhaseContent: React.FC<PhaseContentProps> = ({
@@ -74,6 +77,8 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   onResearchComplete,
   onOutlineGenerationStart,
   onContentGenerationStart,
+  buildFullMarkdown,
+  convertMarkdownToHTML,
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -223,11 +228,14 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
           </div>
         )}
 
-        {currentPhase === 'publish' && seoAnalysis && seoMetadata && (
-          <div style={{ padding: '20px' }}>
-            <h3>Publish Your Blog</h3>
-            <p>Your blog is ready to publish!</p>
-          </div>
+        {currentPhase === 'publish' && buildFullMarkdown && convertMarkdownToHTML && (
+          <PublishContent
+            buildFullMarkdown={buildFullMarkdown}
+            convertMarkdownToHTML={convertMarkdownToHTML}
+            seoMetadata={seoMetadata}
+            seoAnalysis={seoAnalysis}
+            blogTitle={selectedTitle ?? undefined}
+          />
         )}
       </div>
     </div>

@@ -212,14 +212,19 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       const result = response.data;
       console.log('✅ SEO metadata generation response:', result);
 
-      // Check if the response indicates a subscription error (even if HTTP status is 200)
+      // Check if the response indicates a subscription/usage error (even if HTTP status is 200)
       if (!result.success && result.error) {
-        const errorMessage = result.error;
-        // Check if error message indicates subscription limit (429/402)
-        if (errorMessage.includes('Token limit') || 
+        const errorMessage = (result.error || '').toLowerCase();
+        // Check if error message indicates subscription/balance limit
+        if (errorMessage.includes('token limit') || 
+            errorMessage.includes('balance') ||
+            errorMessage.includes('insufficient') ||
             errorMessage.includes('limit would be exceeded') ||
             errorMessage.includes('usage limit') ||
-            errorMessage.includes('subscription')) {
+            errorMessage.includes('subscription') ||
+            errorMessage.includes('403') ||
+            errorMessage.includes('429') ||
+            errorMessage.includes('quota')) {
           console.log('SEOMetadataModal: Detected subscription error in response data', {
             error: errorMessage,
             data: result
@@ -297,13 +302,15 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
     } catch (err: any) {
       console.error('❌ SEO metadata generation failed:', err);
       
-      // Check if this is a subscription error (429/402) and trigger global subscription modal
+      // Check if this is a subscription error (429/402/403) or balance/limit issue
       const status = err?.response?.status;
-      const errorMessage = err?.message || err?.response?.data?.error || '';
+      const rawError = err?.response?.data?.error || err?.response?.data?.message || '';
+      const errorMessage = err?.message || rawError || '';
+      const fullMessage = (errorMessage + ' ' + rawError + ' ' + JSON.stringify(err?.response?.data || {})).toLowerCase();
       
-      // Check HTTP status code first
-      if (status === 429 || status === 402) {
-        console.log('SEOMetadataModal: Detected subscription error (HTTP status), triggering global handler', {
+      // Check HTTP status code for subscription/balance errors
+      if (status === 429 || status === 402 || status === 403) {
+        console.log('SEOMetadataModal: Detected usage/subscription error (HTTP status)', {
           status,
           data: err?.response?.data
         });
@@ -317,18 +324,21 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
         }
       }
       
-      // Also check error message for subscription-related errors (in case API returns 200 with error in body)
-      if (errorMessage.includes('Token limit') || 
-          errorMessage.includes('limit would be exceeded') ||
-          errorMessage.includes('usage limit') ||
-          errorMessage.includes('subscription') ||
-          errorMessage.includes('429')) {
-        console.log('SEOMetadataModal: Detected subscription error (error message), triggering global handler', {
-          errorMessage,
+      // Check error message for balance/usage/subscription-related errors
+      if (fullMessage.includes('balance') ||
+          fullMessage.includes('insufficient') ||
+          fullMessage.includes('limit would be exceeded') ||
+          fullMessage.includes('usage limit') ||
+          fullMessage.includes('token limit') ||
+          fullMessage.includes('subscription') ||
+          fullMessage.includes('429') ||
+          fullMessage.includes('403') ||
+          fullMessage.includes('quota')) {
+        console.log('SEOMetadataModal: Detected usage/subscription error (message match)', {
+          fullMessage,
           err
         });
         
-        // Create a mock error object with subscription error data
         const mockError = {
           response: {
             status: 429,
@@ -343,7 +353,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
         
         const handled = await triggerSubscriptionError(mockError);
         if (handled) {
-          console.log('SEOMetadataModal: Global subscription error handler triggered successfully (from error message)');
+          console.log('SEOMetadataModal: Global subscription error handler triggered successfully (from message)');
           setIsGenerating(false);
           return;
         } else {
@@ -353,7 +363,6 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       
       // For non-subscription errors, show local error message
       setError(err instanceof Error ? err.message : 'Failed to generate SEO metadata');
-    } finally {
       setIsGenerating(false);
     }
   }, [blogContent, blogTitle, researchData, outline, seoAnalysis, contentHash, onMetadataGenerated]);

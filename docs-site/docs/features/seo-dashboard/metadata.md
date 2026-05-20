@@ -1,18 +1,46 @@
-# Metadata Generation
+# SEO Metadata & Optimization Tools
 
-ALwrity's SEO Dashboard includes powerful metadata generation capabilities that automatically create optimized title tags, meta descriptions, and other SEO metadata to improve your content's search engine visibility and click-through rates.
+ALwrity's SEO Dashboard includes comprehensive metadata generation and SEO optimization capabilities. This guide covers all metadata and optimization tools available.
 
-## What is Metadata Generation?
+## 🎯 Available Tools Overview
 
-Metadata Generation is an AI-powered feature that automatically creates optimized SEO metadata for your content, including title tags, meta descriptions, Open Graph tags, and structured data markup to improve search engine visibility and social media sharing.
+### Individual Metadata Tools
 
-### Key Benefits
+#### 1. 📝 Meta Description Generator
+- **Purpose**: Generate SEO-optimized meta descriptions
+- **API**: `POST /api/seo/meta-description`
+- **Inputs**: Keywords, tone, search intent, language
+- **Output**: Multiple meta descriptions with SEO scoring
 
-- **Search Optimization**: Optimize content for search engines
-- **Click-Through Rate**: Improve CTR with compelling metadata
-- **Social Sharing**: Enhance social media sharing with rich metadata
-- **Brand Consistency**: Maintain consistent brand messaging
-- **Time Savings**: Automate metadata creation process
+#### 2. 🖼️ Image Alt Text Generator
+- **Purpose**: AI-powered alt text for images
+- **API**: `POST /api/seo/image-alt-text`
+- **Input Methods**: File upload or URL reference
+- **Output**: Optimized alt text with accessibility score
+
+#### 3. 📱 OpenGraph Generator
+- **Purpose**: Social media optimization tags
+- **API**: `POST /api/seo/opengraph-tags`
+- **Platforms**: Facebook, Twitter, LinkedIn, Pinterest
+- **Output**: Platform-specific tags, HTML ready to use
+
+#### 4. 📄 On-Page SEO Analyzer
+- **Purpose**: Complete page metadata analysis
+- **API**: `POST /api/seo/on-page-analysis`
+- **Analyzes**: Meta tags, content quality, keywords, links
+- **Output**: Overall score, detailed breakdown, recommendations
+
+---
+
+## What is Metadata?
+
+Metadata is information about your content that search engines and social media platforms use to understand your pages. Proper metadata improves:
+- **Search Engine Rankings**: Better visibility in search results
+- **Click-Through Rates**: More clicks from search results
+- **Social Sharing**: Better appearance when shared
+- **User Experience**: Clearer information for users
+
+---
 
 ## Metadata Types
 

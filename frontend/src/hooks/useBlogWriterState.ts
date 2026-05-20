@@ -93,6 +93,8 @@ export const useBlogWriterState = () => {
     return result;
   }, []);
 
+  const [restoreAttempted, setRestoreAttempted] = useState(false);
+
   // Cache recovery - restore most recent research on page load
   useEffect(() => {
     const restoreState = async () => {
@@ -135,10 +137,31 @@ export const useBlogWriterState = () => {
           }
           
           console.log('Restored outline, content, and title data from localStorage');
-        } catch (error) {
+          // Restore seoAnalysis and seoMetadata from localStorage
+        const savedSeoAnalysis = localStorage.getItem('blog_seo_analysis');
+        if (savedSeoAnalysis) {
+          try { setSeoAnalysis(JSON.parse(savedSeoAnalysis)); } catch {}
+        }
+        const savedSeoMetadata = localStorage.getItem('blog_seo_metadata');
+        if (savedSeoMetadata) {
+          try { setSeoMetadata(JSON.parse(savedSeoMetadata)); } catch {}
+        }
+
+        // Restore outlineConfirmed - if outline exists and was previously confirmed, mark as confirmed.
+        // The user had to confirm outline to reach content/SEO/publish phases.
+        const savedOutlineConfirmed = localStorage.getItem('blog_outline_confirmed');
+        if (savedOutlineConfirmed === 'true') {
+          setOutlineConfirmed(true);
+        } else if (savedOutline) {
+          // Backward compatibility: if outline exists but outline_confirmed wasn't saved,
+          // assume it was confirmed (user wouldn't have progressed without confirming).
+          setOutlineConfirmed(true);
+        }
+      } catch (error) {
           console.error('Error restoring outline data:', error);
         }
       }
+      setRestoreAttempted(true);
     };
 
     restoreState();
@@ -151,11 +174,42 @@ export const useBlogWriterState = () => {
     } catch {}
   }, [contentConfirmed]);
 
+  // Persist outlineConfirmed to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('blog_outline_confirmed', String(outlineConfirmed));
+    } catch {}
+  }, [outlineConfirmed]);
+
+  // Persist seoAnalysis to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (seoAnalysis) {
+        localStorage.setItem('blog_seo_analysis', JSON.stringify(seoAnalysis));
+      }
+    } catch {}
+  }, [seoAnalysis]);
+
+  // Persist seoMetadata to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (seoMetadata) {
+        localStorage.setItem('blog_seo_metadata', JSON.stringify(seoMetadata));
+      }
+    } catch {}
+  }, [seoMetadata]);
+
   // Persist sections to blogWriterCache whenever they change
   useEffect(() => {
     const outlineIds = outline.map(s => String(s.id));
     if (outlineIds.length > 0 && Object.keys(sections).length > 0) {
-      blogWriterCache.cacheContent(sections, outlineIds);
+      const normalized: Record<string, string> = {};
+      const values = Object.values(sections);
+      outline.forEach((s, idx) => {
+        const id = String(s.id);
+        normalized[id] = sections[id] ?? values[idx] ?? '';
+      });
+      blogWriterCache.cacheContent(normalized, outlineIds);
     }
   }, [sections, outline]);
 
@@ -316,6 +370,7 @@ export const useBlogWriterState = () => {
     flowAnalysisCompleted,
     flowAnalysisResults,
     sectionImages,
+    restoreAttempted,
     
     // Setters
     setResearch,

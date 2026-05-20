@@ -69,6 +69,9 @@ export interface BlogOutlineSection {
   references: ResearchSource[];
   target_words?: number;
   keywords: string[];
+  chart_data?: Record<string, any>;
+  chart_url?: string;
+  chart_id?: string;
 }
 
 export interface SourceMappingStats {
@@ -526,6 +529,62 @@ export const blogWriterApi = {
       params: { target_words: targetWords }
     });
     return data;
+  }
+};
+
+export const saveBlogToAssetLibrary = async (params: {
+  title: string;
+  description?: string;
+  keywords?: string[];
+  blogType?: string;
+  wordCount?: number;
+  sectionCount?: number;
+  model?: string;
+  generationTimeMs?: number;
+}): Promise<{ assetId: number } | null> => {
+  try {
+    const assetMetadata = {
+      blog_type: params.blogType || 'medium',
+      word_count: params.wordCount,
+      section_count: params.sectionCount,
+      model: params.model,
+      generation_time_ms: params.generationTimeMs,
+    };
+
+    const tags = ['blog', 'ai_generated', ...(params.keywords || []).slice(0, 5)];
+
+    const searchResponse = await aiApiClient.get('/api/content-assets/', {
+      params: {
+        asset_type: 'text',
+        source_module: 'blog_writer',
+        search: params.title,
+        limit: 50,
+      },
+    });
+
+    const existingAsset = searchResponse.data.assets?.find(
+      (asset: any) =>
+        asset.asset_metadata?.blog_type &&
+        asset.title === params.title
+    );
+
+    if (existingAsset) {
+      const updateResponse = await aiApiClient.put(`/api/content-assets/${existingAsset.id}`, {
+        title: params.title,
+        description: params.description || `Blog: ${params.title}`,
+        tags,
+        asset_metadata: {
+          ...existingAsset.asset_metadata,
+          ...assetMetadata,
+        },
+      });
+      return { assetId: updateResponse.data.id };
+    }
+
+    return null;
+  } catch (error: any) {
+    console.error('[blogWriterApi] saveBlogToAssetLibrary failed:', error);
+    return null;
   }
 };
 

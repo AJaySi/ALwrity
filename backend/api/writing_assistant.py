@@ -55,6 +55,8 @@ async def suggest_endpoint(req: SuggestRequest, current_user: Dict[str, Any] = D
                 for s in suggestions
             ],
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Writing assistant error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

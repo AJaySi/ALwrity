@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { hallucinationDetectorService, HallucinationDetectionResponse } from '../../../services/hallucinationDetectorService';
+import { chartApi, ChartGenerateResponse } from '../../../services/chartApi';
 import TextSelectionMenu from './TextSelectionMenu';
+import ChartGeneratorModal from '../../Chart/ChartGeneratorModal';
+import LinkSearchModal from '../../Link/LinkSearchModal';
 import useSmartTypingAssist from './SmartTypingAssist';
 // import { debug } from '../../../utils/debug'; // Unused import
 
@@ -17,6 +20,11 @@ const useBlogTextSelectionHandler = (
   const [factCheckResults, setFactCheckResults] = useState<HallucinationDetectionResponse | null>(null);
   const [isFactChecking, setIsFactChecking] = useState(false);
   const [factCheckProgress, setFactCheckProgress] = useState<{ step: string; progress: number } | null>(null);
+  const [chartModalOpen, setChartModalOpen] = useState(false);
+  const [chartModalText, setChartModalText] = useState('');
+  const [chartResult, setChartResult] = useState<(ChartGenerateResponse & { sectionId?: string }) | null>(null);
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkModalText, setLinkModalText] = useState('');
   const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Use the extracted smart typing assist hook
@@ -106,6 +114,38 @@ const useBlogTextSelectionHandler = (
 
   const handleCloseFactCheckResults = () => {
     setFactCheckResults(null);
+  };
+
+  // Chart generation handler
+  const handleGenerateChart = (text: string) => {
+    setChartModalText(text);
+    setChartModalOpen(true);
+    setSelectionMenu(null);
+  };
+
+  const handleChartGenerated = (result: ChartGenerateResponse & { sectionId?: string }) => {
+    setChartResult(result);
+    setChartModalOpen(false);
+  };
+
+  const handleFindLinks = (text: string) => {
+    setLinkModalText(text);
+    setLinkModalOpen(true);
+    setSelectionMenu(null);
+  };
+
+  const handleLinkRewordAccept = (rewordedText: string, sectionId?: string) => {
+    if (onTextReplace && linkModalText) {
+      onTextReplace(linkModalText, rewordedText, 'reword-with-links');
+    }
+    window.dispatchEvent(new CustomEvent('blogwriter:replaceSelectedText', {
+      detail: {
+        originalText: linkModalText,
+        editedText: rewordedText,
+        editType: 'reword-with-links'
+      }
+    }));
+    setLinkModalOpen(false);
   };
 
   // Blog-specific quick edit functionality for selected text
@@ -273,7 +313,8 @@ const useBlogTextSelectionHandler = (
     ...smartTypingAssist,
     // Render the selection menu and fact-check components
     renderSelectionMenu: () => (
-      <TextSelectionMenu
+      <>
+        <TextSelectionMenu
         selectionMenu={selectionMenu}
         factCheckResults={factCheckResults}
         isFactChecking={isFactChecking}
@@ -284,6 +325,8 @@ const useBlogTextSelectionHandler = (
         suggestionIndex={smartTypingAssist.suggestionIndex}
         showContinueWritingPrompt={smartTypingAssist.showContinueWritingPrompt}
         onCheckFacts={handleCheckFacts}
+        onGenerateChart={handleGenerateChart}
+        onFindLinks={handleFindLinks}
         onCloseFactCheckResults={handleCloseFactCheckResults}
         onQuickEdit={handleQuickEdit}
         onAcceptSuggestion={smartTypingAssist.handleAcceptSuggestion}
@@ -292,6 +335,25 @@ const useBlogTextSelectionHandler = (
         onRequestSuggestion={smartTypingAssist.handleRequestSuggestion}
         onDismissPrompt={smartTypingAssist.handleDismissPrompt}
       />
+      {chartModalOpen && (
+        <ChartGeneratorModal
+          isOpen={chartModalOpen}
+          onClose={() => setChartModalOpen(false)}
+          defaultText={chartModalText}
+          onChartGenerated={handleChartGenerated}
+        />
+      )}
+      {linkModalOpen && (
+        <LinkSearchModal
+          isOpen={linkModalOpen}
+          onClose={() => setLinkModalOpen(false)}
+          sectionHeading=""
+          sectionText={linkModalText}
+          selectedText={linkModalText}
+          onRewordAccept={handleLinkRewordAccept}
+        />
+      )}
+    </>
     )
   };
 };

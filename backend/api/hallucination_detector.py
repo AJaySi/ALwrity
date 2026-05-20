@@ -8,7 +8,7 @@ using Exa.ai integration, similar to the Exa.ai demo implementation.
 import time
 import logging
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 
 from models.hallucination_models import (
@@ -24,6 +24,7 @@ from models.hallucination_models import (
     AssessmentType
 )
 from services.hallucination_detector import HallucinationDetector
+from middleware.auth_middleware import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/api/hallucination-detector", tags=["Hallucination De
 detector = HallucinationDetector()
 
 @router.post("/detect", response_model=HallucinationDetectionResponse)
-async def detect_hallucinations(request: HallucinationDetectionRequest) -> HallucinationDetectionResponse:
+async def detect_hallucinations(request: HallucinationDetectionRequest, current_user: Dict[str, Any] = Depends(get_current_user)) -> HallucinationDetectionResponse:
     """
     Detect hallucinations in the provided text.
     
@@ -54,8 +55,10 @@ async def detect_hallucinations(request: HallucinationDetectionRequest) -> Hallu
     try:
         logger.info(f"Starting hallucination detection for text of length: {len(request.text)}")
         
+        user_id = current_user.get("id")
+        
         # Perform hallucination detection
-        result = await detector.detect_hallucinations(request.text)
+        result = await detector.detect_hallucinations(request.text, user_id=user_id)
         
         # Convert to response format
         claims = []
@@ -113,6 +116,8 @@ async def detect_hallucinations(request: HallucinationDetectionRequest) -> Hallu
         return response
         
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         logger.error(f"Error in hallucination detection: {str(e)}")
         processing_time = int((time.time() - start_time) * 1000)
         
@@ -174,7 +179,7 @@ async def extract_claims(request: ClaimExtractionRequest) -> ClaimExtractionResp
         )
 
 @router.post("/verify-claim", response_model=ClaimVerificationResponse)
-async def verify_claim(request: ClaimVerificationRequest) -> ClaimVerificationResponse:
+async def verify_claim(request: ClaimVerificationRequest, current_user: Dict[str, Any] = Depends(get_current_user)) -> ClaimVerificationResponse:
     """
     Verify a single claim against available sources.
     
@@ -192,8 +197,10 @@ async def verify_claim(request: ClaimVerificationRequest) -> ClaimVerificationRe
     try:
         logger.info(f"Verifying claim: {request.claim[:100]}...")
         
+        user_id = current_user.get("id")
+        
         # Verify the claim
-        claim_result = await detector._verify_claim(request.claim)
+        claim_result = await detector._verify_claim(request.claim, user_id=user_id)
         
         # Convert to response format
         supporting_sources = []
@@ -246,6 +253,8 @@ async def verify_claim(request: ClaimVerificationRequest) -> ClaimVerificationRe
         return response
         
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         logger.error(f"Error in claim verification: {str(e)}")
         processing_time = int((time.time() - start_time) * 1000)
         
@@ -273,17 +282,21 @@ async def health_check() -> HealthCheckResponse:
         HealthCheckResponse with service status and API availability
     """
     try:
-        # Check API availability
-        exa_available = bool(detector.exa_api_key)
-        openai_available = bool(detector.openai_api_key)
+        from services.blog_writer.research.exa_provider import ExaResearchProvider
+        try:
+            exa_provider = ExaResearchProvider()
+            exa_available = bool(exa_provider.api_key)
+        except RuntimeError:
+            exa_available = False
+        llm_available = True  # llm_text_gen handles provider selection via GPT_PROVIDER
         
-        status = "healthy" if (exa_available or openai_available) else "degraded"
+        status = "healthy" if (exa_available and llm_available) else ("degraded" if exa_available or llm_available else "unhealthy")
         
         response = HealthCheckResponse(
             status=status,
             version="1.0.0",
             exa_api_available=exa_available,
-            openai_api_available=openai_available,
+            openai_api_available=llm_available,
             timestamp=time.strftime('%Y-%m-%dT%H:%M:%S')
         )
         

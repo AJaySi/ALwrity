@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useOnboarding } from '../../contexts/OnboardingContext';
@@ -7,9 +7,6 @@ import { useOAuthTokenAlerts } from '../../hooks/useOAuthTokenAlerts';
 import { shouldSkipOnboarding, getDefaultLandingRoute, isFeatureOnlyMode, getSingleFeature } from '../../utils/demoMode';
 import { restoreNavigationState } from '../../utils/navigationState';
 import ConnectionErrorPage from '../shared/ConnectionErrorPage';
-
-const CHECKOUT_POLL_INTERVAL_MS = 2000;
-const CHECKOUT_POLL_MAX_ATTEMPTS = 10;
 
 const InitialRouteHandler: React.FC = () => {
   const navigateAndLog = (to: string) => {
@@ -27,11 +24,6 @@ const InitialRouteHandler: React.FC = () => {
     error: null,
   });
 
-  // Post-checkout polling state
-  const [checkoutPolling, setCheckoutPolling] = useState(false);
-  const checkoutPollAttempts = useRef(0);
-  // Track whether the initial subscription check has completed
-  // Prevents premature routing decisions before we know the user's plan
   const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   const urlParams = new URLSearchParams(location.search);
@@ -79,48 +71,22 @@ const InitialRouteHandler: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, []);
 
-  // Handle post-checkout: when Stripe redirects back with ?subscription=success,
-  // the webhook may not have processed yet. Poll until subscription becomes active.
+  // Post-checkout: SubscriptionContext handles the verification polling.
+  // InitialRouteHandler only needs to detect checkout success for routing decisions.
+  // The actual subscription update now happens via verifyCheckout polling in SubscriptionContext.
   useEffect(() => {
     if (!isCheckoutSuccess) return;
+
+    // If subscription is already active after checkout, clean up URL
     if (subscription?.active && subscription.plan !== 'none' && subscription.plan !== 'free') {
-      // Webhook has processed — subscription is active, stop polling
-      if (checkoutPolling) {
-        console.log('InitialRouteHandler: Checkout success — subscription confirmed active, stopping poll');
-        setCheckoutPolling(false);
-      }
-      return;
-    }
-
-    // Start polling if webhook hasn't processed yet
-    if (!checkoutPolling && checkoutPollAttempts.current === 0) {
-      console.log('InitialRouteHandler: Checkout success — subscription not yet active, starting poll');
-      setCheckoutPolling(true);
-    }
-  }, [isCheckoutSuccess, subscription, checkoutPolling]);
-
-  // Polling effect for post-checkout
-  useEffect(() => {
-    if (!checkoutPolling) return;
-
-    if (checkoutPollAttempts.current >= CHECKOUT_POLL_MAX_ATTEMPTS) {
-      console.log('InitialRouteHandler: Checkout polling exhausted — proceeding with current state');
-      setCheckoutPolling(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      checkoutPollAttempts.current += 1;
-      console.log(`InitialRouteHandler: Checkout poll attempt ${checkoutPollAttempts.current}/${CHECKOUT_POLL_MAX_ATTEMPTS}`);
+      console.log('InitialRouteHandler: Checkout success — subscription confirmed:', subscription.plan);
       try {
-        await checkSubscription();
-      } catch (err) {
-        console.error('InitialRouteHandler: Checkout poll check failed:', err);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (e) {
+        // Ignore URL cleanup errors
       }
-    }, CHECKOUT_POLL_INTERVAL_MS);
-
-    return () => clearTimeout(timer);
-  }, [checkoutPolling, checkSubscription]);
+    }
+  }, [isCheckoutSuccess, subscription]);
 
   // Initialize onboarding when subscription is confirmed (but not on checkout success — let redirect happen)
   useEffect(() => {
@@ -168,28 +134,6 @@ const InitialRouteHandler: React.FC = () => {
     );
   }
 
-  // Show polling spinner during post-checkout webhook wait
-  if (checkoutPolling) {
-    return (
-      <Box
-        display="flex"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        minHeight="100vh"
-        gap={2}
-      >
-        <CircularProgress size={60} />
-        <Typography variant="h6" color="textSecondary">
-          Activating your subscription...
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          This may take a few seconds.
-        </Typography>
-      </Box>
-    );
-  }
-
   // Post-checkout: subscription is now active (or poll exhausted)
   if (isCheckoutSuccess && subscription?.active && subscription.plan !== 'none' && subscription.plan !== 'free') {
     // Restore navigation state (saved before Stripe redirect)
@@ -232,7 +176,7 @@ const InitialRouteHandler: React.FC = () => {
         hasError: false,
         error: null,
       });
-      checkSubscription().catch((err) => {
+      checkSubscription(true).catch((err) => {
         if (err instanceof Error && (err.name === 'NetworkError' || err.name === 'ConnectionError')) {
           setConnectionError({
             hasError: true,

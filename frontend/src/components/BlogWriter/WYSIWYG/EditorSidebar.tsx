@@ -13,30 +13,10 @@ interface EditorSidebarProps {
 
 const EditorSidebar: React.FC<EditorSidebarProps> = ({ sections, totalWords }) => {
   const wordTarget = sections.reduce((s, sec) => s + (sec.outlineData?.targetWords || 500), 0);
-  const progress = wordTarget > 0 ? Math.min(100, Math.round((totalWords / wordTarget) * 100)) : 0;
 
   return (
     <div>
       <Paper elevation={0} className="p-5 rounded-xl border border-gray-200/60 bg-white">
-        {/* Progress ring */}
-        <div className="text-center mb-5">
-          <div className="relative inline-flex items-center justify-center">
-            <svg className="w-20 h-20 -rotate-90">
-              <circle cx="40" cy="40" r="34" fill="none" stroke="#f3f4f6" strokeWidth="4" />
-              <circle
-                cx="40" cy="40" r="34"
-                fill="none" stroke="#4f46e5" strokeWidth="4"
-                strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 34}`}
-                strokeDashoffset={`${2 * Math.PI * 34 * (1 - progress / 100)}`}
-                className="transition-all duration-500"
-              />
-            </svg>
-            <span className="absolute text-lg font-bold text-gray-700">{progress}%</span>
-          </div>
-          <div className="mt-2 text-xs text-gray-400">content complete</div>
-        </div>
-
         {/* Stats */}
         <div className="space-y-2 mb-5">
           <div className="flex justify-between text-sm">

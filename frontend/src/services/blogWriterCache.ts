@@ -95,8 +95,15 @@ class BlogWriterCacheService {
                       Array.from(outlineIdsSet).every(id => cachedIds.has(id));
 
       if (!idsMatch) {
-        console.log('Cached content does not match outline structure');
-        return null;
+        // Self-heal: remap cached values to outline IDs and re-cache for future lookups
+        const values: string[] = Object.values(parsedSections);
+        const normalized: Record<string, string> = {};
+        outlineIds.forEach((id, idx) => {
+          normalized[id] = (values[idx] || '') as string;
+        });
+        this.cacheContent(normalized, outlineIds);
+        console.log(`Cache hit for content after key normalization (${Object.keys(normalized).length} sections)`);
+        return normalized;
       }
 
       console.log(`Cache hit for content (${Object.keys(parsedSections).length} sections)`);

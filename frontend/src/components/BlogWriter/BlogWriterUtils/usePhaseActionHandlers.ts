@@ -168,7 +168,12 @@ export const usePhaseActionHandlers = ({
       } catch (error) {
         console.error('Content generation failed:', error);
         setIsMediumGenerationStarting(false);
-        alert(`Content generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errMsg = error instanceof Error ? error.message : 'Unknown error';
+        if (errMsg.includes('insufficient_balance') || errMsg.includes('balance_not_enough') || (errMsg.includes('403') && errMsg.includes('balance'))) {
+          alert('Your API balance is insufficient. Please top up your WaveSpeed account or switch to a different provider (e.g., set GPT_PROVIDER=google in your environment).');
+        } else {
+          alert(`Content generation failed: ${errMsg}`);
+        }
       }
     } else {
       // For longer blogs, just confirm outline - user will use manual button

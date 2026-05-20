@@ -44,8 +44,8 @@ CORE_ROUTER_REGISTRY = [
 OPTIONAL_ROUTER_REGISTRY = [
     {"name": "blog_writer", "module": "api.blog_writer.router", "attr": "router", "features": {"all", "blog_writer"}},
     {"name": "story_writer", "module": "api.story_writer.router", "attr": "router", "features": {"all", "story_writer"}},
-    {"name": "wix", "module": "api.wix_routes", "attr": "router", "features": {"all"}},
-{"name": "wix_test", "module": "api.wix_routes", "attr": "qa_router", "features": {"all"}},
+{"name": "wix", "module": "api.wix_routes", "attr": "router", "features": {"all"}},
+    {"name": "wix_test", "module": "api.wix_routes", "attr": "qa_router", "features": {"all"}},
     {"name": "blog_seo_analysis", "module": "api.blog_writer.seo_analysis", "attr": "router", "features": {"all", "blog_writer"}},
     {"name": "persona", "module": "api.persona_routes", "attr": "router", "features": {"all", "persona"}},
     {"name": "video_studio", "module": "api.video_studio.router", "attr": "router", "features": {"all", "video_studio"}},

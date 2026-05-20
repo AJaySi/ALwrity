@@ -233,13 +233,18 @@ export const useSEOManager = ({
       try {
         const hash = await hashContent(`${title}\n${fullMarkdown}`);
         const cacheKey = getSeoCacheKey(hash, title);
+        console.log('[SEOManager] SEO cache lookup', { cacheKey, hashLength: hash.length, titleLength: title.length, markdownLength: fullMarkdown.length });
         const cached = window.localStorage.getItem(cacheKey);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && typeof parsed.overall_score === 'number' && parsed.category_scores) {
-            debug.log('[SEOManager] Restored cached SEO analysis', { cacheKey, score: parsed.overall_score });
+            console.log('[SEOManager] Restored cached SEO analysis', { cacheKey, score: parsed.overall_score });
             setSeoAnalysis(parsed);
+          } else {
+            console.log('[SEOManager] Cached SEO data invalid', { hasScore: parsed && typeof parsed.overall_score === 'number' });
           }
+        } else {
+          console.log('[SEOManager] SEO cache miss', { cacheKey });
         }
       } catch (e) {
         debug.log('[SEOManager] Failed to restore cached SEO analysis', e);

@@ -5,6 +5,8 @@ This service handles:
 - Chart data extraction from research
 - Individual scene B-roll video generation
 - Final video composition from multiple B-roll scenes
+
+Chart preview generation is delegated to the shared ChartService.
 """
 
 import json
@@ -15,20 +17,17 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from loguru import logger
 
-# Import chart generators directly
+# Import video compositing from broll_composer
 from services.podcast.broll_composer import (
     Insight,
     SceneAssets,
     dispatch_scene,
     compose_video,
-    make_bar_chart,
-    make_horizontal_bar,
-    make_line_trend,
-    make_pie_chart,
-    make_stacked_bar,
-    make_bullet_overlay,
     make_insight_card,
 )
+
+# Import shared chart service for preview generation
+from services.chart_service import ChartService, get_chart_service
 
 
 class BrollService:
@@ -42,13 +41,14 @@ class BrollService:
             output_dir: Base directory for B-roll output. Defaults to workspace chart directory.
             user_id: User ID for multi-tenant workspace isolation.
         """
+        self._user_id = user_id
         if output_dir:
             self.output_dir = Path(output_dir)
         else:
             self.output_dir = self._get_chart_dir(user_id)
         
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        logger.warning(f"[BrollService] Initialized with output directory: {self.output_dir}")
+        logger.info(f"[BrollService] Initialized with output directory: {self.output_dir}")
     
     def _get_chart_dir(self, user_id: Optional[str] = None) -> Path:
         """Get chart directory from podcast constants (workspace-aware)."""
@@ -78,145 +78,22 @@ class BrollService:
         """
         Generate a chart PNG preview (static, for Write phase).
         
-        Args:
-            chart_data: Chart data dict with labels, before/after, etc.
-            chart_type: Type of chart (bar_comparison, bar_horizontal, line_trend, pie, stacked_bar, bullet)
-            title: Title for the chart
-            subtitle: Optional subtitle at bottom
-            
-        Returns:
-            Path to generated PNG file
+        Delegates to ChartService for rendering, then returns the local file path.
         """
         resolved_chart_id = chart_id or uuid.uuid4().hex[:8]
-        out_path = str(self.get_chart_preview_path(resolved_chart_id))
         
-        # Debug logging
-        logger.warning(f"[BrollService] Generating: type={chart_type}, data keys={list(chart_data.keys())}")
+        logger.info(f"[BrollService] Generating chart preview: type={chart_type}, id={resolved_chart_id}")
         
-        try:
-            if chart_type == "bar_comparison":
-                # Accept both formats: {labels, before, after} OR {labels, values}
-                labels = chart_data.get("labels", [])
-                before = chart_data.get("before", [])
-                after = chart_data.get("after", [])
-                # If using new format (labels, values), treat as single bar chart
-                if not before and not after:
-                    values = chart_data.get("values", [])
-                    if values:
-                        # Normalize to same length, truncating or padding as needed
-                        n = min(len(labels), len(values))
-                        labels = labels[:n]
-                        before = [0] * n
-                        after = values[:n]
-                        # Create modified data dict with proper format for make_bar_chart
-                        chart_data_for_render = {
-                            "labels": labels,
-                            "before": before,
-                            "after": after
-                        }
-                    else:
-                        chart_data_for_render = chart_data
-                else:
-                    chart_data_for_render = chart_data
-                if not labels or (not before and not after):
-                    logger.warning(f"[BrollService] Missing required data for bar_comparison: labels={len(labels)}, before={len(before)}, after={len(after)}")
-                    return ""
-                if len(labels) != len(before) or len(labels) != len(after):
-                    logger.warning(f"[BrollService] Data shape mismatch: labels={len(labels)}, before={len(before)}, after={len(after)}")
-                    return ""
-                make_bar_chart(chart_data_for_render, out_path, title, subtitle=subtitle)
-                logger.warning(f"[BrollService] bar_comparison rendered: {out_path}, exists={os.path.exists(out_path)}")
-            elif chart_type == "bar_horizontal":
-                labels = chart_data.get("labels", [])
-                values = chart_data.get("values", [])
-                if not labels or not values:
-                    logger.warning("[BrollService] Missing required data for bar_horizontal")
-                    return ""
-                make_horizontal_bar(chart_data, out_path, title)
-                logger.warning(f"[BrollService] bar_horizontal rendered: {out_path}, exists={os.path.exists(out_path)}")
-            elif chart_type == "line_trend":
-                labels = chart_data.get("labels", [])
-                values = chart_data.get("values", [])
-                if not labels or not values:
-                    logger.warning("[BrollService] Missing required data for line_trend")
-                    return ""
-                make_line_trend(chart_data, out_path, title)
-                logger.warning(f"[BrollService] line_trend rendered: {out_path}, exists={os.path.exists(out_path)}")
-            elif chart_type == "pie":
-                labels = chart_data.get("labels", [])
-                values = chart_data.get("values", [])
-                if not labels or not values:
-                    logger.warning("[BrollService] Missing required data for pie")
-                    return ""
-                make_pie_chart(chart_data, out_path, title)
-                logger.warning(f"[BrollService] pie rendered: {out_path}, exists={os.path.exists(out_path)}")
-            elif chart_type == "stacked_bar":
-                labels = chart_data.get("labels", [])
-                segments = chart_data.get("segments", [])
-                if not labels or not segments:
-                    logger.warning("[BrollService] Missing required data for stacked_bar")
-                    return ""
-                make_stacked_bar(chart_data, out_path, title)
-                logger.warning(f"[BrollService] stacked_bar rendered: {out_path}, exists={os.path.exists(out_path)}")
-            elif chart_type == "bullet" or chart_type == "bullet_points":
-                # Accept both: bullet_points OR labels
-                bullet_points = chart_data.get("bullet_points", [])
-                # If using new format, use labels as bullet points
-                if not bullet_points:
-                    bullet_points = chart_data.get("labels", [])
-                if not bullet_points:
-                    labels_fallback = chart_data.get("labels", [])
-                    if labels_fallback:
-                        bullet_points = labels_fallback
-                if bullet_points:
-                    make_bullet_overlay(bullet_points, out_path)
-                    logger.warning(f"[BrollService] bullet_points rendered: {out_path}, exists={os.path.exists(out_path)}")
-                else:
-                    logger.warning("[BrollService] No bullet points provided")
-                    return ""
-            else:
-                logger.warning(f"[BrollService] Unknown chart type: {chart_type}, falling back to bar_comparison")
-                # Try bar_comparison as fallback
-                try:
-                    make_bar_chart(chart_data, out_path, title, subtitle=subtitle)
-                    return out_path
-                except Exception as fallback_err:
-                    logger.warning(f"[BrollService] Fallback also failed: {fallback_err}")
-                    return ""
-            
-            logger.warning(f"[BrollService] Chart preview generated: {out_path}, exists={os.path.exists(out_path) if out_path else 'N/A'}")
-            
-            # Add source attribution overlay if present
-            source = chart_data.get("source", "").strip()
-            if source and out_path and os.path.exists(out_path):
-                try:
-                    from PIL import Image as PILImage, ImageDraw, ImageFont
-                    img = PILImage.open(out_path).convert("RGBA")
-                    draw = ImageDraw.Draw(img)
-                    source_text = f"Source: {source[:80]}"
-                    try:
-                        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-                    except (OSError, IOError):
-                        try:
-                            font = ImageFont.truetype("arial.ttf", 11)
-                        except (OSError, IOError):
-                            font = ImageFont.load_default()
-                    text_bbox = draw.textbbox((0, 0), source_text, font=font)
-                    text_w = text_bbox[2] - text_bbox[0]
-                    text_h = text_bbox[3] - text_bbox[1]
-                    x = img.width - text_w - 12
-                    y = img.height - text_h - 8
-                    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill=(0, 0, 0, 140))
-                    draw.text((x, y), source_text, fill=(200, 200, 200, 220), font=font)
-                    img.save(out_path)
-                except Exception as src_err:
-                    logger.warning(f"[BrollService] Source overlay failed (non-fatal): {src_err}")
-            
-            return out_path
-            
-        except Exception as e:
-            logger.error(f"[BrollService] Failed to generate chart preview: {e}")
-            return ""
+        chart_svc = get_chart_service(user_id=self._user_id)
+        result = chart_svc.generate_chart(
+            chart_data=chart_data,
+            chart_type=chart_type,
+            title=title,
+            subtitle=subtitle or "",
+            chart_id=resolved_chart_id,
+        )
+        
+        return result.get("path", "")
     
     def generate_scene_broll(
         self,

@@ -47,26 +47,50 @@ export const useBlogWriterPolling = ({
           });
           onSectionsUpdate(newSections);
           
-          // Cache the generated content (shared utility)
-          if (Object.keys(newSections).length > 0) {
-            const sectionIds = Object.keys(newSections);
-            blogWriterCache.cacheContent(newSections, sectionIds);
-            
-            // Auto-confirm content and navigate to SEO phase when content generation completes
-            // This happens when user clicks "Next:Confirm and generate content"
-            if (onContentConfirmed) {
-              onContentConfirmed();
-            }
-            if (navigateToPhase) {
-              navigateToPhase('seo');
-            }
+          // Auto-confirm content and navigate to SEO phase when content generation completes
+          // This happens when user clicks "Next:Confirm and generate content"
+          if (onContentConfirmed) {
+            onContentConfirmed();
           }
+          if (navigateToPhase) {
+            navigateToPhase('seo');
+          }
+
+          // Save to asset library (dedup by title is handled inside saveBlogToAssetLibrary)
+          // Backend also saves via save_and_track_text_content; this is a safety net / metadata update
+          (async () => {
+            try {
+              const { saveBlogToAssetLibrary } = await import('../../../services/blogWriterApi');
+              const totalWords = result.sections.reduce(
+                (sum: number, s: any) => sum + (s.wordCount || (s.content || '').split(/\s+/).length),
+                0
+              );
+              await saveBlogToAssetLibrary({
+                title: result.title || 'Untitled Blog',
+                blogType: 'medium',
+                wordCount: totalWords,
+                sectionCount: result.sections?.length,
+                model: result.model,
+                generationTimeMs: result.generation_time_ms,
+              });
+            } catch (assetError) {
+              console.error('[BlogWriter] Failed to save blog to asset library:', assetError);
+            }
+          })();
         }
       } catch (e) {
         console.error('Failed to apply medium generation result:', e);
       }
     },
-    onError: (err) => console.error('Medium generation failed:', err)
+    onError: (err: any) => {
+      console.error('Medium generation failed:', err);
+      const errMsg = (typeof err === 'string' ? err : (err?.message || err?.error || '')).toLowerCase();
+      if (errMsg.includes('insufficient_balance') || errMsg.includes('balance_not_enough') || (errMsg.includes('403') && errMsg.includes('balance'))) {
+        setTimeout(() => alert('Your API balance is insufficient. Please top up your account or switch to a different provider.'), 100);
+      } else if (errMsg.includes('no valid structured response')) {
+        setTimeout(() => alert('Content generation failed due to a provider error. This might be a temporary issue — please try again or switch providers.'), 100);
+      }
+    }
   });
 
   // Rewrite polling hook (used for blog rewrite operations)

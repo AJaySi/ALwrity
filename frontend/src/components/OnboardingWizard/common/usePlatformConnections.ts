@@ -42,9 +42,6 @@ export const usePlatformConnections = () => {
       });
       setToastMessage('Wix account connected successfully!');
       setShowToast(true);
-      // Clean URL
-      const clean = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, clean || '/');
     }
   }, [setConnectedPlatforms, setToastMessage]);
 
@@ -79,7 +76,13 @@ export const usePlatformConnections = () => {
       // 2) Key by state so callback can look up by state value
       try { sessionStorage.setItem(`wix_oauth_data_${oauthData.state}`, JSON.stringify(oauthData)); } catch {}
       // 3) window.name persists across top-level redirects even when origin changes
-      try { (window as any).name = `WIX_OAUTH::${btoa(JSON.stringify(oauthData))}`; } catch {}
+      try {
+        const redirectTo = sessionStorage.getItem('wix_oauth_redirect') || window.location.href;
+        console.log('[handleWixConnect] Storing redirect_to in window.name:', redirectTo);
+        (window as any).name = `WIX_OAUTH::${btoa(JSON.stringify({ ...oauthData, redirect_to: redirectTo }))}`;
+      } catch (e) {
+        console.error('[handleWixConnect] Failed to set window.name:', e);
+      }
       const { authUrl } = await wixClient.auth.getAuthUrl(oauthData);
       window.location.href = authUrl;
     } catch (error) {

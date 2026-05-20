@@ -3,6 +3,8 @@ import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import { createClient, OAuthStrategy } from '@wix/sdk';
 import { apiClient } from '../../api/client';
 
+const FALLBACK_ORIGIN = 'http://localhost:3000';
+
 const WixCallbackPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +17,7 @@ const WixCallbackPage: React.FC = () => {
           setError(`${error}: ${errorDescription || ''}`);
           return;
         }
-        // Recover oauthData via multiple fallbacks
+
         let oauthData: any | null = null;
         const saved = sessionStorage.getItem('wix_oauth_data') || localStorage.getItem('wix_oauth_data');
         if (saved) {
@@ -28,102 +30,85 @@ const WixCallbackPage: React.FC = () => {
           }
         }
         if (!oauthData && typeof window.name === 'string' && window.name.startsWith('WIX_OAUTH::')) {
-          try { oauthData = JSON.parse(atob(window.name.replace('WIX_OAUTH::',''))); } catch {}
+          try { oauthData = JSON.parse(atob(window.name.replace('WIX_OAUTH::', ''))); } catch {}
         }
         if (!oauthData) {
           setError('Missing OAuth state. Please start the connection again.');
           return;
         }
 
-        // Exchange code for tokens via backend to ensure persistence and get site info
+        let accessToken: string | null = null;
+        let siteInfo: any = null;
+
         try {
-          const response = await apiClient.post('/api/wix/auth/callback', { 
-            code,
-            state 
-          });
-
+          const response = await apiClient.post('/api/wix/auth/callback', { code, state });
           if (response.data.success) {
-            const { tokens, site_info, permissions } = response.data;
-            
-            // Store tokens and site info
-            try { 
-              sessionStorage.setItem('wix_tokens', JSON.stringify(tokens));
-              if (site_info) {
-                sessionStorage.setItem('wix_site_info', JSON.stringify(site_info));
-              }
-            } catch {}
-
-            // Mark frontend session as connected
-            sessionStorage.setItem('wix_connected', 'true');
-
-            // Cleanup saved oauth data
-            sessionStorage.removeItem('wix_oauth_data');
-            sessionStorage.removeItem(`wix_oauth_data_${state}`);
-            localStorage.removeItem('wix_oauth_data');
-            try { (window as any).name = ''; } catch {}
-
-            // Notify opener (if opened as popup) and close
-            try {
-              const payload = { 
-                type: 'WIX_OAUTH_SUCCESS', 
-                success: true, 
-                tokens,
-                site_info 
-              } as any;
-              (window.opener || window.parent)?.postMessage(payload, '*');
-              if (window.opener) {
-                window.close();
-                return;
-              }
-            } catch {}
-
-            // Fallback redirect for same-tab flow
-            let redirectUrl = sessionStorage.getItem('wix_oauth_redirect');
-            if (redirectUrl) {
-              try {
-                const urlObj = new URL(redirectUrl);
-                const currentOrigin = window.location.origin;
-                if (urlObj.origin !== currentOrigin) {
-                  redirectUrl = `${currentOrigin}${urlObj.pathname}${urlObj.hash}${urlObj.search}`;
-                }
-              } catch (e) {}
-              
-              sessionStorage.removeItem('wix_oauth_redirect');
-              window.location.replace(redirectUrl);
-            } else {
-              // Default redirect
-              const referrer = document.referrer;
-              const isFromBlogWriter = referrer.includes('/blog-writer') || 
-                                      window.location.search.includes('from=blog-writer');
-              
-              if (isFromBlogWriter) {
-                window.location.replace('/blog-writer#publish');
-              } else {
-                window.location.replace('/onboarding?step=5&wix_connected=true');
-              }
-            }
+            const { tokens, site_info } = response.data;
+            accessToken = tokens?.access_token || tokens?.accessToken?.value || null;
+            siteInfo = site_info || null;
           } else {
             throw new Error(response.data.message || 'Connection failed');
           }
         } catch (backendError: any) {
           console.error('Backend exchange failed, falling back to client-side:', backendError);
-          // Fallback to client-side exchange if backend fails
           const tokens = await wixClient.auth.getMemberTokens(code, state, oauthData);
           wixClient.auth.setTokens(tokens);
-          sessionStorage.setItem('wix_tokens', JSON.stringify(tokens));
-          sessionStorage.setItem('wix_connected', 'true');
-          
-          // ... rest of the cleanup and redirect logic ...
-          sessionStorage.removeItem('wix_oauth_data');
-          // (Simplified fallback for brevity, assuming backend usually works)
-           try {
-            const payload = { type: 'WIX_OAUTH_SUCCESS', success: true, tokens } as any;
-            (window.opener || window.parent)?.postMessage(payload, '*');
-            if (window.opener) { window.close(); return; }
-          } catch {}
-           window.location.replace('/onboarding?step=5&wix_connected=true');
+          accessToken = (tokens as any)?.accessToken?.value || (tokens as any)?.access_token || null;
         }
 
+        // Store in current origin's storage (may be ngrok — not accessible from localhost,
+        // but useful if the callback runs on the same origin as the app)
+        try {
+          if (accessToken) localStorage.setItem('wix_access_token', accessToken);
+        } catch {}
+        localStorage.setItem('wix_connected', 'true');
+        sessionStorage.setItem('wix_connected', 'true');
+
+        // Cleanup oauth data
+        sessionStorage.removeItem('wix_oauth_data');
+        if (state) sessionStorage.removeItem(`wix_oauth_data_${state}`);
+        localStorage.removeItem('wix_oauth_data');
+
+        // CRITICAL: Put access_token + site_info into window.name so it survives
+        // the cross-origin redirect (ngrok → localhost). window.name persists
+        // across same-tab navigations even when the origin changes.
+        try {
+          const payload = { access_token: accessToken, site_info: siteInfo };
+          (window as any).name = `WIX_RESULT::${btoa(JSON.stringify(payload))}`;
+        } catch {}
+
+        // Notify opener if popup
+        try {
+          const targetOrigin = window.location.ancestorOrigins?.[0] || '*';
+          (window.opener || window.parent)?.postMessage(
+            { type: 'WIX_OAUTH_SUCCESS', success: true, access_token: accessToken, site_info: siteInfo },
+            targetOrigin
+          );
+          if (window.opener) { window.close(); return; }
+        } catch {}
+
+        localStorage.setItem('blogwriter_current_phase', 'publish');
+        localStorage.setItem('blogwriter_user_selected_phase', 'true');
+
+        // Build redirect URL. oauthData.redirect_to was set by WixConnectModal
+        // to the user's actual origin (e.g. http://localhost:3000/blog-writer#publish).
+        // sessionStorage is per-origin so wix_oauth_redirect may be null on ngrok.
+        let redirectUrl = oauthData?.redirect_to || sessionStorage.getItem('wix_oauth_redirect');
+        if (redirectUrl) {
+          sessionStorage.removeItem('wix_oauth_redirect');
+          try {
+            const urlObj = new URL(redirectUrl);
+            urlObj.searchParams.set('wix_connected', 'true');
+            redirectUrl = urlObj.toString();
+          } catch {
+            redirectUrl = `${redirectUrl}?wix_connected=true`;
+          }
+        } else {
+          // Fallback: construct localhost URL
+          redirectUrl = `${FALLBACK_ORIGIN}/blog-writer?wix_connected=true#publish`;
+        }
+
+        window.location.replace(redirectUrl);
       } catch (e: any) {
         setError(e?.message || 'OAuth callback failed');
         try {
@@ -150,5 +135,3 @@ const WixCallbackPage: React.FC = () => {
 };
 
 export default WixCallbackPage;
-
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Avatar, Box, Menu, MenuItem, Typography, Tooltip, Chip, Divider } from '@mui/material';
+import { Avatar, Box, Menu, MenuItem, Typography, Tooltip, Chip, Divider, IconButton, CircularProgress } from '@mui/material';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import SystemStatusIndicator from '../ContentPlanningDashboard/components/SystemStatusIndicator';
@@ -11,6 +11,7 @@ import {
   logBackendCooldownSkipOnce,
 } from '../../api/client';
 import { saveNavigationState } from '../../utils/navigationState';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
 
 interface UserBadgeProps {
   colorMode?: 'light' | 'dark';
@@ -19,9 +20,10 @@ interface UserBadgeProps {
 const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
   const { user, isSignedIn } = useUser();
   const { signOut } = useClerk();
-  const { subscription } = useSubscription();
+  const { subscription, refreshSubscription } = useSubscription();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [systemStatus, setSystemStatus] = useState<'healthy' | 'warning' | 'critical' | 'unknown'>('unknown');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const open = Boolean(anchorEl);
 
   const initials = React.useMemo(() => {
@@ -80,7 +82,8 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
 
   // Get plan display info
   const getPlanColor = () => {
-    switch (subscription?.plan) {
+    const plan = subscription?.plan?.toLowerCase() || 'free';
+    switch (plan) {
       case 'free': return '#4caf50';
       case 'basic': return '#2196f3';
       case 'pro': return '#9c27b0';
@@ -90,12 +93,28 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
   };
 
   const getPlanLabel = () => {
-    if (!subscription?.active) return 'No Plan';
+    if (!subscription?.plan) return 'Free';
+    const plan = subscription.plan.toLowerCase();
+    if (plan === 'free') return 'Free';
+    if (plan === 'basic') return 'Basic';
+    if (plan === 'pro') return 'Pro';
+    if (plan === 'enterprise') return 'Enterprise';
     return subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1);
   };
 
   const handleOpen = (e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
+
+  const handleRefreshPlan = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshSubscription();
+    } catch (err) {
+      console.error('Failed to refresh subscription:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -121,7 +140,7 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         }}
       />
       
-      <Tooltip title={`${user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || 'User'} - System: ${systemStatus.toUpperCase()}`}> 
+      <Tooltip title="User Navigation Menu"> 
         <Box sx={{ position: 'relative', display: 'inline-flex' }}>
           <Avatar
             onClick={handleOpen}
@@ -195,22 +214,37 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         </Box>
         
         {/* Subscription Info */}
-        <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#f8f9fb' }}>
-          <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600, color: '#6b7280', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Current Plan
-          </Typography>
-          <Chip
-            label={getPlanLabel()}
-            size="small"
-            sx={{
-              bgcolor: `${getPlanColor()}15`,
-              border: `1.5px solid ${getPlanColor()}40`,
-              color: getPlanColor(),
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              height: 26,
-            }}
-          />
+        <Box sx={{ px: 2.5, py: 1.5, bgcolor: '#f8f9fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="caption" sx={{ display: 'block', mb: 0.5, fontWeight: 600, color: '#6b7280', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Current Plan
+            </Typography>
+            <Chip
+              label={getPlanLabel()}
+              size="small"
+              sx={{
+                bgcolor: `${getPlanColor()}15`,
+                border: `1.5px solid ${getPlanColor()}40`,
+                color: getPlanColor(),
+                fontWeight: 700,
+                fontSize: '0.75rem',
+                height: 26,
+              }}
+            />
+          </Box>
+          <Tooltip title="Refresh subscription status">
+            <IconButton 
+              onClick={handleRefreshPlan} 
+              size="small"
+              disabled={isRefreshing}
+              sx={{ 
+                color: '#6b7280',
+                '&:hover': { bgcolor: '#e5e7eb' },
+              }}
+            >
+              {isRefreshing ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
         </Box>
         
         <Divider sx={{ mx: 2 }} />
@@ -257,6 +291,9 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         
         <MenuItem onClick={() => { handleClose(); saveNavigationState(window.location.pathname); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
           Manage Subscription
+        </MenuItem>
+        <MenuItem onClick={() => { handleClose(); window.location.href = '/billing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
+          View Costing Details
         </MenuItem>
         <MenuItem onClick={handleSignOut} sx={{ mx: 1, borderRadius: 1, color: '#6b7280', '&:hover': { bgcolor: '#fef2f2', color: '#ef4444' } }}>
           Sign out

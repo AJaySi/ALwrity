@@ -2,7 +2,6 @@ import os
 import asyncio
 from typing import Any, Dict, List
 from dataclasses import dataclass
-import httpx
 from loguru import logger
 import random
 
@@ -24,13 +23,6 @@ class WritingAssistantService:
     """
 
     def __init__(self) -> None:
-        self.exa_api_key = os.getenv("EXA_API_KEY")
-
-        if not self.exa_api_key:
-            logger.warning("EXA_API_KEY not configured; writing assistant will fail")
-
-        self.http_timeout_seconds = 15
-        
         # COST CONTROL: Daily usage limits
         self.daily_api_calls = 0
         self.daily_limit = 50  # Max 50 API calls per day (~$2.50 max cost)
@@ -76,7 +68,7 @@ class WritingAssistantService:
             return []
 
         # 1) Find relevant sources via Exa
-        sources = await self._search_sources(text)
+        sources = await self._search_sources(text, user_id=user_id)
 
         # 2) Generate continuation suggestion via LLM grounded in sources
         suggestion_text, confidence = await self._generate_continuation(text, sources, user_id=user_id)
@@ -86,51 +78,38 @@ class WritingAssistantService:
 
         return [WritingSuggestion(text=suggestion_text.strip(), confidence=confidence, sources=sources)]
 
-    async def _search_sources(self, text: str) -> List[Dict[str, Any]]:
-        if not self.exa_api_key:
-            raise Exception("EXA_API_KEY not configured")
-
-        # Follow Exa demo guidance: continuation-style prompt and 1000-char cap
-        exa_query = (
-            (text[-1000:] if len(text) > 1000 else text)
-            + "\n\nIf you found the above interesting, here's another useful resource to read:"
-        )
-
-        payload = {
-            "query": exa_query,
-            "numResults": 3,  # Reduced from 5 to 3 for cost savings
-            "text": True,
-            "type": "neural",
-            "highlights": {"numSentences": 1, "highlightsPerUrl": 1},
-        }
-
+    async def _search_sources(self, text: str, user_id: str = None) -> List[Dict[str, Any]]:
+        """Search for relevant sources using ExaResearchProvider with subscription checks."""
         try:
-            async with httpx.AsyncClient(timeout=self.http_timeout_seconds) as client:
-                resp = await client.post(
-                    "https://api.exa.ai/search",
-                    headers={"x-api-key": self.exa_api_key, "Content-Type": "application/json"},
-                    json=payload,
-                )
-            if resp.status_code != 200:
-                raise Exception(f"Exa error {resp.status_code}: {resp.text}")
-            data = resp.json()
-            results = data.get("results", [])
-            sources: List[Dict[str, Any]] = []
-            for r in results:
-                sources.append(
-                    {
-                        "title": r.get("title", "Untitled"),
-                        "url": r.get("url", ""),
-                        "text": r.get("text", ""),
-                        "author": r.get("author", ""),
-                        "published_date": r.get("publishedDate", ""),
-                        "score": float(r.get("score", 0.5)),
-                    }
-                )
-            # Explicitly fail if no sources to avoid generic completions
-            if not sources:
+            from services.blog_writer.research.exa_provider import ExaResearchProvider
+
+            exa_query = (
+                (text[-1000:] if len(text) > 1000 else text)
+                + "\n\nIf you found the above interesting, here's another useful resource to read:"
+            )
+
+            provider = ExaResearchProvider()
+            sources = await provider.simple_search(
+                query=exa_query,
+                num_results=3,
+                user_id=user_id,
+            )
+
+            # Normalize keys to match expected format
+            normalized = []
+            for s in sources:
+                normalized.append({
+                    "title": s.get("title", "Untitled"),
+                    "url": s.get("url", ""),
+                    "text": s.get("text", ""),
+                    "author": s.get("author", ""),
+                    "published_date": s.get("publishedDate", ""),
+                    "score": float(s.get("score", 0.5)),
+                })
+
+            if not normalized:
                 raise Exception("No relevant sources found from Exa for the current context")
-            return sources
+            return normalized
         except Exception as e:
             logger.error(f"WritingAssistant _search_sources error: {e}")
             raise

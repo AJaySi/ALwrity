@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowProjects, onNewEpisode, ac
               letterSpacing: "-0.02em",
             }}
           >
-            ALwrity Podcast Maker
+            Podcast Creator
           </Typography>
         </Stack>
 

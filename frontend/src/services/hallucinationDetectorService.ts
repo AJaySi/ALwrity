@@ -75,6 +75,7 @@ export interface HealthCheckResponse {
 
 class HallucinationDetectorService {
   private baseUrl: string;
+  private authTokenGetter: (() => Promise<string | null>) | null = null;
 
   constructor() {
     const getApiBaseUrl = () => {
@@ -85,6 +86,21 @@ class HallucinationDetectorService {
       return url || 'http://localhost:8000';
     };
     this.baseUrl = getApiBaseUrl();
+  }
+
+  setAuthTokenGetter(getter: (() => Promise<string | null>) | null) {
+    this.authTokenGetter = getter;
+  }
+
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.authTokenGetter) {
+      const token = await this.authTokenGetter();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    return headers;
   }
 
   /**
@@ -98,9 +114,7 @@ class HallucinationDetectorService {
       
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify(request),
       });
 
@@ -138,9 +152,7 @@ class HallucinationDetectorService {
     try {
       const response = await fetch(`${this.baseUrl}/api/hallucination-detector/extract-claims`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify(request),
       });
 
@@ -169,9 +181,7 @@ class HallucinationDetectorService {
     try {
       const response = await fetch(`${this.baseUrl}/api/hallucination-detector/verify-claim`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify(request),
       });
 

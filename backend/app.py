@@ -147,13 +147,26 @@ else:
     product_marketing_router = None
     campaign_creator_router = None
 
-# Import hallucination detector router (skip in feature-only modes - triggers heavy ML)
-if _is_full_mode():
+# Import hallucination detector router
+try:
     from api.hallucination_detector import router as hallucination_detector_router
-    from api.writing_assistant import router as writing_assistant_router
-else:
+except Exception as e:
+    logger.warning(f"Failed to import hallucination_detector router: {e}")
     hallucination_detector_router = None
-    writing_assistant_router = None
+
+# Import charts router (shared chart generation for blog writer, podcast, etc.)
+try:
+    from api.charts import router as charts_router
+except Exception as e:
+    logger.warning(f"Failed to import charts router: {e}")
+    charts_router = None
+
+# Import links router (internal & external link search and rewording)
+try:
+    from api.links import router as links_router
+except Exception as e:
+    logger.warning(f"Failed to import links router: {e}")
+    links_router = None
 
 # Import research configuration router (skip in feature-only modes)
 if _is_full_mode():
@@ -486,9 +499,17 @@ else:
         "reason": f"Feature-only mode: {enabled_features}",
     }
 
-# Safety net: explicitly include hallucination detector (router_manager may skip silently)
+# Safety net: explicitly include hallucination detector (import may fail gracefully)
 if hallucination_detector_router:
     router_manager.include_router_safely(hallucination_detector_router, "hallucination_detector")
+
+# Include charts router (shared chart generation)
+if charts_router:
+    router_manager.include_router_safely(charts_router, "charts")
+
+# Include links router (internal & external link search)
+if links_router:
+    router_manager.include_router_safely(links_router, "links")
 
 # Log startup summary
 router_manager.log_startup_summary()

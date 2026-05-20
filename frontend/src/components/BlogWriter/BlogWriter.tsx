@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -36,6 +36,8 @@ import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSec
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
 
 const BlogWriter: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Add light theme class to body/html on mount, remove on unmount
   React.useEffect(() => {
     document.body.classList.add('blog-writer-page');
@@ -76,6 +78,7 @@ const BlogWriter: React.FC = () => {
     flowAnalysisCompleted,
     flowAnalysisResults,
     sectionImages,
+    restoreAttempted,
     setResearch,
     setOutline,
     setTitleOptions,
@@ -203,6 +206,21 @@ const BlogWriter: React.FC = () => {
   // Store navigateToPhase in a ref for use in polling callbacks
   const navigateToPhaseRef = React.useRef<((phase: string) => void) | null>(null);
 
+  // Normalize section keys to match outline IDs when updating from API responses
+  const handleSectionsUpdate = useCallback((newSections: Record<string, string>) => {
+    if (outline && outline.length > 0 && Object.keys(newSections).length > 0) {
+      const normalized: Record<string, string> = {};
+      const values = Object.values(newSections);
+      outline.forEach((s, idx) => {
+        const id = String(s.id);
+        normalized[id] = newSections[id] ?? values[idx] ?? '';
+      });
+      setSections(normalized);
+    } else {
+      setSections(newSections);
+    }
+  }, [outline, setSections]);
+
   // Polling hooks - extracted to useBlogWriterPolling
   const {
     researchPolling,
@@ -216,7 +234,7 @@ const BlogWriter: React.FC = () => {
     onResearchComplete: handleResearchComplete,
     onOutlineComplete: handleOutlineComplete,
     onOutlineError: handleOutlineError,
-    onSectionsUpdate: setSections,
+    onSectionsUpdate: handleSectionsUpdate,
     onContentConfirmed: () => {
       debug.log('[BlogWriter] Content generation completed - auto-confirming content');
       setContentConfirmed(true);
@@ -327,6 +345,14 @@ const BlogWriter: React.FC = () => {
   }, [setResearch, setOutline, setSections, setSeoAnalysis, setSeoMetadata,
       setContentConfirmed, setOutlineConfirmed, setSelectedTitle, setTitleOptions,
       setCurrentPhase]);
+
+  // Handle ?new=true query param from "New Blog" button in Asset Library
+  React.useEffect(() => {
+    if (searchParams.get('new') === 'true') {
+      handleNewBlog();
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, handleNewBlog, setSearchParams]);
 
   const handleMyBlogs = useCallback(() => {
     navigate('/asset-library?source_module=blog_writer&asset_type=text');
@@ -532,6 +558,7 @@ const BlogWriter: React.FC = () => {
         currentPhase={currentPhase}
         navigateToPhase={navigateToPhase}
         onResearchComplete={handleResearchComplete}
+        restoreAttempted={restoreAttempted}
       />
 
       {research && (
@@ -572,6 +599,8 @@ const BlogWriter: React.FC = () => {
           setShowOutlineModal(true);
         }}
         onContentGenerationStart={handleMediumGenerationStarted}
+        buildFullMarkdown={buildFullMarkdown}
+        convertMarkdownToHTML={convertMarkdownToHTML}
       />
         </>
       )}

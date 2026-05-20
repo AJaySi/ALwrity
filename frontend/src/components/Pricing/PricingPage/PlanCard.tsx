@@ -317,7 +317,7 @@ const PlanCard: React.FC<PlanCardProps> = ({
                   <AudioIcon color="primary" fontSize="small" />
                 </ListItemIcon>
                 <ListItemText
-                  primary="Podcast Maker"
+                  primary="Podcast Creator"
                   secondary="AI-powered research, scriptwriting, and voice narration"
                 />
               </ListItem>

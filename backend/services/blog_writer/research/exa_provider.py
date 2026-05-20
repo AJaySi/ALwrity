@@ -6,8 +6,11 @@ Neural search implementation using Exa API for high-quality, citation-rich resea
 
 from exa_py import Exa
 import os
+import asyncio
+from typing import List, Dict, Any
 from loguru import logger
 from models.subscription_models import APIProvider
+from fastapi import HTTPException
 from .base_provider import ResearchProvider as BaseProvider
 
 
@@ -215,6 +218,123 @@ class ExaResearchProvider(BaseProvider):
     def estimate_tokens(self) -> int:
         """Estimate token usage for Exa (not token-based)."""
         return 0  # Exa is per-search, not token-based
+    
+    async def simple_search(
+        self,
+        query: str,
+        num_results: int = 5,
+        user_id: str = None,
+        include_domains: List[str] = None,
+        exclude_domains: List[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Simple Exa search for fact-checking and writing assistance.
+        Handles subscription preflight check and usage tracking.
+        
+        Args:
+            query: Search query string
+            num_results: Number of results to return (default 5)
+            user_id: Optional user ID for subscription checking
+            include_domains: Only return results from these domains (for internal links)
+            exclude_domains: Exclude results from these domains (for external-only links)
+            
+        Returns:
+            List of source dicts with title, url, text, publishedDate, author, score keys
+            
+        Raises:
+            HTTPException(429): If user has exceeded subscription limits
+            Exception: If Exa API key not configured or search fails
+        """
+        if not self.api_key:
+            raise Exception("EXA_API_KEY not configured")
+        
+        # Preflight subscription check
+        if user_id:
+            from services.subscription import PricingService
+            from services.database import get_session_for_user
+            db = get_session_for_user(user_id)
+            if db:
+                try:
+                    pricing_service = PricingService(db)
+                    can_proceed, message, usage_info = pricing_service.check_usage_limits(
+                        user_id=user_id,
+                        provider=APIProvider.EXA,
+                        tokens_requested=0,
+                        actual_provider_name="exa",
+                    )
+                    if not can_proceed:
+                        raise HTTPException(status_code=429, detail={
+                            'error': 'insufficient_balance',
+                            'message': message,
+                            'provider': 'exa',
+                            'usage_info': usage_info or {}
+                        })
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(f"[Exa simple_search] Preflight check failed: {e}")
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+        search_kwargs = {
+            "type": "auto",
+            "num_results": num_results,
+            "text": {"max_characters": 1000},
+            "highlights": {"num_sentences": 2, "highlights_per_url": 2},
+        }
+        if include_domains:
+            search_kwargs["include_domains"] = include_domains
+        if exclude_domains:
+            search_kwargs["exclude_domains"] = exclude_domains
+        
+        try:
+            loop = asyncio.get_running_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: self.exa.search_and_contents(query, **search_kwargs),
+            )
+        except Exception as e:
+            logger.error(f"[Exa simple_search] API call failed: {e}")
+            # Retry with simpler parameters
+            retry_kwargs = {"type": "auto", "num_results": num_results, "text": True}
+            if include_domains:
+                retry_kwargs["include_domains"] = include_domains
+            if exclude_domains:
+                retry_kwargs["exclude_domains"] = exclude_domains
+            try:
+                logger.info("[Exa simple_search] Retrying with simplified parameters")
+                results = await loop.run_in_executor(
+                    None,
+                    lambda: self.exa.search_and_contents(query, **retry_kwargs),
+                )
+            except Exception as retry_error:
+                logger.error(f"[Exa simple_search] Retry also failed: {retry_error}")
+                raise RuntimeError(f"Exa search failed: {str(retry_error)}") from retry_error
+        
+        sources = []
+        for result in results.results:
+            sources.append({
+                'title': getattr(result, 'title', 'Untitled'),
+                'url': getattr(result, 'url', ''),
+                'text': getattr(result, 'text', ''),
+                'publishedDate': getattr(result, 'publishedDate', ''),
+                'author': getattr(result, 'author', ''),
+                'score': getattr(result, 'score', 0.5),
+            })
+        
+        # Track usage
+        if user_id:
+            cost = 0.005  # ~0.5 cents per search
+            try:
+                self.track_exa_usage(user_id, cost)
+            except Exception as e:
+                logger.warning(f"[Exa simple_search] Failed to track usage: {e}")
+        
+        logger.info(f"[Exa simple_search] Found {len(sources)} sources for query: {query[:80]}...")
+        return sources
     
     def _map_source_type_to_category(self, source_types):
         """Map SourceType enum to Exa category parameter."""

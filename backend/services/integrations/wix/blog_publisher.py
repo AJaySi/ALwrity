@@ -5,6 +5,7 @@ Handles blog post creation, validation, and publishing to Wix.
 """
 
 import json
+import re
 import uuid
 import requests
 import jwt
@@ -398,6 +399,30 @@ def create_blog_post(
     # Ensure we only have 'nodes' in richContent for CREATE endpoint
     ricos_content = {'nodes': ricos_content['nodes']}
     
+    # SAFE ITEM 4: Prepend H1 title node if content doesn't start with one.
+    # The markdown typically starts at ## (H2) because the title is separate,
+    # but Wix renders the richContent as the full post body including the title.
+    # Without an H1, the post looks like it has no heading.
+    existing_first = ricos_content['nodes'][0] if ricos_content['nodes'] else None
+    has_h1 = existing_first and existing_first.get('type') == 'HEADING' and existing_first.get('headingData', {}).get('level') == 1
+    if not has_h1 and title:
+        title_node = {
+            'id': str(uuid.uuid4()),
+            'type': 'HEADING',
+            'nodes': [{
+                'id': str(uuid.uuid4()),
+                'type': 'TEXT',
+                'nodes': [],
+                'textData': {
+                    'text': str(title).strip(),
+                    'decorations': []
+                }
+            }],
+            'headingData': {'level': 1}
+        }
+        ricos_content['nodes'] = [title_node] + ricos_content['nodes']
+        logger.debug(f"Prepended H1 title node: '{str(title).strip()[:50]}'")
+    
     logger.debug(f"✅ richContent structure validated: {len(ricos_content['nodes'])} nodes, keys: {list(ricos_content.keys())}")
     
     # Minimal payload per Wix docs: title, memberId, and richContent
@@ -407,15 +432,39 @@ def create_blog_post(
             'title': str(title).strip() if title else "Untitled",
             'memberId': str(member_id).strip(),  # Required for third-party apps (validated above)
             'richContent': ricos_content,  # Must be a valid Ricos object with ONLY 'nodes'
+            'language': 'en',
         },
         'publish': bool(publish),
         'fieldsets': ['URL']  # Simplified fieldsets
     }
     
-    # Add excerpt only if content exists and is not empty (avoid None or empty strings)
-    excerpt = (content or '').strip()[:200] if content else None
-    if excerpt and len(excerpt) > 0:
-        blog_data['draftPost']['excerpt'] = str(excerpt)
+    # SAFE ITEM 1: Auto-generate seoSlug from title if not provided by SEO metadata
+    # Wix uses this for the URL path (e.g. /post/my-blog-title)
+    slug_source = None
+    if seo_metadata and seo_metadata.get('url_slug'):
+        slug_source = str(seo_metadata['url_slug']).strip()
+    elif title:
+        slug_source = re.sub(r'[^a-z0-9]+', '-', str(title).strip().lower()).strip('-')
+        slug_source = slug_source[:60].rstrip('-')
+    if slug_source:
+        blog_data['draftPost']['seoSlug'] = slug_source
+    
+    # SAFE ITEM 3: Better excerpt — prefer meta_description, then first plain-text paragraph
+    excerpt = None
+    if seo_metadata and seo_metadata.get('meta_description'):
+        excerpt = str(seo_metadata['meta_description']).strip()[:200]
+    if not excerpt and content:
+        for node in ricos_content['nodes']:
+            if node.get('type') == 'PARAGRAPH':
+                texts = []
+                for child in node.get('nodes', []):
+                    if child.get('type') == 'TEXT' and child.get('textData', {}).get('text'):
+                        texts.append(child['textData']['text'])
+                if texts:
+                    excerpt = ' '.join(texts).strip()[:200]
+                    break
+    if excerpt:
+        blog_data['draftPost']['excerpt'] = excerpt
     
     # Add cover image if provided
     if cover_image_url and import_image_func:
@@ -495,7 +544,6 @@ def create_blog_post(
     
     # Build SEO data from metadata if provided
     # NOTE: seoData is optional - if it causes issues, we can create post without it
-    seo_data = None
     if seo_metadata:
         try:
             seo_data = build_seo_data(seo_metadata, title)
@@ -506,13 +554,8 @@ def create_blog_post(
                 blog_data['draftPost']['seoData'] = seo_data
         except Exception as e:
             logger.warning(f"⚠️ Wix: SEO data build failed - {str(e)[:50]}")
-            wix_logger.add_warning(f"SEO build: {str(e)[:50]}")
-        
-        # Add SEO slug if provided
-        if seo_metadata.get('url_slug'):
-            blog_data['draftPost']['seoSlug'] = str(seo_metadata.get('url_slug')).strip()
     else:
-        logger.warning("⚠️ No SEO metadata provided to create_blog_post")
+        logger.debug("No SEO metadata provided to create_blog_post")
     
     try:
         # Extract wix-site-id from token if possible
@@ -534,7 +577,6 @@ def create_blog_post(
                 meta_site_id = instance_data.get('metaSiteId')
                 if isinstance(meta_site_id, str) and meta_site_id:
                     extra_headers['wix-site-id'] = meta_site_id
-                    headers['wix-site-id'] = meta_site_id
         except Exception:
             pass
         
@@ -574,156 +616,27 @@ def create_blog_post(
             logger.error(f"❌ Payload validation failed: {e}")
             raise
         
-        # Log full payload structure for debugging (sanitized)
-        logger.warning(f"📦 Full payload structure validation:")
-        logger.warning(f"  - draftPost type: {type(draft_post)}")
-        logger.warning(f"  - draftPost keys: {list(draft_post.keys())}")
-        logger.warning(f"  - richContent type: {type(draft_post.get('richContent'))}")
-        if 'richContent' in draft_post:
-            rc = draft_post['richContent']
-            logger.warning(f"  - richContent keys: {list(rc.keys()) if isinstance(rc, dict) else 'N/A'}")
-            logger.warning(f"  - richContent.nodes type: {type(rc.get('nodes'))}, count: {len(rc.get('nodes', []))}")
-            logger.warning(f"  - richContent.metadata type: {type(rc.get('metadata'))}")
-            logger.warning(f"  - richContent.documentStyle type: {type(rc.get('documentStyle'))}")
-        logger.warning(f"  - seoData type: {type(draft_post.get('seoData'))}")
-        if 'seoData' in draft_post:
-            seo = draft_post['seoData']
-            logger.warning(f"  - seoData keys: {list(seo.keys()) if isinstance(seo, dict) else 'N/A'}")
-            logger.warning(f"  - seoData.tags type: {type(seo.get('tags'))}, count: {len(seo.get('tags', []))}")
-            logger.warning(f"  - seoData.settings type: {type(seo.get('settings'))}")
-        if 'categoryIds' in draft_post:
-            logger.warning(f"  - categoryIds type: {type(draft_post.get('categoryIds'))}, count: {len(draft_post.get('categoryIds', []))}")
-        if 'tagIds' in draft_post:
-            logger.warning(f"  - tagIds type: {type(draft_post.get('tagIds'))}, count: {len(draft_post.get('tagIds', []))}")
-        
-        # Log a sample of the payload JSON to see exact structure (first 2000 chars)
-        try:
-            import json
-            payload_json = json.dumps(blog_data, indent=2, ensure_ascii=False)
-            logger.warning(f"📄 Payload JSON preview (first 3000 chars):\n{payload_json[:3000]}...")
-            
-            # Also log a deep structure inspection of richContent.nodes (first few nodes)
-            if 'richContent' in blog_data['draftPost']:
-                nodes = blog_data['draftPost']['richContent'].get('nodes', [])
-                if nodes:
-                    logger.warning(f"🔍 Inspecting first 5 richContent.nodes:")
-                    for i, node in enumerate(nodes[:5]):
-                        logger.warning(f"  Node {i+1}: type={node.get('type')}, keys={list(node.keys())}")
-                        # Check for any None values in node
-                        for key, value in node.items():
-                            if value is None:
-                                logger.error(f"    ⚠️ Node {i+1}.{key} is None!")
-                            elif isinstance(value, dict):
-                                for k, v in value.items():
-                                    if v is None:
-                                        logger.error(f"    ⚠️ Node {i+1}.{key}.{k} is None!")
-                        # Deep check: if it's a list-type node, inspect list items
-                        if node.get('type') in ['BULLETED_LIST', 'ORDERED_LIST']:
-                            list_items = node.get('nodes', [])
-                            if list_items:
-                                logger.warning(f"    List has {len(list_items)} items, checking first LIST_ITEM:")
-                                first_item = list_items[0]
-                                logger.warning(f"      LIST_ITEM keys: {list(first_item.keys())}")
-                                # Verify listItemData is NOT present (correct per Wix API spec)
-                                if 'listItemData' in first_item:
-                                    logger.error(f"      ❌ LIST_ITEM incorrectly has listItemData!")
-                                else:
-                                    logger.debug(f"      ✅ LIST_ITEM correctly has no listItemData")
-                                # Check nested PARAGRAPH nodes
-                                nested_nodes = first_item.get('nodes', [])
-                                if nested_nodes:
-                                    logger.warning(f"      LIST_ITEM has {len(nested_nodes)} nested nodes")
-                                    for n_idx, n_node in enumerate(nested_nodes[:2]):
-                                        logger.warning(f"        Nested node {n_idx+1}: type={n_node.get('type')}, keys={list(n_node.keys())}")
-        except Exception as e:
-            logger.warning(f"Could not serialize payload for logging: {e}")
-        
-        # Note: All node validation is done by validate_ricos_content() which runs earlier
-        # The recursive validation ensures all required data fields are present at any depth
+        # Log payload summary
+        logger.debug(f"Payload: draftPost keys={list(draft_post.keys())}, "
+                     f"nodes={len(draft_post.get('richContent', {}).get('nodes', []))}, "
+                     f"has_seo={'seoData' in draft_post}")
         
         # Final deep validation: Serialize and deserialize to catch any JSON-serialization issues
-        # This will raise an error if there are any objects that can't be serialized
         try:
             import json
-            test_json = json.dumps(blog_data, ensure_ascii=False)
-            test_parsed = json.loads(test_json)
-            logger.debug("✅ Payload JSON serialization test passed")
+            json.dumps(blog_data, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             logger.error(f"❌ Payload JSON serialization failed: {e}")
             raise ValueError(f"Payload contains non-serializable data: {e}")
         
-        # Final check: Ensure documentStyle and metadata are valid objects (not None, not empty strings)
+        # Clean up None values that Wix API would reject
         rc = blog_data['draftPost']['richContent']
-        if 'documentStyle' in rc:
-            doc_style = rc['documentStyle']
-            if doc_style is None or doc_style == "":
-                logger.warning("⚠️ documentStyle is None or empty string, removing it")
-                del rc['documentStyle']
-            elif not isinstance(doc_style, dict):
-                logger.warning(f"⚠️ documentStyle is not a dict ({type(doc_style)}), removing it")
-                del rc['documentStyle']
+        for field in ['documentStyle', 'metadata']:
+            if field in rc and (rc[field] is None or rc[field] == "" or not isinstance(rc[field], dict)):
+                del rc[field]
         
-        if 'metadata' in rc:
-            metadata = rc['metadata']
-            if metadata is None or metadata == "":
-                logger.warning("⚠️ metadata is None or empty string, removing it")
-                del rc['metadata']
-            elif not isinstance(metadata, dict):
-                logger.warning(f"⚠️ metadata is not a dict ({type(metadata)}), removing it")
-                del rc['metadata']
-        
-        # Check for any None values in critical nested structures
-        def check_none_in_dict(d, path=""):
-            """Recursively check for None values that shouldn't be there"""
-            issues = []
-            if isinstance(d, dict):
-                for key, value in d.items():
-                    current_path = f"{path}.{key}" if path else key
-                    if value is None:
-                        # Some fields can legitimately be None, but most shouldn't
-                        if key not in ['decorations', 'nodeStyle', 'props']:
-                            issues.append(current_path)
-                    elif isinstance(value, dict):
-                        issues.extend(check_none_in_dict(value, current_path))
-                    elif isinstance(value, list):
-                        for i, item in enumerate(value):
-                            if item is None:
-                                issues.append(f"{current_path}[{i}]")
-                            elif isinstance(item, dict):
-                                issues.extend(check_none_in_dict(item, f"{current_path}[{i}]"))
-            return issues
-        
-        none_issues = check_none_in_dict(blog_data['draftPost']['richContent'])
-        if none_issues:
-            logger.error(f"❌ Found None values in richContent at: {none_issues[:10]}")  # Limit to first 10
-            # Remove None values from critical paths
-            for issue_path in none_issues[:5]:  # Fix first 5
-                parts = issue_path.split('.')
-                try:
-                    obj = blog_data['draftPost']['richContent']
-                    for part in parts[:-1]:
-                        if '[' in part:
-                            key, idx = part.split('[')
-                            idx = int(idx.rstrip(']'))
-                            obj = obj[key][idx]
-                        else:
-                            obj = obj[part]
-                    final_key = parts[-1]
-                    if '[' in final_key:
-                        key, idx = final_key.split('[')
-                        idx = int(idx.rstrip(']'))
-                        obj[key][idx] = {}
-                    else:
-                        obj[final_key] = {}
-                    logger.warning(f"Fixed None value at {issue_path}")
-                except:
-                    pass
-        
-        # Log the final payload structure one more time before sending
-        logger.warning(f"📤 Final payload ready - draftPost keys: {list(blog_data['draftPost'].keys())}")
-        logger.warning(f"📤 RichContent nodes count: {len(blog_data['draftPost']['richContent'].get('nodes', []))}")
-        logger.warning(f"📤 RichContent has metadata: {bool(blog_data['draftPost']['richContent'].get('metadata'))}")
-        logger.warning(f"📤 RichContent has documentStyle: {bool(blog_data['draftPost']['richContent'].get('documentStyle'))}")
+        logger.info(f"📤 Publishing to Wix: title='{blog_data['draftPost'].get('title', '')}', "
+                     f"nodes={len(rc.get('nodes', []))}")
         
         result = blog_service.create_draft_post(access_token, blog_data, extra_headers or None)
         
@@ -734,6 +647,11 @@ def create_blog_post(
         logger.success(f"✅ Wix: Blog post created - ID: {post_id}")
         
         return result
+    except TypeError as e:
+        import traceback
+        logger.error(f"TypeError in create_blog_post: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
     except requests.RequestException as e:
         logger.error(f"Failed to create blog post: {e}")
         if hasattr(e, 'response') and e.response is not None:

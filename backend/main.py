@@ -81,6 +81,8 @@ from routers.campaign_creator import router as campaign_creator_router
 # Import hallucination detector router
 from api.hallucination_detector import router as hallucination_detector_router
 from api.writing_assistant import router as writing_assistant_router
+from api.charts import router as charts_router
+from api.links import router as links_router
 
 # Import research configuration router
 from api.research_config import router as research_config_router
@@ -254,6 +256,10 @@ router_manager.include_core_routers()
 router_manager.include_router_safely(subscription_router, "subscription")
 # Include hallucination detector explicitly (router_manager may skip silently on import failure)
 router_manager.include_router_safely(hallucination_detector_router, "hallucination_detector")
+# Include charts router (shared chart generation for blog writer, podcast, etc.)
+router_manager.include_router_safely(charts_router, "charts")
+# Include links router (internal & external link search and rewording)
+router_manager.include_router_safely(links_router, "links")
 router_manager.include_optional_routers()
 
 # SEO Dashboard endpoints

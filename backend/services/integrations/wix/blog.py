@@ -53,6 +53,7 @@ class WixBlogService:
         """Create draft post with consolidated logging"""
         from .logger import wix_logger
         import json
+        import traceback as tb
         
         # Build payload summary for logging
         payload_summary = {}
@@ -65,7 +66,14 @@ class WixBlogService:
             }
         
         request_headers = self.headers(access_token, extra_headers)
-        response = requests.post(f"{self.base_url}/blog/v3/draft-posts", headers=request_headers, json=payload)
+        try:
+            response = requests.post(f"{self.base_url}/blog/v3/draft-posts", headers=request_headers, json=payload)
+        except TypeError as e:
+            logger.error(f"TypeError during requests.post in create_draft_post: {e}")
+            logger.error(f"Traceback: {tb.format_exc()}")
+            logger.error(f"access_token type: {type(access_token)}")
+            logger.error(f"payload type: {type(payload)}, keys: {list(payload.keys()) if isinstance(payload, dict) else 'N/A'}")
+            raise
         
         # Consolidated error logging
         error_body = None

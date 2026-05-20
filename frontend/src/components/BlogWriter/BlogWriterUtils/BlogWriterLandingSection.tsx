@@ -1,4 +1,5 @@
 import React from 'react';
+import { Box, CircularProgress, Typography } from '@mui/material';
 import BlogWriterLanding from '../BlogWriterLanding';
 import ManualResearchForm from '../ManualResearchForm';
 
@@ -8,7 +9,10 @@ interface BlogWriterLandingSectionProps {
   currentPhase: string;
   navigateToPhase: (phase: string) => void;
   onResearchComplete: (research: any) => void;
+  restoreAttempted?: boolean;
 }
+
+const VALID_PHASES = ['research', 'outline', 'content', 'seo', 'publish'];
 
 export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> = ({
   research,
@@ -16,28 +20,50 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   currentPhase,
   navigateToPhase,
   onResearchComplete,
+  restoreAttempted = false,
 }) => {
-  // Only show landing/initial content when no research exists
-  // Phase navigation header is always visible, so this is just the initial content
   if (!research) {
-    // Show research form only when user explicitly navigated to research phase (clicked "Start Research")
     if (currentPhase === 'research') {
       return <ManualResearchForm onResearchComplete={onResearchComplete} />;
     }
-    
-    // Default: Always show landing page when no research exists
-    // This ensures landing page is shown on initial load
+
+    if (currentPhase === '' || !VALID_PHASES.includes(currentPhase)) {
+      return (
+        <BlogWriterLanding 
+          onStartWriting={() => {
+            navigateToPhase('research');
+          }}
+        />
+      );
+    }
+
+    if (restoreAttempted) {
+      return (
+        <BlogWriterLanding 
+          onStartWriting={() => {
+            navigateToPhase('research');
+          }}
+        />
+      );
+    }
+
     return (
-      <BlogWriterLanding 
-        onStartWriting={() => {
-          // Navigate to research phase to show the research form
-          navigateToPhase('research');
-        }}
-      />
+      <Box 
+        display="flex" 
+        flexDirection="column" 
+        alignItems="center" 
+        justifyContent="center" 
+        minHeight="300px"
+        gap={2}
+      >
+        <CircularProgress size={32} />
+        <Typography variant="body2" color="text.secondary">
+          Restoring your work...
+        </Typography>
+      </Box>
     );
   }
   
-  // If research exists, don't show landing section (phase content will be shown instead)
   return null;
 };
 

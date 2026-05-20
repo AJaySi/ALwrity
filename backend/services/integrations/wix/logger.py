@@ -66,7 +66,8 @@ class WixLogger:
                 if 'title' in dp:
                     parts.append(f"title='{str(dp['title'])[:50]}...'")
                 if 'richContent' in dp:
-                    nodes_count = len(dp['richContent'].get('nodes', []))
+                    nodes_val = dp['richContent'].get('nodes', [])
+                    nodes_count = nodes_val if isinstance(nodes_val, int) else len(nodes_val)
                     parts.append(f"nodes={nodes_count}")
                 if 'seoData' in dp:
                     parts.append("has_seoData")

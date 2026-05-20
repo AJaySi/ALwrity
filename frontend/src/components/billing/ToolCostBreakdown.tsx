@@ -42,7 +42,7 @@ const endpointToTool = (endpoint: string): string => {
     return 'Story Writer';
   }
   if (endpointLower.includes('podcast') || endpointLower.includes('podcast-maker')) {
-    return 'Podcast Maker';
+    return 'Podcast Creator';
   }
   if (endpointLower.includes('image') || endpointLower.includes('image-studio')) {
     return 'Image Studio';

@@ -20,6 +20,7 @@ export interface WASuggestResponse {
 
 class WritingAssistantService {
   private baseUrl: string;
+  private authTokenGetter: (() => Promise<string | null>) | null = null;
   constructor() {
     const getApiBaseUrl = () => {
       const url = process.env.REACT_APP_API_URL;
@@ -31,10 +32,25 @@ class WritingAssistantService {
     this.baseUrl = getApiBaseUrl();
   }
 
+  setAuthTokenGetter(getter: (() => Promise<string | null>) | null) {
+    this.authTokenGetter = getter;
+  }
+
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.authTokenGetter) {
+      const token = await this.authTokenGetter();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    return headers;
+  }
+
   async suggest(text: string): Promise<WASuggestion[]> {
     const resp = await fetch(`${this.baseUrl}/api/writing-assistant/suggest`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await this.getAuthHeaders(),
       body: JSON.stringify({ text, max_results: 1 })
     });
     if (!resp.ok) {

@@ -353,7 +353,11 @@ def wavespeed_text_response(
         
         raise Exception(f"WaveSpeed text generation failed: {str(e)}")
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+@retry(
+    retry=retry_if_exception(_should_retry_wavespeed_error),
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(6),
+)
 def wavespeed_structured_json_response(
     prompt: str,
     schema: Dict[str, Any],
@@ -608,4 +612,20 @@ def wavespeed_structured_json_response(
         error_msg = str(e) if str(e) else repr(e)
         error_type = type(e).__name__
         logger.error(f"❌ WaveSpeed structured JSON generation failed [{error_type}]: {error_msg}")
+        
+        # Surface balance/quota errors as HTTPException so upstream can show user-friendly messages
+        from fastapi import HTTPException
+        if "balance_not_enough" in error_msg or "403" in error_msg or "PermissionDenied" in error_type:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "insufficient_balance",
+                    "message": "WaveSpeed API balance is insufficient. Please top up your WaveSpeed account or switch to a different provider.",
+                    "usage_info": {
+                        "error_type": "insufficient_balance",
+                        "provider": "wavespeed",
+                        "suggestion": "Set GPT_PROVIDER=google in your environment to use Gemini instead, or add credits to your WaveSpeed account."
+                    }
+                }
+            )
         raise Exception(f"WaveSpeed structured JSON generation failed: {error_msg}")

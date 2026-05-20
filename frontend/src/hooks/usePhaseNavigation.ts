@@ -24,23 +24,24 @@ export const usePhaseNavigation = (
   // Initialize from localStorage if available
   // If no research exists, default to empty string to show landing page
   // Only default to 'research' if research already exists (resuming a session)
+  const VALID_PHASES = ['research', 'outline', 'content', 'seo', 'publish'];
+
   const getInitialPhase = (): string => {
     try {
       if (typeof window !== 'undefined') {
         const stored = window.localStorage.getItem('blogwriter_current_phase');
         if (stored) {
-          // If stored phase is 'research' but no research exists, show landing page instead
           if (stored === 'research' && !research) {
-            return ''; // Return empty to show landing page
+            return '';
           }
-          // For other phases, use stored value (user might be in middle of outline/content/seo/publish)
-          // Even if research doesn't exist, allow other phases to be restored (edge case)
           return stored;
+        }
+        const hashPhase = window.location.hash.replace('#', '');
+        if (hashPhase && VALID_PHASES.includes(hashPhase)) {
+          return hashPhase;
         }
       }
     } catch {}
-    // Default to empty string to show landing page when no research exists
-    // Will be set to 'research' when user clicks "Start Research"
     return research ? 'research' : '';
   };
 

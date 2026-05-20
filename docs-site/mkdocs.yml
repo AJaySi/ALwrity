@@ -223,7 +223,15 @@ nav:
       - SEO Analysis: features/blog-writer/seo-analysis.md
       - Implementation Spec: features/blog-writer/implementation-spec.md
     - SEO Dashboard:
+      - Getting Started: features/seo-dashboard/index.md
+      - Quick Start: features/seo-dashboard/quick-start.md
       - Overview: features/seo-dashboard/overview.md
+      - Tools Reference: features/seo-dashboard/tools-reference.md
+      - Individual Tools Guide: features/seo-dashboard/individual-tools-guide.md
+      - Workflows & Automation: features/seo-dashboard/workflows-guide.md
+      - AI Copilot Guide: features/seo-dashboard/ai-copilot.md
+      - Competitive Analysis: features/seo-dashboard/competitive-analysis.md
+      - Content Strategy Guide: features/seo-dashboard/content-strategy-guide.md
       - GSC Integration: features/seo-dashboard/gsc-integration.md
       - Metadata Generation: features/seo-dashboard/metadata.md
       - Design Document: features/seo-dashboard/design-document.md

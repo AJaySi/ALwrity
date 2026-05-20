@@ -139,7 +139,7 @@ export function usePolling<T = any>(
           onError?.(status.error || 'Task failed');
           
           // Check if this is a subscription error and trigger modal
-          if (status.error_status === 429 || status.error_status === 402) {
+          if (status.error_status === 429 || status.error_status === 402 || status.error_status === 403) {
             console.log('usePolling: Detected subscription error in task status', {
               error_status: status.error_status,
               error_data: status.error_data,
@@ -186,7 +186,7 @@ export function usePolling<T = any>(
         // Check if this is an axios error with subscription limit status
         // This is a fallback in case the interceptor doesn't catch it
         const axiosError = err as any;
-        if (axiosError?.response?.status === 429 || axiosError?.response?.status === 402) {
+        if (axiosError?.response?.status === 429 || axiosError?.response?.status === 402 || axiosError?.response?.status === 403) {
           // Trigger subscription error handler (modal will show)
           // Note: The interceptor may have already called this, but we call it again to be safe
           const handled = await triggerSubscriptionError(axiosError);

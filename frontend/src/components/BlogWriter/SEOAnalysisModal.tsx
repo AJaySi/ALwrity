@@ -166,6 +166,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   const [contentHash, setContentHash] = useState<string>('');
   const [isApplying, setIsApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
 
   // Debug logging only in development and when modal state changes meaningfully
   useEffect(() => {
@@ -213,6 +214,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
             // Validate cached data has required fields
             if (parsed && typeof parsed.overall_score === 'number' && parsed.category_scores) {
               console.log('✅ Using cached SEO analysis', { cacheKey, overall_score: parsed.overall_score });
+              setFromCache(true);
               setAnalysisResult(parsed);
               setIsAnalyzing(false);
               setProgress(100);
@@ -322,6 +324,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         generated_at: new Date().toISOString()
       };
       
+      setFromCache(false);
       setAnalysisResult(convertedResult);
 
       // Save to cache - use the same cacheKey that was used for checking
@@ -482,6 +485,14 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
               <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
                 SEO Analysis Results
               </Typography>
+              {fromCache && analysisResult?.generated_at && (
+                <Chip
+                  label={`Cached: ${new Date(analysisResult.generated_at).toLocaleString()}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem', height: 22, color: '#64748b', borderColor: '#cbd5e1' }}
+                />
+              )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Button
@@ -493,7 +504,7 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
                   runSEOAnalysis(true);
                 }}
               >
-                Refresh
+                {fromCache ? 'Re-Run Analysis' : 'Run Analysis'}
               </Button>
               <IconButton onClick={onClose} sx={{ color: 'text.secondary' }}>
                 <Close />

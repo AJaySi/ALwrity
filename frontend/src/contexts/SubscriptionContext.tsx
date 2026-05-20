@@ -41,8 +41,9 @@ interface SubscriptionContextType {
   subscription: SubscriptionStatus | null;
   loading: boolean;
   error: string | null;
-  checkSubscription: () => Promise<void>;
+  checkSubscription: (force?: boolean) => Promise<void>;
   refreshSubscription: () => Promise<void>;
+  verifyCheckout: () => Promise<void>;
   showExpiredModal: () => void;
   hideExpiredModal: () => void;
 }
@@ -82,12 +83,12 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     subscriptionRef.current = subscription;
   }, [subscription]);
 
-  const checkSubscription = useCallback(async () => {
+  const checkSubscription = useCallback(async (force = false) => {
     // Throttle subscription checks to prevent excessive API calls
     const now = Date.now();
     const THROTTLE_MS = 5000; // 5 seconds minimum between checks
     
-    if (now - lastCheckTime < THROTTLE_MS) {
+    if (!force && now - lastCheckTime < THROTTLE_MS) {
       console.log('SubscriptionContext: Check throttled (5s)');
       return;
     }
@@ -304,8 +305,44 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   }, [lastCheckTime, planSignature, showModal, modalErrorData, lastModalShowTime, graceUntil, isUsageLimitModal]);
 
   const refreshSubscription = useCallback(async () => {
-    await checkSubscription();
+    await checkSubscription(true); // Force bypass throttle
   }, [checkSubscription]);
+
+  const verifyCheckout = useCallback(async () => {
+    const userId = localStorage.getItem('user_id') || 'anonymous';
+    if (userId === 'anonymous') {
+      console.log('[verifyCheckout] User not authenticated, skipping');
+      return;
+    }
+
+    console.log('[verifyCheckout] Querying /api/subscription/verify-checkout for user:', userId);
+    try {
+      const response = await apiClient.get(`/api/subscription/verify-checkout/${userId}`);
+      const subscriptionData = response.data.data;
+
+      console.log('[verifyCheckout] Result:', {
+        active: subscriptionData?.active,
+        plan: subscriptionData?.plan,
+        source: subscriptionData?.source
+      });
+
+      setSubscription(subscriptionData);
+      subscriptionRef.current = subscriptionData;
+
+      const newSignature = `${subscriptionData?.plan || ''}:${subscriptionData?.tier || ''}`;
+      if (newSignature && newSignature !== planSignature) {
+        console.log('[verifyCheckout] Plan change detected:', planSignature, '→', newSignature);
+        setPlanSignature(newSignature);
+        setGraceUntil(Date.now() + 5 * 60 * 1000);
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      console.error('[verifyCheckout] Failed:', { status, detail, message: err?.message });
+      // Do NOT fall back to checkSubscription — it returns stale DB data.
+      // Let the polling retry verifyCheckout on the next attempt.
+    }
+  }, [planSignature]);
 
   const showExpiredModal = useCallback(() => {
     setIsUsageLimitModal(false);
@@ -572,8 +609,64 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     window.addEventListener('subscription-updated', handleSubscriptionUpdate);
     window.addEventListener('user-authenticated', handleUserAuth);
 
+    // Checkout success: if URL has ?subscription=success, poll with verifyCheckout
+    // until subscription becomes active (not free). Uses refs to avoid stale closures.
+    const urlParams = new URLSearchParams(window.location.search);
+    const isCheckoutSuccess = urlParams.get('subscription') === 'success';
+
+    let checkoutPollInterval: ReturnType<typeof setInterval> | null = null;
+
+    if (isCheckoutSuccess) {
+      console.log('[CheckoutPoll] Checkout success detected, starting verification polling');
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      checkoutPollInterval = setInterval(async () => {
+        attempts++;
+        const currentSubscription = subscriptionRef.current;
+        console.log(`[CheckoutPoll] Attempt ${attempts}/${maxAttempts}, current plan: ${currentSubscription?.plan || 'unknown'}`);
+
+        // Check if subscription is already active (not free/none)
+        if (currentSubscription && currentSubscription.active && currentSubscription.plan !== 'free' && currentSubscription.plan !== 'none') {
+          console.log('[CheckoutPoll] Subscription confirmed active:', currentSubscription.plan, '- stopping poll');
+          clearInterval(checkoutPollInterval!);
+          checkoutPollInterval = null;
+          // Clean URL to remove ?subscription=success
+          try {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (e) {
+            // Ignore URL cleanup errors
+          }
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          console.log('[CheckoutPoll] Polling exhausted, subscription may still be processing');
+          clearInterval(checkoutPollInterval!);
+          checkoutPollInterval = null;
+          // Clean URL even on exhaustion
+          try {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (e) {
+            // Ignore
+          }
+          return;
+        }
+
+        try {
+          await verifyCheckout();
+        } catch (err) {
+          console.error('[CheckoutPoll] Verification failed:', err);
+          // Don't clear interval on error - retry on next attempt
+        }
+      }, 3000);
+    }
+
     return () => {
       clearInterval(interval);
+      if (checkoutPollInterval) {
+        clearInterval(checkoutPollInterval);
+      }
       window.removeEventListener('subscription-updated', handleSubscriptionUpdate);
       window.removeEventListener('user-authenticated', handleUserAuth);
     };
@@ -585,6 +678,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     error,
     checkSubscription,
     refreshSubscription,
+    verifyCheckout,
     showExpiredModal,
     hideExpiredModal,
   };

@@ -156,10 +156,13 @@ class WixPublishRequest(BaseModel):
     content: str
     cover_image_url: Optional[str] = None
     category_ids: Optional[list] = None
+    category_names: Optional[list] = None
     tag_ids: Optional[list] = None
+    tag_names: Optional[list] = None
     publish: bool = True
-    # Optional access token for test-real publish flow
     access_token: Optional[str] = None
+    member_id: Optional[str] = None
+    seo_metadata: Optional[Dict[str, Any]] = None
 class WixCreateCategoryRequest(BaseModel):
     access_token: str
     label: str
@@ -398,31 +401,29 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
 
 
 @router.get("/connection/status")
-async def get_connection_status(current_user: dict = Depends(get_current_user)) -> WixConnectionStatus:
+async def get_connection_status(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """
-    Check Wix connection status and permissions
-    
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        Connection status and permissions
+    Check Wix connection status and permissions.
+    Returns connected: false when no tokens are stored (instead of 401).
     """
     try:
         token_info = _resolve_valid_wix_token(current_user)
         access_token = token_info["access_token"]
         site_info = wix_service.get_site_info(access_token)
         permissions = wix_service.check_blog_permissions(access_token)
-        return WixConnectionStatus(
-            connected=True,
-            has_permissions=permissions.get("has_permissions", False),
-            site_info=site_info,
-            permissions=permissions
-        )
+        return {
+            "connected": True,
+            "has_permissions": permissions.get("has_permissions", False),
+            "site_info": site_info,
+            "permissions": permissions
+        }
+    except HTTPException as e:
+        if e.status_code == 401:
+            return {"connected": False, "has_permissions": False}
+        raise
     except Exception as e:
         logger.error(f"Failed to check connection status: {e}")
-        mapped = _map_wix_error(e, "Failed to check Wix connection status")
-        raise mapped
+        return {"connected": False, "has_permissions": False}
 
 
 @router.get("/status")
@@ -450,41 +451,81 @@ async def get_wix_status(current_user: dict = Depends(get_current_user)) -> Dict
 @router.post("/publish")
 async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """
-    Publish blog post to Wix
+    Publish blog post to Wix using server-stored OAuth tokens.
     
-    Args:
-        request: Blog post data
-        current_user: Current authenticated user
-        
-    Returns:
-        Published blog post information
+    The backend resolves the access token from the database (via
+    _resolve_valid_wix_token), so callers do NOT need to pass
+    access_token unless they want to override the stored one.
     """
     try:
-        token_info = _resolve_valid_wix_token(current_user)
-        access_token = token_info["access_token"]
+        if request.access_token:
+            from services.integrations.wix.utils import normalize_token_string
+            access_token = normalize_token_string(request.access_token)
+        else:
+            try:
+                token_info = _resolve_valid_wix_token(current_user)
+                access_token = token_info["access_token"]
+            except HTTPException:
+                access_token = None
 
-        member_id = token_info.get("member_id") or wix_service.extract_member_id_from_access_token(access_token)
+        if not access_token:
+            return {
+                "success": False,
+                "error": "Wix account not connected. Connect your Wix account first.",
+            }
+
+        member_id = request.member_id
+        if not member_id:
+            member_id = wix_service.extract_member_id_from_access_token(access_token)
         if not member_id:
             member_info = wix_service.get_current_member(access_token)
             member_id = (member_info.get("member") or {}).get("id") or member_info.get("id")
         if not member_id:
-            raise HTTPException(status_code=401, detail="Unable to resolve Wix member ID")
+            return {
+                "success": False,
+                "error": "Unable to resolve Wix member ID. Please reconnect your Wix account.",
+            }
+
+        # Resolve categories: accept IDs or names (looked up/created)
+        category_ids = request.category_ids or request.category_names
+        tag_ids = request.tag_ids or request.tag_names
+
+        seo_metadata = request.seo_metadata
+        if seo_metadata:
+            if not category_ids and seo_metadata.get("blog_categories"):
+                category_ids = seo_metadata.get("blog_categories")
+            if not tag_ids and seo_metadata.get("blog_tags"):
+                tag_ids = seo_metadata.get("blog_tags")
+
+        # Ensure category_ids and tag_ids are lists of strings (not ints)
+        if category_ids:
+            category_ids = [str(c) for c in category_ids if c is not None]
+        if tag_ids:
+            tag_ids = [str(t) for t in tag_ids if t is not None]
 
         result = wix_service.create_blog_post(
             access_token=access_token,
             title=request.title,
             content=request.content,
             cover_image_url=request.cover_image_url,
-            category_ids=request.category_ids,
-            tag_ids=request.tag_ids,
+            category_ids=category_ids,
+            tag_ids=tag_ids,
             publish=request.publish,
             member_id=member_id,
+            seo_metadata=seo_metadata,
         )
         post = result.get("draftPost") or result.get("post") or result
+        raw_url = post.get("url")
+        if isinstance(raw_url, dict):
+            post_url = raw_url.get("base", "").rstrip("/") + "/" + raw_url.get("path", "").lstrip("/")
+        elif isinstance(raw_url, str):
+            post_url = raw_url
+        else:
+            post_url = None
         return {
             "success": True,
-            "post_id": post.get("id"),
-            "url": post.get("url"),
+            "post_id": str(post.get("id", "")),
+            "url": post_url,
             "publish_state": "PUBLISHED" if request.publish else "DRAFT"
         }
     except Exception as e:

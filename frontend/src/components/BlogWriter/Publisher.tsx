@@ -3,8 +3,8 @@ import { useCopilotAction } from '@copilotkit/react-core';
 import { BlogSEOMetadataResponse } from '../../services/blogWriterApi';
 import { apiClient } from '../../api/client';
 import { wordpressAPI, WordPressSite, WordPressPublishRequest } from '../../api/wordpress';
-import { validateAndRefreshWixTokens } from '../../utils/wixTokenUtils';
 import WixConnectModal from './BlogWriterUtils/WixConnectModal';
+import { useWixPublish } from '../../hooks/useWixPublish';
 
 interface PublisherProps {
   buildFullMarkdown: () => string;
@@ -34,48 +34,24 @@ const saveCompleteBlogAsset = async (
 
 const useCopilotActionTyped = useCopilotAction as any;
 
-interface WixConnectionStatus {
-  connected: boolean;
-  has_permissions: boolean;
-  site_info?: any;
-  permissions?: any;
-  error?: string;
-}
-
 export const Publisher: React.FC<PublisherProps> = ({
   buildFullMarkdown,
   convertMarkdownToHTML,
   seoMetadata
 }) => {
-  const [wixConnectionStatus, setWixConnectionStatus] = useState<WixConnectionStatus | null>(null);
-  const [checkingWixStatus, setCheckingWixStatus] = useState(false);
+  const {
+    publishToWix,
+    showWixConnectModal,
+    closeWixConnectModal,
+    handleWixConnectionSuccess,
+  } = useWixPublish();
+
   const [wordpressSites, setWordpressSites] = useState<WordPressSite[]>([]);
   const [checkingWordPressStatus, setCheckingWordPressStatus] = useState(false);
-  const [showWixConnectModal, setShowWixConnectModal] = useState(false);
-  const [pendingWixPublish, setPendingWixPublish] = useState<(() => Promise<any>) | null>(null);
 
-  // Check platform connection statuses on component mount
   useEffect(() => {
-    checkWixConnectionStatus();
     checkWordPressConnectionStatus();
   }, []);
-
-  const checkWixConnectionStatus = async () => {
-    setCheckingWixStatus(true);
-    try {
-      const response = await apiClient.get('/api/wix/connection/status');
-      setWixConnectionStatus(response.data);
-    } catch (error) {
-      console.error('Failed to check Wix connection status:', error);
-      setWixConnectionStatus({
-        connected: false,
-        has_permissions: false,
-        error: 'Failed to check connection status'
-      });
-    } finally {
-      setCheckingWixStatus(false);
-    }
-  };
 
   const checkWordPressConnectionStatus = async () => {
     setCheckingWordPressStatus(true);
@@ -83,8 +59,6 @@ export const Publisher: React.FC<PublisherProps> = ({
       const status = await wordpressAPI.getStatus();
       setWordpressSites(status.sites || []);
     } catch (error: any) {
-      // getStatus now handles 404 gracefully, so we should rarely hit this
-      // Only log non-404 errors
       if (error?.response?.status !== 404) {
         console.error('Failed to check WordPress connection status:', error);
       }
@@ -94,132 +68,6 @@ export const Publisher: React.FC<PublisherProps> = ({
     }
   };
 
-  // Helper function to publish to Wix
-  const publishToWix = async (md: string, metadata: BlogSEOMetadataResponse | null, accessToken?: string): Promise<any> => {
-    // Get access token if not provided
-    if (!accessToken) {
-      const tokenResult = await validateAndRefreshWixTokens();
-      if (!tokenResult.accessToken) {
-        return {
-          success: false,
-          message: 'Wix tokens not available. Please connect your Wix account.',
-          action_required: 'connect_wix'
-        };
-      }
-      accessToken = tokenResult.accessToken;
-    }
-
-    // Extract title from SEO metadata or markdown
-    const title = metadata?.seo_title || (() => {
-      const titleMatch = md.match(/^#\s+(.+)$/m);
-      return titleMatch ? titleMatch[1] : 'Blog Post from ALwrity';
-    })();
-
-    // Extract cover image URL, skip if base64 (Wix needs HTTP URL)
-    let coverImageUrl: string | undefined = undefined;
-    if (metadata?.open_graph?.image) {
-      const imageUrl = metadata.open_graph.image;
-      // Skip base64 images - Wix import_image needs HTTP/HTTPS URL
-      if (typeof imageUrl === 'string' && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
-        coverImageUrl = imageUrl;
-      } else {
-        console.warn('Skipping cover image - Wix requires HTTP/HTTPS URL, received:', imageUrl?.substring(0, 50));
-      }
-    }
-
-    try {
-      // Publish using same endpoint as WixTestPage
-      // Backend will lookup/create category and tag IDs from names if needed
-      const response = await apiClient.post('/api/wix/test/publish/real', {
-        title: title,
-        content: md, // Use markdown, backend converts it
-        cover_image_url: coverImageUrl,
-        // Pass category/tag names - backend will lookup existing or create new ones
-        category_names: metadata?.blog_categories || [],
-        tag_names: metadata?.blog_tags || [],
-        publish: true,
-        access_token: accessToken,
-        member_id: undefined, // Let backend derive from token
-        seo_metadata: metadata ? {
-          seo_title: metadata.seo_title,
-          meta_description: metadata.meta_description,
-          focus_keyword: metadata.focus_keyword,
-          blog_tags: metadata.blog_tags || [], // Used for SEO keywords
-          social_hashtags: metadata.social_hashtags || [],
-          open_graph: metadata.open_graph || {},
-          twitter_card: metadata.twitter_card || {},
-          canonical_url: metadata.canonical_url
-        } : undefined
-      });
-
-      if (response.data.success) {
-        return {
-          success: true,
-          url: response.data.url,
-          post_id: response.data.post_id,
-          message: 'Blog post published successfully to Wix!'
-        };
-      } else {
-        return {
-          success: false,
-          message: response.data.error || 'Failed to publish to Wix'
-        };
-      }
-    } catch (error: any) {
-      // If auth error, token may be invalid - try refreshing or reconnect
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        // Try to refresh one more time
-        const tokenResult = await validateAndRefreshWixTokens();
-        if (tokenResult.needsReconnect) {
-          const publishFunction = async () => {
-            return await publishToWix(md, metadata);
-          };
-          setPendingWixPublish(() => publishFunction);
-          setShowWixConnectModal(true);
-          return {
-            success: false,
-            message: 'Wix tokens expired. Please reconnect your Wix account.',
-            action_required: 'reconnect_wix'
-          };
-        }
-        // If refresh worked, retry once
-        if (tokenResult.accessToken) {
-          return await publishToWix(md, metadata, tokenResult.accessToken);
-        }
-      }
-      
-      return {
-        success: false,
-        message: `Failed to publish to Wix: ${error.response?.data?.detail || error.message}`
-      };
-    }
-  };
-
-  // Handle Wix connection success - retry publish
-  const handleWixConnectionSuccess = async () => {
-    if (pendingWixPublish) {
-      const publishFn = pendingWixPublish;
-      setPendingWixPublish(null);
-      // Small delay to ensure tokens are saved in sessionStorage
-      setTimeout(async () => {
-        try {
-          // Retry the publish - this will be executed and return result
-          // Note: The result won't show in CopilotKit UI since we're outside the action handler
-          // But the publish will succeed and user will see their blog on Wix
-          const result = await publishFn();
-          console.log('Wix publish after connection:', result);
-          // Optionally show a success notification
-          if (result.success) {
-            // Publish succeeded - user's blog is now on Wix
-            console.log('Blog published to Wix successfully after connection');
-          }
-        } catch (error) {
-          console.error('Error retrying publish after connection:', error);
-        }
-      }, 500);
-    }
-  };
-  // Enhanced publish action with Wix support
   useCopilotActionTyped({
     name: 'publishToPlatform',
     description: 'Publish the blog to Wix or WordPress',
@@ -232,25 +80,7 @@ export const Publisher: React.FC<PublisherProps> = ({
       const html = convertMarkdownToHTML(md);
       
       if (platform === 'wix') {
-        // Proactively validate and refresh tokens
-        const tokenResult = await validateAndRefreshWixTokens();
-        
-        if (tokenResult.needsReconnect || !tokenResult.accessToken) {
-          // Store the publish function to retry after connection
-          const publishFunction = async () => {
-            return await publishToWix(md, seoMetadata);
-          };
-          setPendingWixPublish(() => publishFunction);
-          setShowWixConnectModal(true);
-          return {
-            success: false,
-            message: 'Wix account not connected. Please connect your Wix account to publish.',
-            action_required: 'connect_wix'
-          };
-        }
-
-        // We have a valid access token, proceed with publishing
-        const wixResult = await publishToWix(md, seoMetadata, tokenResult.accessToken);
+        const wixResult = await publishToWix(md, seoMetadata);
         if (wixResult.success) {
           saveCompleteBlogAsset(
             seoMetadata?.seo_title || 'Blog Post',
@@ -260,7 +90,6 @@ export const Publisher: React.FC<PublisherProps> = ({
         }
         return wixResult;
       } else if (platform === 'wordpress') {
-        // WordPress publishing
         if (!seoMetadata) {
           return { 
             success: false, 
@@ -268,7 +97,6 @@ export const Publisher: React.FC<PublisherProps> = ({
           };
         }
 
-        // Check if user has connected WordPress sites
         if (wordpressSites.length === 0) {
           return {
             success: false,
@@ -277,7 +105,6 @@ export const Publisher: React.FC<PublisherProps> = ({
           };
         }
 
-        // Find first active site, or use first site if none are active
         const activeSite = wordpressSites.find(site => site.is_active) || wordpressSites[0];
         if (!activeSite) {
           return {
@@ -287,16 +114,13 @@ export const Publisher: React.FC<PublisherProps> = ({
           };
         }
 
-        // Extract title from SEO metadata or markdown
         const title = seoMetadata.seo_title || (() => {
           const titleMatch = md.match(/^#\s+(.+)$/m);
           return titleMatch ? titleMatch[1] : 'Blog Post from ALwrity';
         })();
 
-        // Extract excerpt from SEO metadata
         const excerpt = seoMetadata.meta_description || '';
 
-        // Build WordPress publish request
         const publishRequest: WordPressPublishRequest = {
           site_id: activeSite.id,
           title: title,
@@ -395,10 +219,7 @@ export const Publisher: React.FC<PublisherProps> = ({
     <>
       <WixConnectModal
         isOpen={showWixConnectModal}
-        onClose={() => {
-          setShowWixConnectModal(false);
-          setPendingWixPublish(null);
-        }}
+        onClose={closeWixConnectModal}
         onConnectionSuccess={handleWixConnectionSuccess}
       />
     </>

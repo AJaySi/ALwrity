@@ -107,7 +107,6 @@ const App: React.FC = () => {
 
   // Initialize app - loading state will be managed by InitialRouteHandler
   useEffect(() => {
-    // Remove manual health check - connection errors are handled by ErrorBoundary
     setLoading(false);
   }, []);
 
