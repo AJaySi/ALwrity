@@ -46,10 +46,10 @@ import models.platform_insights_monitoring_models
 import models.agent_activity_models
 import models.daily_workflow_models
 
+from services.workspace_paths import get_workspace_root, get_user_workspace_dir
+
 # Database configuration
-# Get project root (3 levels up from services/database.py: services -> backend -> root)
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-WORKSPACE_DIR = os.path.join(ROOT_DIR, 'workspace')
+WORKSPACE_DIR = str(get_workspace_root())
 
 # Engine cache for multi-tenant support
 _user_engines = {}
@@ -95,7 +95,7 @@ def _sanitize_user_id(user_id: str) -> str:
 def ensure_user_workspace_db_directory(user_id: str) -> str:
     """Ensure modern `db/` directory exists, migrating legacy `database/` when safe."""
     safe_user_id = _sanitize_user_id(user_id)
-    user_workspace = os.path.join(WORKSPACE_DIR, f"workspace_{safe_user_id}")
+    user_workspace = str(get_user_workspace_dir(user_id))
     db_dir = os.path.join(user_workspace, 'db')
     legacy_db_dir = os.path.join(user_workspace, 'database')
 
@@ -126,7 +126,7 @@ def ensure_user_workspace_db_directory(user_id: str) -> str:
 def get_user_db_path(user_id: str) -> str:
     """Get the database path for a specific user."""
     safe_user_id = _sanitize_user_id(user_id)
-    user_workspace = os.path.join(WORKSPACE_DIR, f"workspace_{safe_user_id}")
+    user_workspace = str(get_user_workspace_dir(user_id))
     db_dir = ensure_user_workspace_db_directory(user_id)
     
     # Check for legacy naming convention first (to support existing data)
