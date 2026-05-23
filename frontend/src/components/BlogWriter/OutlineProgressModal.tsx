@@ -27,6 +27,8 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
     if (message.includes('All LLM providers failed') || message.includes('All configured LLM providers failed')) {
       return '⚠️ All AI providers are currently unavailable. Please check your API keys or try again later.';
     }
+    
+    // Outline phase messages
     if (message.includes('Starting outline generation')) {
       return '🧩 Starting to create your blog outline...';
     }
@@ -68,6 +70,28 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
     }
     if (message.includes('Outline generated successfully')) {
       return '🎉 Success! Your personalized blog outline is ready!';
+    }
+    
+    // Content generation phase messages
+    if (message.includes('Alwrity is preparing your blog content')) {
+      return '⏳ Alwrity is getting ready to write your blog — this usually takes 20–40 seconds. Your outline and research are being packaged for the AI.';
+    }
+    if (message.includes('Packaging your outline sections and research data')) {
+      return '📦 Organizing your outline sections, key points, and research data so the AI can write each section with full context.';
+    }
+    if (message.includes('Found existing content in cache')) {
+      return '⚡ Found previously generated content — loading it instantly so you don\'t have to wait!';
+    }
+    if (message.includes('AI is writing each section with research-backed insights')) {
+      return '🤖 AI is writing each section of your blog, weaving in research findings, key points, and maintaining a consistent voice throughout.';
+    }
+    if (message.includes('Polishing content')) {
+      return '✨ Reviewing and polishing your content — improving sentence flow, paragraph structure, and readability for a professional finish.';
+    }
+    if (message.includes('Content generation complete')) {
+      return message
+        .replace('Content generation complete!', '✅ Content generation complete!')
+        .replace('Next up:', '\n\n📌 Next phase:');
     }
     
     // Return the original message if no mapping found
@@ -137,7 +161,9 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
               fontWeight: '700',
               textShadow: '2px 2px 4px rgba(0, 0, 0, 0.3)'
             }}>
-              {titleOverride || (status === 'complete' ? '🎉 Outline Ready!' : status === 'error' ? '❌ Generation Failed' : '🧩 Creating Your Blog Outline')}
+              {titleOverride
+                ? (status === 'complete' ? '🎉 Content Ready!' : status === 'error' ? '❌ Generation Failed' : '📝 Generating Your Blog Content')
+                : (status === 'complete' ? '🎉 Outline Ready!' : status === 'error' ? '❌ Generation Failed' : '🧩 Creating Your Blog Outline')}
             </h2>
             
             {/* Progress Bar */}
@@ -165,15 +191,15 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
             }}>
               {titleOverride
                 ? (status === 'complete' 
-                    ? 'Your AI-generated blog content is ready!'
+                    ? '✅ Your blog content has been generated! Review it in the editor, then optimize for SEO.'
                     : status === 'error'
-                      ? 'Something went wrong during generation'
-                      : 'AI is generating your blog content...')
+                      ? 'Content generation encountered an issue. You can retry from the content phase.'
+                      : 'Alwrity is writing your blog content using AI...')
                 : (status === 'complete' 
-                    ? 'Your AI-powered blog outline is ready to use!'
+                    ? '✅ Your blog outline is ready! Review and confirm it, then proceed to generate content.'
                     : status === 'error' 
-                      ? 'Something went wrong during outline generation'
-                      : 'AI is analyzing your research and creating the perfect blog structure...')}
+                      ? 'Outline generation encountered an issue. Please try again.'
+                      : 'Alwrity is analyzing your research and building your blog structure...')}
             </p>
           </div>
         </div>
@@ -188,14 +214,21 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
               padding: '16px',
               color: '#dc2626'
             }}>
-              <strong>Error:</strong> {error}
+              <div style={{ fontWeight: '700', marginBottom: '4px' }}>❌ Error</div>
+              <div style={{ fontSize: '14px', color: '#991b1b', lineHeight: '1.5' }}>
+                {error.includes('You do not have access') 
+                  ? 'You do not have access to the blog writer. Please check your subscription or account permissions.'
+                  : error.includes('balance')
+                    ? 'Your API balance is insufficient. Please top up your account or switch to a different provider.'
+                    : error}
+              </div>
             </div>
           ) : (
             <>
               {/* Current Status */}
               <div style={{
-                backgroundColor: '#f0f9ff',
-                border: '1px solid #bae6fd',
+                backgroundColor: status === 'complete' ? '#f0fdf4' : '#f0f9ff',
+                border: `1px solid ${status === 'complete' ? '#bbf7d0' : '#bae6fd'}`,
                 borderRadius: '8px',
                 padding: '16px',
                 marginBottom: '20px'
@@ -203,7 +236,7 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
                 <div style={{ 
                   fontSize: '14px', 
                   fontWeight: '600', 
-                  color: '#0369a1', 
+                  color: status === 'complete' ? '#15803d' : '#0369a1', 
                   marginBottom: '8px',
                   display: 'flex',
                   alignItems: 'center',
@@ -215,16 +248,17 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
                     height: '8px',
                     borderRadius: '50%',
                     backgroundColor: status === 'complete' ? '#10b981' : '#3b82f6',
-                    animation: status === 'executing' ? 'pulse 2s infinite' : 'none'
+                    animation: status === 'running' ? 'pulse 2s infinite' : 'none'
                   }} />
-                  Current Status
+                  {status === 'complete' ? 'Generation Complete' : 'Current Status'}
                 </div>
                 <div style={{ 
                   fontSize: '15px', 
-                  color: '#1e40af',
-                  lineHeight: '1.5'
+                  color: status === 'complete' ? '#166534' : '#1e40af',
+                  lineHeight: '1.5',
+                  whiteSpace: 'pre-wrap'
                 }}>
-                  {latestMessage ? getUserFriendlyMessage(latestMessage) : 'Preparing to generate your outline...'}
+                  {latestMessage ? getUserFriendlyMessage(latestMessage) : 'Preparing...'}
                 </div>
               </div>
 
@@ -235,7 +269,7 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
                     margin: '0 0 12px 0', 
                     fontSize: '14px', 
                     fontWeight: '600', 
-                    color: '#374151' 
+                    color: '#374151'
                   }}>
                     Progress Timeline
                   </h4>

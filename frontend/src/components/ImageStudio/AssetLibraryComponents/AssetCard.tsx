@@ -33,6 +33,7 @@ interface AssetCardProps {
   onShare: (asset: ContentAsset) => void;
   onDelete: (id: number) => void;
   onRestore: (asset: ContentAsset) => void;
+  onOpenBlogAsset?: (asset: ContentAsset) => void;
 }
 
 export const AssetCard: React.FC<AssetCardProps> = ({
@@ -44,6 +45,7 @@ export const AssetCard: React.FC<AssetCardProps> = ({
   onShare,
   onDelete,
   onRestore,
+  onOpenBlogAsset,
 }) => {
   return (
     <Card
@@ -229,6 +231,18 @@ export const AssetCard: React.FC<AssetCardProps> = ({
                 sx={{ color: '#667eea' }}
               >
                 <Box sx={{ fontSize: 20 }}>🔬</Box>
+              </IconButton>
+            </Tooltip>
+          )}
+          {/* Open Blog Asset button for blog_writer text assets */}
+          {asset.source_module === 'blog_writer' && asset.asset_type === 'text' && onOpenBlogAsset && (
+            <Tooltip title="Open in Blog Writer">
+              <IconButton
+                size="small"
+                onClick={() => onOpenBlogAsset(asset)}
+                sx={{ color: '#3b82f6' }}
+              >
+                <Box sx={{ fontSize: 20 }}>✏️</Box>
               </IconButton>
             </Tooltip>
           )}

@@ -6,9 +6,10 @@ import { BrainstormButton } from './BrainstormButton';
 
 interface ManualResearchFormProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
+  onBeforeResearchSubmit?: (keywords: string, blogLength: string) => Promise<void>;
 }
 
-export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete }) => {
+export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onBeforeResearchSubmit }) => {
   const [keywords, setKeywords] = useState('');
   const [blogLength, setBlogLength] = useState('1000');
 
@@ -30,6 +31,7 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
       return;
     }
     try {
+      await onBeforeResearchSubmit?.(trimmed, blogLength);
       await startResearch(trimmed, blogLength);
     } catch (err) {
       alert(`Research failed: ${err instanceof Error ? err.message : 'Unknown error'}`);

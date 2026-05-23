@@ -241,29 +241,41 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
         console.log('🔄 Force refresh requested, skipping cache check');
       }
 
-      setProgressMessage('Starting SEO analysis...');
-
-      // Simulated progress
-      const progressStages = [
-        { progress: 20, message: 'Extracting keywords from research data...' },
-        { progress: 40, message: 'Analyzing content structure and readability...' },
-        { progress: 70, message: 'Generating AI-powered insights...' },
-        { progress: 90, message: 'Compiling analysis results...' },
-        { progress: 100, message: 'SEO analysis completed!' }
-      ];
-
-      for (const stage of progressStages) {
-        setProgress(stage.progress);
-        setProgressMessage(stage.message);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Backend call
-      const response = await apiClient.post('/api/blog-writer/seo/analyze', {
+      // Backend call — run concurrently with progress simulation
+      // Use longer timeout (120s) since SEO analysis can take 40-60s
+      const responsePromise = apiClient.post('/api/blog-writer/seo/analyze', {
         blog_content: blogContent,
         blog_title: blogTitle,
         research_data: researchData
-      });
+      }, { timeout: 120000 });
+
+      // Simulated progress runs alongside the API call to keep the user informed.
+      // Each stage.at is cumulative ms from start. Cancelled when the API returns.
+      let progressCancelled = false;
+      const progressStages = [
+        { at: 2000, progress: 10, message: 'Extracting keywords from research data...' },
+        { at: 8000, progress: 25, message: 'Analyzing content structure and readability...' },
+        { at: 20000, progress: 40, message: 'Evaluating heading hierarchy and flow...' },
+        { at: 35000, progress: 55, message: 'Checking keyword density and optimization...' },
+        { at: 50000, progress: 70, message: 'Generating AI-powered SEO insights...' },
+        { at: 65000, progress: 85, message: 'Compiling analysis results and recommendations...' },
+      ];
+
+      (async () => {
+        const startTime = Date.now();
+        for (const stage of progressStages) {
+          if (progressCancelled) return;
+          const elapsed = Date.now() - startTime;
+          const wait = Math.max(0, stage.at - elapsed);
+          if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+          if (progressCancelled) return;
+          setProgress(stage.progress);
+          setProgressMessage(stage.message);
+        }
+      })();
+
+      const response = await responsePromise;
+      progressCancelled = true;
 
       const result = response.data;
       console.log('🔍 Backend SEO Analysis Response:', result);

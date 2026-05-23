@@ -322,7 +322,7 @@ class ExaResearchProvider(BaseProvider):
                 'text': getattr(result, 'text', ''),
                 'publishedDate': getattr(result, 'publishedDate', ''),
                 'author': getattr(result, 'author', ''),
-                'score': getattr(result, 'score', 0.5),
+                'score': (lambda v: v if v is not None else 0.5)(getattr(result, 'score', 0.5)),
             })
         
         # Track usage

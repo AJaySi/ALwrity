@@ -107,8 +107,9 @@ const BlogSection: React.FC<BlogSectionProps> = ({
   
   const handleContentChange = (e: any) => {
     const newContent = e.target.value;
+    const cursorPos = e.target.selectionStart;
     setContent(newContent);
-    assistiveWriting.handleTypingChange(newContent);
+    assistiveWriting.handleTypingChange(newContent, cursorPos);
   };
   
   const handleFocus = () => setIsFocused(true);

@@ -76,12 +76,22 @@ async def handle_gsc_callback(
         
         success = gsc_service.handle_oauth_callback(code, state)
         
+        # If state verification failed, check if user is already connected
+        # (handles duplicate callbacks where state was consumed by a prior request)
+        if not success:
+            user_id_from_state = state.split(':')[0] if ':' in state else None
+            if user_id_from_state:
+                existing_creds = gsc_service.load_user_credentials(user_id_from_state)
+                if existing_creds:
+                    logger.info(f"GSC OAuth state already consumed, but user {user_id_from_state} has valid credentials — treating as success")
+                    success = True
+        
         if success:
             logger.info("GSC OAuth callback handled successfully")
             
             # Create GSC insights task immediately after successful connection
             try:
-                from services.database import SessionLocal
+                from services.database import get_session_for_user
                 from services.platform_insights_monitoring_service import create_platform_insights_task
                 
                 # Get user_id from state (stored during OAuth flow)
@@ -89,23 +99,24 @@ async def handle_gsc_callback(
                 user_id = state.split(':')[0] if ':' in state else None
                 
                 if user_id:
-                    db = SessionLocal()
-                    try:
-                        # Create insights task without site_url to avoid API calls
-                        # The executor will fetch it when the task runs (weekly)
-                        task_result = create_platform_insights_task(
-                            user_id=user_id,
-                            platform='gsc',
-                            site_url=None,  # Will be fetched by executor when task runs
-                            db=db
-                        )
-                        
-                        if task_result.get('success'):
-                            logger.info(f"Created GSC insights task for user {user_id}")
-                        else:
-                            logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
-                    finally:
-                        db.close()
+                    db = get_session_for_user(user_id)
+                    if db:
+                        try:
+                            task_result = create_platform_insights_task(
+                                user_id=user_id,
+                                platform='gsc',
+                                site_url=None,
+                                db=db
+                            )
+                            
+                            if task_result.get('success'):
+                                logger.info(f"Created GSC insights task for user {user_id}")
+                            else:
+                                logger.warning(f"Failed to create GSC insights task: {task_result.get('error')}")
+                        finally:
+                            db.close()
+                    else:
+                        logger.warning(f"Could not create DB session for user {user_id}")
                 else:
                     logger.warning(f"Could not extract user_id from state: {state}")
             except Exception as e:
@@ -125,7 +136,10 @@ async def handle_gsc_callback(
   </body>
   </html>
 """
-            return HTMLResponse(content=html)
+            return HTMLResponse(
+                content=html,
+                headers={"Cross-Origin-Opener-Policy": "unsafe-none"},
+            )
         else:
             logger.error("Failed to handle GSC OAuth callback")
             html = """
@@ -140,7 +154,11 @@ async def handle_gsc_callback(
   </body>
   </html>
 """
-            return HTMLResponse(status_code=400, content=html)
+            return HTMLResponse(
+                status_code=400,
+                content=html,
+                headers={"Cross-Origin-Opener-Policy": "unsafe-none"},
+            )
             
     except Exception as e:
         logger.error(f"Error handling GSC OAuth callback: {e}")
@@ -157,7 +175,11 @@ async def handle_gsc_callback(
   </body>
   </html>
 """
-        return HTMLResponse(status_code=500, content=html)
+        return HTMLResponse(
+            status_code=500,
+            content=html,
+            headers={"Cross-Origin-Opener-Policy": "unsafe-none"},
+        )
 
 @router.get("/sites")
 async def get_gsc_sites(user: dict = Depends(get_current_user)):

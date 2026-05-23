@@ -73,22 +73,14 @@ export const getApiUrl = () => {
     throw new Error('REACT_APP_API_URL environment variable is required for production. Please set it in your Vercel project settings.');
   }
   
-  if (isProduction) {
+  // Always respect REACT_APP_API_URL if explicitly set — behavior is independent of
+  // whether the browser is on localhost, ngrok, or any other hostname.
+  if (apiUrl) {
     return apiUrl;
   }
   
-  // In development, use localhost by default
-  const envUrl = process.env.REACT_APP_API_URL;
-  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-  const isNgrok = envUrl && envUrl.includes('ngrok');
-  if (isLocalhost) {
-    if (isNgrok) {
-      console.warn('[apiClient] ⚠️ Overriding ngrok API URL in dev; using http://localhost:8000 to avoid CORS.');
-    }
-    return 'http://localhost:8000';
-  }
-  // Non-localhost dev (rare): use env if provided, otherwise localhost
-  return envUrl || 'http://localhost:8000';
+  // Development fallback when no env var is configured
+  return 'http://localhost:8000';
 };
 
 // Create a shared axios instance for all API calls

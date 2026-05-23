@@ -280,6 +280,10 @@ export const AssetLibrary: React.FC = () => {
     setAnchorEl({ ...anchorEl, [assetId]: null });
   };
 
+  const handleOpenBlogAsset = async (asset: ContentAsset) => {
+    navigate('/blog-writer', { state: { restoreBlogAssetId: asset.id } });
+  };
+
   const handleRestoreResearchProject = async (asset: ContentAsset) => {
     try {
       const projectId = asset.asset_metadata?.project_id;
@@ -685,6 +689,7 @@ export const AssetLibrary: React.FC = () => {
                     onShare={handleShare}
                     onDelete={handleDelete}
                     onRestore={handleRestoreResearchProject}
+                    onOpenBlogAsset={handleOpenBlogAsset}
                   />
                 </Grid>
               ))}

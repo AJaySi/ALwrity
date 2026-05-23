@@ -250,10 +250,10 @@ class GSCService:
             flow = Flow.from_client_config(
                 self.client_config,
                 scopes=self.scopes,
-                redirect_uri=redirect_uri
+                redirect_uri=redirect_uri,
+                autogenerate_code_verifier=False,
             )
-            
-            # Use a custom state that includes user_id for routing the callback to the correct DB
+
             random_state = secrets.token_urlsafe(32)
             state = f"{user_id}:{random_state}"
             
@@ -300,7 +300,7 @@ class GSCService:
                 logger.error(f"User database not found for user {user_id}")
                 return False
 
-            # Verify state in user's DB
+            # Verify state in user's DB (but don't delete yet — delete after successful token exchange)
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT user_id FROM gsc_oauth_states WHERE state = ?', (state,))
@@ -309,10 +309,6 @@ class GSCService:
                 if not result:
                     logger.error(f"Invalid or expired GSC OAuth state for user {user_id}")
                     return False
-                
-                # Clean up state
-                cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
-                conn.commit()
             
             # Exchange code for credentials
             if not self.client_config:
@@ -322,11 +318,21 @@ class GSCService:
             flow = Flow.from_client_config(
                 self.client_config,
                 scopes=self.scopes,
-                redirect_uri=os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback')
+                redirect_uri=os.getenv('GSC_REDIRECT_URI', 'http://localhost:8000/gsc/callback'),
+                autogenerate_code_verifier=False,
             )
             
             flow.fetch_token(code=authorization_code)
             credentials = flow.credentials
+            
+            # State consumed successfully — clean up
+            try:
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
+                    conn.commit()
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up OAuth state: {cleanup_err}")
             
             # Save credentials
             return self.save_user_credentials(user_id, credentials)

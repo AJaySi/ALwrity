@@ -6,6 +6,7 @@ import {
   useRewritePolling,
 } from '../../../hooks/usePolling';
 import { blogWriterCache } from '../../../services/blogWriterCache';
+import { debug } from '../../../utils/debug';
 
 interface UseBlogWriterPollingProps {
   onResearchComplete: (research: any) => void;
@@ -13,7 +14,9 @@ interface UseBlogWriterPollingProps {
   onOutlineError: (error: any) => void;
   onSectionsUpdate: (sections: Record<string, string>) => void;
   onContentConfirmed?: () => void; // Callback when content generation completes
+  onContentError?: () => void; // Callback when content generation fails
   navigateToPhase?: (phase: string) => void; // Phase navigation function
+  skipContentAutoConfirmRef?: React.MutableRefObject<boolean>; // When true, skip auto-confirm & navigation after content generation
 }
 
 export const useBlogWriterPolling = ({
@@ -22,7 +25,9 @@ export const useBlogWriterPolling = ({
   onOutlineError,
   onSectionsUpdate,
   onContentConfirmed,
+  onContentError,
   navigateToPhase,
+  skipContentAutoConfirmRef,
 }: UseBlogWriterPollingProps) => {
   // Research polling hook (for context awareness) - uses blog writer endpoint
   const researchPolling = useBlogWriterResearchPolling({
@@ -47,36 +52,22 @@ export const useBlogWriterPolling = ({
           });
           onSectionsUpdate(newSections);
           
-          // Auto-confirm content and navigate to SEO phase when content generation completes
-          // This happens when user clicks "Next:Confirm and generate content"
-          if (onContentConfirmed) {
-            onContentConfirmed();
-          }
-          if (navigateToPhase) {
-            navigateToPhase('seo');
-          }
-
-          // Save to asset library (dedup by title is handled inside saveBlogToAssetLibrary)
-          // Backend also saves via save_and_track_text_content; this is a safety net / metadata update
-          (async () => {
-            try {
-              const { saveBlogToAssetLibrary } = await import('../../../services/blogWriterApi');
-              const totalWords = result.sections.reduce(
-                (sum: number, s: any) => sum + (s.wordCount || (s.content || '').split(/\s+/).length),
-                0
-              );
-              await saveBlogToAssetLibrary({
-                title: result.title || 'Untitled Blog',
-                blogType: 'medium',
-                wordCount: totalWords,
-                sectionCount: result.sections?.length,
-                model: result.model,
-                generationTimeMs: result.generation_time_ms,
-              });
-            } catch (assetError) {
-              console.error('[BlogWriter] Failed to save blog to asset library:', assetError);
+          // Skip auto-confirm and navigation when Re-Content was used
+          // (user already had content and chose to regenerate — stay on content phase to review)
+          const skipAutoConfirm = skipContentAutoConfirmRef?.current === true;
+          if (skipContentAutoConfirmRef) skipContentAutoConfirmRef.current = false; // reset flag
+          if (skipAutoConfirm) {
+            debug.log('[BlogWriter] Re-Content: skipping auto-confirm and navigation (user stays on content phase)');
+          } else {
+            // Auto-confirm content and navigate to SEO phase when content generation completes
+            // This happens for initial content generation (first time)
+            if (onContentConfirmed) {
+              onContentConfirmed();
             }
-          })();
+            if (navigateToPhase) {
+              navigateToPhase('seo');
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to apply medium generation result:', e);
@@ -84,11 +75,12 @@ export const useBlogWriterPolling = ({
     },
     onError: (err: any) => {
       console.error('Medium generation failed:', err);
+      onContentError?.();
       const errMsg = (typeof err === 'string' ? err : (err?.message || err?.error || '')).toLowerCase();
       if (errMsg.includes('insufficient_balance') || errMsg.includes('balance_not_enough') || (errMsg.includes('403') && errMsg.includes('balance'))) {
         setTimeout(() => alert('Your API balance is insufficient. Please top up your account or switch to a different provider.'), 100);
-      } else if (errMsg.includes('no valid structured response')) {
-        setTimeout(() => alert('Content generation failed due to a provider error. This might be a temporary issue — please try again or switch providers.'), 100);
+      } else if (errMsg.includes('no valid structured response') || errMsg.includes('parse') || errMsg.includes('json')) {
+        setTimeout(() => alert('Content generation failed because the AI provider returned an unparseable response. This is usually a temporary issue — please try again.'), 100);
       }
     }
   });

@@ -92,54 +92,84 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
       }
 
       await new Promise<void>((resolve) => {
-        let messageHandled = false;
+        let resolved = false;
 
+        const finish = (connected: boolean) => {
+          if (resolved) return;
+          resolved = true;
+          clearInterval(pollInterval);
+          clearTimeout(safetyTimeout);
+          window.removeEventListener('message', messageHandler);
+          clearInterval(connectionCheckInterval);
+          try { popup.close(); } catch { /* COOP may block close across origins */ }
+          if (connected) {
+            checkConnection().then(() => {
+              cachedAnalyticsAPI.forceRefreshAnalyticsData(['gsc']).catch(console.error);
+              resolve();
+            });
+          } else {
+            setConnectError('Google Search Console connection was cancelled or failed.');
+            resolve();
+          }
+        };
+
+        // 1. Listen for postMessage from callback page (primary mechanism)
         const messageHandler = (event: MessageEvent) => {
-          if (messageHandled) return;
+          if (resolved) return;
           if (!event?.data || typeof event.data !== 'object') return;
           const { type } = event.data as { type?: string };
 
-          if (type === 'GSC_AUTH_SUCCESS' || type === 'GSC_AUTH_ERROR') {
-            messageHandled = true;
-            try { popup.close(); } catch {}
-            window.removeEventListener('message', messageHandler);
-
-            if (type === 'GSC_AUTH_SUCCESS') {
-              checkConnection().then(() => {
-                cachedAnalyticsAPI.forceRefreshAnalyticsData(['gsc']).catch(console.error);
-                resolve();
-              });
-            } else {
-              setConnectError('Google Search Console connection was cancelled or failed.');
-              resolve();
-            }
+          if (type === 'GSC_AUTH_SUCCESS') {
+            finish(true);
+          } else if (type === 'GSC_AUTH_ERROR') {
+            finish(false);
           }
         };
 
         window.addEventListener('message', messageHandler);
 
-        const safetyTimeout = setTimeout(() => {
-          if (!messageHandled) {
-            try { if (!popup.closed) popup.close(); } catch {}
-            window.removeEventListener('message', messageHandler);
-            checkConnection().then(() => resolve());
-          }
-        }, 3 * 60 * 1000);
-
+        // 2. Poll popup.closed (works when popup stays same-origin)
         const pollInterval = setInterval(() => {
+          if (resolved) return;
           try {
             if (popup.closed) {
-              clearInterval(pollInterval);
-              clearTimeout(safetyTimeout);
-              window.removeEventListener('message', messageHandler);
-              if (!messageHandled) {
-                checkConnection().then(() => resolve());
-              }
+              // Popup closed — check if connection succeeded
+              checkConnection().then((connected) => {
+                if (connected) {
+                  finish(true);
+                } else if (!resolved) {
+                  // Popup closed without connecting — give a brief window for backend to finish
+                  setTimeout(() => {
+                    if (!resolved) {
+                      checkConnection().then((c) => finish(c));
+                    }
+                  }, 1000);
+                }
+              });
             }
           } catch {
-            clearInterval(pollInterval);
+            // COOP blocks popup.closed access; rely on other mechanisms
           }
-        }, 1000);
+        }, 500);
+
+        // 3. Poll backend connection status (works even when postMessage is blocked)
+        // Checks every 2s after a 1s initial delay to let the OAuth flow complete
+        let checkCount = 0;
+        const connectionCheckInterval = setInterval(() => {
+          if (resolved) return;
+          checkCount++;
+          if (checkCount < 2) return; // Skip first 2 checks (1s) to let OAuth start
+          checkConnection().then((connected) => {
+            if (connected) finish(true);
+          });
+        }, 1500);
+
+        // 4. Safety timeout
+        const safetyTimeout = setTimeout(() => {
+          if (!resolved) {
+            checkConnection().then((connected) => finish(connected));
+          }
+        }, 2 * 60 * 1000); // 2 min safety timeout (reduced from 3)
       });
     } catch (error) {
       console.error('GSC OAuth error:', error);

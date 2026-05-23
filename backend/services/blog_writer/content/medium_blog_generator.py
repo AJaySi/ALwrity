@@ -122,9 +122,6 @@ class MediumBlogGenerator:
         payload = {
             "title": req.title,
             "globalTargetWords": req.globalTargetWords or 1000,
-            "persona": req.persona.dict() if req.persona else None,
-            "tone": req.tone,
-            "audience": req.audience,
             "sections": [section_block(s) for s in req.sections],
         }
 
@@ -136,7 +133,6 @@ class MediumBlogGenerator:
             - Industry: {req.persona.industry or 'General'}
             - Tone: {req.persona.tone or 'Professional'}
             - Audience: {req.persona.audience or 'General readers'}
-            - Persona ID: {req.persona.persona_id or 'Default'}
             
             Write content that reflects this persona's expertise and communication style.
             Use industry-specific terminology and examples where appropriate.
@@ -154,40 +150,19 @@ class MediumBlogGenerator:
             "Return ONLY valid JSON with no markdown formatting or explanations."
         )
 
-        # Build persona-specific content instructions
-        persona_instructions = ""
-        if req.persona:
-            industry = req.persona.industry or 'General'
-            tone = req.persona.tone or 'Professional'
-            audience = req.persona.audience or 'General readers'
-            
-            persona_instructions = f"""
-            PERSONA-DRIVEN CONTENT REQUIREMENTS:
-            - Write as an expert in {industry} industry
-            - Use {tone} tone appropriate for {audience}
-            - Include industry-specific examples and terminology
-            - Demonstrate authority and expertise in the field
-            - Use language that resonates with {audience}
-            - Maintain consistent voice that reflects this persona's expertise
-            """
-
         prompt = (
-            f"Write blog content for the following sections. Each section should be {req.globalTargetWords or 1000} words total, distributed across all sections.\n\n"
+            f"Write blog content for the following sections. Total target: {req.globalTargetWords or 1000} words, distributed across all sections.\n\n"
             f"Blog Title: {req.title}\n\n"
             "For each section, write engaging content that:\n"
             "- Follows the key points provided\n"
             "- Uses the suggested keywords naturally\n"
             "- Meets the target word count\n"
-            "- Maintains professional tone\n"
-            "- References the provided sources when relevant\n"
             "- Breaks content into clear paragraphs (2-4 sentences each)\n"
-            "- Uses double line breaks (\\n\\n) between paragraphs for proper formatting\n"
+            "- Uses double line breaks (\\n\\n) between paragraphs\n"
             "- Starts with an engaging opening paragraph\n"
-            "- Ends with a strong concluding paragraph\n"
-            f"{persona_instructions}\n"
-            "IMPORTANT: Format the 'content' field with proper paragraph breaks using \\n\\n between paragraphs.\n\n"
-            "Return a JSON object with 'title' and 'sections' array. Each section should have 'id', 'heading', 'content', and 'wordCount'.\n\n"
-            f"Sections to write:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+            "- Ends with a strong concluding paragraph\n\n"
+            "Return a JSON object with 'title' and 'sections' array. Each section must have 'id', 'heading', 'content', 'wordCount', and 'sources'.\n\n"
+            f"Sections:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
 
         try:
@@ -195,7 +170,9 @@ class MediumBlogGenerator:
                 prompt=prompt,
                 json_struct=schema,
                 system_prompt=system,
-                user_id=user_id
+                user_id=user_id,
+                max_tokens=None,
+                temperature=0.3,
             )
         except HTTPException:
             # Re-raise HTTPExceptions (e.g., 429 subscription limit) to preserve error details

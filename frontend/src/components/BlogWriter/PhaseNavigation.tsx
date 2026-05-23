@@ -43,8 +43,18 @@ const PHASE_TOOLTIPS: Record<string, string> = {
   research: 'Research your topic and gather data from the web to create a well-informed blog post.',
   outline: 'Create and refine your blog outline with AI-generated structure and key talking points.',
   content: 'Generate, edit, and perfect your blog content using the WYSIWYG editor and AI assistance.',
-  seo: 'Optimize your blog for search engines with AI-powered SEO analysis, recommendations, and metadata.',
+  seo: 'Optimize your blog for search engines with AI-powered analysis.',
   publish: 'Publish your blog to WordPress, Wix, or export as HTML or Markdown.',
+};
+
+const CONTENT_TOOLTIPS: Record<string, string> = {
+  generate: 'Generate blog content from your confirmed outline.',
+  regenerate: 'Content exists. Click to review or regenerate content.',
+};
+
+const SEO_TOOLTIPS: Record<string, string> = {
+  analyze: 'Run an AI-powered SEO analysis of your blog content. Checks keyword optimization, readability, content structure, and delivers actionable recommendations to improve search rankings. You can then apply recommendations and generate SEO metadata (title tags, meta descriptions, Open Graph tags).',
+  reanalyze: 'SEO analysis exists. Click to review results, re-analyze your content after edits, apply SEO recommendations to improve your content, or generate SEO metadata (title tags, meta descriptions, Open Graph tags) for better search visibility.',
 };
 
 const PHASE_ACTIONS: Record<string, string> = {
@@ -91,19 +101,13 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         }
         break;
       case 'content':
-        if (hasOutline && !outlineConfirmed) {
-          return { label: 'Confirm & Generate Content', handler: actionHandlers.onContentAction || null };
+        if (hasOutline) {
+          return { label: hasContent ? 'Re-Content' : 'Generate Content', handler: actionHandlers.onContentAction || null };
         }
         break;
       case 'seo':
-        if (hasContent && !hasSEOAnalysis) {
-          return { label: 'Run SEO Analysis', handler: actionHandlers.onSEOAction || null };
-        }
-        if (hasSEOAnalysis && !seoRecommendationsApplied) {
-          return { label: 'Apply SEO Recommendations', handler: actionHandlers.onApplySEORecommendations || null };
-        }
-        if (hasSEOAnalysis && seoRecommendationsApplied && !hasSEOMetadata) {
-          return { label: 'Generate SEO Metadata', handler: actionHandlers.onPublishAction || null };
+        if (hasContent) {
+          return { label: hasSEOAnalysis ? 'Re-Analyze SEO' : 'Run SEO Analysis', handler: actionHandlers.onSEOAction || null };
         }
         break;
       case 'publish':
@@ -202,8 +206,9 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
 
           /* Show action button only when phase is NOT completed.
              Research action: only on landing page (not current), to invite start.
-             Other phase actions: show when current, pending, or next-actionable. */
-          const showAction = action.handler && !isDone && (
+             Other phase actions: show when current, pending, or next-actionable.
+             Content and SEO phases use only the chip (no separate action button). */
+          const showAction = action.handler && !isDone && phase.id !== 'content' && phase.id !== 'seo' && (
             (!isCurrent && phase.id === 'research' && !hasResearch) ||
             (isCurrent && phase.id !== 'research') ||
             (!isCurrent && !isDisabled && phase.id !== 'research') ||
@@ -328,11 +333,17 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
               <Tooltip
                 title={
                   <Box>
-                    <Box sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.875rem' }}>{phase.name}</Box>
+                    <Box sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.875rem' }}>
+                      {phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}
+                    </Box>
                     <Box sx={{ fontSize: '0.75rem', opacity: 0.9 }}>
                       {isDisabled
                         ? `Complete the previous phase first to unlock ${phase.name}.`
-                        : (PHASE_TOOLTIPS[phase.id] || phase.description)}
+                        : (phase.id === 'content'
+                          ? (hasContent ? CONTENT_TOOLTIPS.regenerate : CONTENT_TOOLTIPS.generate)
+                          : (phase.id === 'seo'
+                            ? (hasSEOAnalysis ? SEO_TOOLTIPS.reanalyze : SEO_TOOLTIPS.analyze)
+                            : (PHASE_TOOLTIPS[phase.id] || phase.description)))}
                     </Box>
                   </Box>
                 }
@@ -347,7 +358,7 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                   sx={chipSx}
                 >
                   <Box component="span" sx={iconSx}>{phase.icon}</Box>
-                  <Box component="span" sx={{ flexShrink: 0 }}>{phase.name}</Box>
+                  <Box component="span" sx={{ flexShrink: 0 }}>{phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}</Box>
                   {isDone && (
                     <Box component="span" sx={{ fontSize: '12px', flexShrink: 0, ml: 0.25 }}>✓</Box>
                   )}

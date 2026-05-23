@@ -645,11 +645,12 @@ export interface AssistiveSuggestion {
 export interface AssistiveSuggestionResponse {
   success: boolean;
   suggestions: AssistiveSuggestion[];
+  message?: string;
 }
 
 export const assistiveWritingApi = {
-  async getSuggestion(text: string): Promise<AssistiveSuggestionResponse> {
-    const { data } = await aiApiClient.post('/api/writing-assistant/suggest', { text });
+  async getSuggestion(text: string, cursorPosition?: number): Promise<AssistiveSuggestionResponse> {
+    const { data } = await aiApiClient.post('/api/writing-assistant/suggest', { text, cursor_position: cursorPosition });
     return data;
   }
 };

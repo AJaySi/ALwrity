@@ -10,6 +10,7 @@ interface UsePhaseActionHandlersProps {
   selectedTitle: string | null;
   contentConfirmed: boolean;
   sections: Record<string, string>;
+  seoAnalysis: any;
   navigateToPhase: (phase: string) => void;
   handleOutlineConfirmed: () => void;
   setIsMediumGenerationStarting: (starting: boolean) => void;
@@ -20,6 +21,7 @@ interface UsePhaseActionHandlersProps {
   setIsSEOAnalysisModalOpen: (open: boolean) => void;
   setIsSEOMetadataModalOpen: (open: boolean) => void;
   runSEOAnalysisDirect: () => string;
+  skipContentAutoConfirmRef?: React.MutableRefObject<boolean>;
   onResearchComplete?: (research: any) => void;
   onOutlineComplete?: (outline: any) => void;
   onContentComplete?: (sections: Record<string, string>) => void;
@@ -31,6 +33,7 @@ export const usePhaseActionHandlers = ({
   selectedTitle,
   contentConfirmed,
   sections,
+  seoAnalysis,
   navigateToPhase,
   handleOutlineConfirmed,
   setIsMediumGenerationStarting,
@@ -41,32 +44,14 @@ export const usePhaseActionHandlers = ({
   setIsSEOAnalysisModalOpen,
   setIsSEOMetadataModalOpen,
   runSEOAnalysisDirect,
+  skipContentAutoConfirmRef,
   onResearchComplete,
   onOutlineComplete,
   onContentComplete,
 }: UsePhaseActionHandlersProps) => {
   const handleResearchAction = useCallback(() => {
-    if (research) {
-      navigateToPhase('research');
-      return;
-    }
-
-    const cachedEntries = researchCache.getAllCachedEntries();
-    const latestCached = cachedEntries.find(entry => {
-      try {
-        return new Date(entry.expires_at) > new Date();
-      } catch {
-        return false;
-      }
-    });
-
-    if (latestCached && onResearchComplete) {
-      debug.log('[BlogWriter] Restoring cached research data', { keywords: latestCached.keywords });
-      onResearchComplete(latestCached.result);
-    }
-
     navigateToPhase('research');
-  }, [navigateToPhase, onResearchComplete, research]);
+  }, [navigateToPhase]);
 
   const handleOutlineAction = useCallback(async () => {
     if (!research) {
@@ -105,7 +90,7 @@ export const usePhaseActionHandlers = ({
 
   const handleContentAction = useCallback(async () => {
     if (!outline || outline.length === 0) {
-      alert('Please generate and confirm an outline first.');
+      alert('Please generate an outline first.');
       return;
     }
     if (!research) {
@@ -117,22 +102,33 @@ export const usePhaseActionHandlers = ({
     // Confirm outline first
     handleOutlineConfirmed();
     
-    // Check cache first (shared utility)
     const outlineIds = outline.map(s => String(s.id));
-    const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+    const hasExistingContent = sections && Object.keys(sections).length > 0 && Object.values(sections).some(c => c?.trim());
     
-    if (cachedContent) {
-      debug.log('[BlogWriter] Using cached content from localStorage', { sections: Object.keys(cachedContent).length });
-      if (onContentComplete) {
-        onContentComplete(cachedContent);
-      }
-      return;
+    // Signal to polling callback: if content was already confirmed (Re-Content),
+    // skip auto-confirm and SEO navigation so user stays on content phase to review
+    if (skipContentAutoConfirmRef && hasExistingContent) {
+      skipContentAutoConfirmRef.current = true;
+      debug.log('[BlogWriter] Re-Content: setting skipAutoConfirm flag');
     }
     
-    // Also check if sections already exist in current state (shared utility)
-    if (blogWriterCache.contentExistsInState(sections || {}, outlineIds)) {
-      debug.log('[BlogWriter] Content already exists in state, skipping generation', { sections: Object.keys(sections || {}).length });
-      return;
+    // Only use cache for initial generation (when no content exists yet).
+    // "Re-Content" label means user explicitly wants to regenerate, so skip cache.
+    if (!hasExistingContent) {
+      const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+      if (cachedContent) {
+        debug.log('[BlogWriter] Using cached content from localStorage', { sections: Object.keys(cachedContent).length });
+        if (onContentComplete) {
+          onContentComplete(cachedContent);
+        }
+        return;
+      }
+      if (blogWriterCache.contentExistsInState(sections || {}, outlineIds)) {
+        debug.log('[BlogWriter] Content already exists in state, skipping generation');
+        return;
+      }
+    } else {
+      debug.log('[BlogWriter] Content exists - regenerating per user request');
     }
     
     // If short/medium blog (<=1000 words), trigger content generation automatically
@@ -183,13 +179,17 @@ export const usePhaseActionHandlers = ({
 
   const handleSEOAction = useCallback(() => {
     if (!contentConfirmed) {
-      // Mark content as confirmed when SEO action is clicked
       setContentConfirmed(true);
     }
     navigateToPhase('seo');
-    runSEOAnalysisDirect();
-    debug.log('[BlogWriter] SEO action triggered - running SEO analysis');
-  }, [contentConfirmed, setContentConfirmed, navigateToPhase, runSEOAnalysisDirect]);
+    if (seoAnalysis) {
+      setIsSEOAnalysisModalOpen(true);
+      debug.log('[BlogWriter] SEO analysis exists - opening modal for review');
+    } else {
+      runSEOAnalysisDirect();
+      debug.log('[BlogWriter] SEO action triggered - running SEO analysis');
+    }
+  }, [contentConfirmed, seoAnalysis, setContentConfirmed, navigateToPhase, setIsSEOAnalysisModalOpen, runSEOAnalysisDirect]);
 
   const handleApplySEORecommendations = useCallback(() => {
     navigateToPhase('seo');

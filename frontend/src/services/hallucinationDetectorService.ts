@@ -2,6 +2,8 @@
  * Service for calling the hallucination detector API endpoints.
  */
 
+import { longRunningApiClient } from '../api/client';
+
 export interface SourceDocument {
   title: string;
   url: string;
@@ -75,7 +77,6 @@ export interface HealthCheckResponse {
 
 class HallucinationDetectorService {
   private baseUrl: string;
-  private authTokenGetter: (() => Promise<string | null>) | null = null;
 
   constructor() {
     const getApiBaseUrl = () => {
@@ -88,19 +89,9 @@ class HallucinationDetectorService {
     this.baseUrl = getApiBaseUrl();
   }
 
-  setAuthTokenGetter(getter: (() => Promise<string | null>) | null) {
-    this.authTokenGetter = getter;
-  }
-
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.authTokenGetter) {
-      const token = await this.authTokenGetter();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    }
-    return headers;
+  // Kept for backward compatibility — auth is now handled by longRunningApiClient interceptors
+  setAuthTokenGetter(_getter: (() => Promise<string | null>) | null) {
+    // no-op
   }
 
   /**
@@ -109,28 +100,17 @@ class HallucinationDetectorService {
   async detectHallucinations(request: HallucinationDetectionRequest): Promise<HallucinationDetectionResponse> {
     console.log('🔍 [HallucinationDetectorService] detectHallucinations called with request:', request);
     try {
-      const url = `${this.baseUrl}/api/hallucination-detector/detect`;
+      const url = `/api/hallucination-detector/detect`;
       console.log('🔍 [HallucinationDetectorService] Making request to:', url);
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: await this.getAuthHeaders(),
-        body: JSON.stringify(request),
-      });
+      const response = await longRunningApiClient.post(url, request);
 
-      console.log('🔍 [HallucinationDetectorService] Response status:', response.status, 'OK:', response.ok);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('🔍 [HallucinationDetectorService] HTTP error response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('🔍 [HallucinationDetectorService] Response data:', data);
-      return data;
-    } catch (error) {
+      console.log('🔍 [HallucinationDetectorService] Response status:', response.status, 'OK:', response.status === 200);
+      console.log('🔍 [HallucinationDetectorService] Response data:', response.data);
+      return response.data;
+    } catch (error: any) {
       console.error('🔍 [HallucinationDetectorService] Error detecting hallucinations:', error);
+      const errorMessage = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Unknown error occurred';
       return {
         success: false,
         claims: [],
@@ -140,7 +120,7 @@ class HallucinationDetectorService {
         refuted_claims: 0,
         insufficient_claims: 0,
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: errorMessage
       };
     }
   }
@@ -150,26 +130,16 @@ class HallucinationDetectorService {
    */
   async extractClaims(request: ClaimExtractionRequest): Promise<ClaimExtractionResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/hallucination-detector/extract-claims`, {
-        method: 'POST',
-        headers: await this.getAuthHeaders(),
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
+      const response = await longRunningApiClient.post('/api/hallucination-detector/extract-claims', request);
+      return response.data;
+    } catch (error: any) {
       console.error('Error extracting claims:', error);
       return {
         success: false,
         claims: [],
         total_claims: 0,
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error?.response?.data?.error || error?.message || 'Unknown error occurred'
       };
     }
   }
@@ -179,19 +149,9 @@ class HallucinationDetectorService {
    */
   async verifyClaim(request: ClaimVerificationRequest): Promise<ClaimVerificationResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/hallucination-detector/verify-claim`, {
-        method: 'POST',
-        headers: await this.getAuthHeaders(),
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
+      const response = await longRunningApiClient.post('/api/hallucination-detector/verify-claim', request);
+      return response.data;
+    } catch (error: any) {
       console.error('Error verifying claim:', error);
       return {
         success: false,
@@ -204,7 +164,7 @@ class HallucinationDetectorService {
           reasoning: 'Error during verification'
         },
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error?.response?.data?.error || error?.message || 'Unknown error occurred'
       };
     }
   }
@@ -214,15 +174,9 @@ class HallucinationDetectorService {
    */
   async healthCheck(): Promise<HealthCheckResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/hallucination-detector/health`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
+      const response = await longRunningApiClient.get('/api/hallucination-detector/health');
+      return response.data;
+    } catch (error: any) {
       console.error('Error checking health:', error);
       return {
         status: 'unhealthy',
@@ -239,14 +193,8 @@ class HallucinationDetectorService {
    */
   async getDemoInfo(): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/hallucination-detector/demo`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
+      const response = await longRunningApiClient.get('/api/hallucination-detector/demo');
+      return response.data;
     } catch (error) {
       console.error('Error getting demo info:', error);
       return null;

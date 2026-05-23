@@ -31,6 +31,7 @@ from models.product_marketing_models import Campaign, CampaignProposal, Campaign
 from models.product_asset_models import ProductAsset, ProductStyleTemplate, EcommerceExport
 # Podcast Maker models use SubscriptionBase, but import to ensure models are registered
 from models.podcast_models import PodcastProject
+
 # Research models use SubscriptionBase
 from models.research_models import ResearchProject
 # Video Studio models

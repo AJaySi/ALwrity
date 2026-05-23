@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { debug } from '../../../utils/debug';
+import { assistiveWritingApi } from '../../../services/blogWriterApi';
 
 interface SmartTypingAssistProps {
   contentRef: React.RefObject<HTMLDivElement | HTMLTextAreaElement>;
@@ -47,6 +48,8 @@ const useSmartTypingAssist = (
   const hasShownFirstRef = useRef(false);
   const isGeneratingRef = useRef(false);
   const smartSuggestionRef = useRef<typeof smartSuggestion>(null);
+  const initialContentLengthRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
   
   // Quality improvement tracking
   const [suggestionStats, setSuggestionStats] = useState({
@@ -57,8 +60,8 @@ const useSmartTypingAssist = (
   });
 
   // Smart typing assist functionality
-  const generateSmartSuggestion = async (currentText: string) => {
-    debug.log('[SmartTypingAssist] generateSmartSuggestion called', { textLength: currentText.length });
+  const generateSmartSuggestion = async (currentText: string, cursorPosition?: number) => {
+    debug.log('[SmartTypingAssist] generateSmartSuggestion called', { textLength: currentText.length, cursorPosition });
     
     if (currentText.length < 20) {
       debug.log('[SmartTypingAssist] Text too short for suggestion');
@@ -70,57 +73,61 @@ const useSmartTypingAssist = (
     isGeneratingRef.current = true;
 
     try {
-      // Import the assistive writing API
-      const { assistiveWritingApi } = await import('../../../services/blogWriterApi');
+      if (!mountedRef.current) return;
       
       debug.log('[SmartTypingAssist] Calling assistive writing API...');
-      const response = await assistiveWritingApi.getSuggestion(currentText);
+      const response = await assistiveWritingApi.getSuggestion(currentText, cursorPosition);
       
-      if (response.success && response.suggestions.length > 0) {
-        debug.log('[SmartTypingAssist] Received suggestions from API', { count: response.suggestions.length });
+      if (!mountedRef.current) return;
+      
+      if (!response.success || !response.suggestions.length) {
+        debug.log('[SmartTypingAssist] No suggestions from API', { message: response.message });
+        return;
+      }
+
+      debug.log('[SmartTypingAssist] Received suggestions from API', { count: response.suggestions.length });
+      
+      // Store all suggestions
+      setAllSuggestions(response.suggestions);
+      setSuggestionIndex(0);
+      
+      // Show first suggestion
+      const firstSuggestion = response.suggestions[0];
+      debug.log('[SmartTypingAssist] Showing first suggestion', { preview: firstSuggestion.text.substring(0, 50) + '...' });
+      
+      // Track suggestion shown
+      setSuggestionStats(prev => ({
+        ...prev,
+        totalShown: prev.totalShown + 1
+      }));
+      
+      // Get viewport-safe position for suggestion placement
+      if (contentRef.current) {
+        const element = contentRef.current;
+        const rect = element.getBoundingClientRect();
+        const maxWidth = 420;
+        const maxHeight = 350;
         
-        // Store all suggestions
-        setAllSuggestions(response.suggestions);
-        setSuggestionIndex(0);
+        let x = Math.max(20, Math.min(rect.left + 20, window.innerWidth - (maxWidth + 20)));
+        let y = rect.bottom + 10;
         
-        // Show first suggestion
-        const firstSuggestion = response.suggestions[0];
-        debug.log('[SmartTypingAssist] Showing first suggestion', { preview: firstSuggestion.text.substring(0, 50) + '...' });
-        
-        // Track suggestion shown
-        setSuggestionStats(prev => ({
-          ...prev,
-          totalShown: prev.totalShown + 1
-        }));
-        
-        // Get viewport-safe position for suggestion placement
-        if (contentRef.current) {
-          const element = contentRef.current;
-          const rect = element.getBoundingClientRect();
-          const maxWidth = 420;
-          const maxHeight = 350;
-          
-          let x = Math.max(20, Math.min(rect.left + 20, window.innerWidth - (maxWidth + 20)));
-          let y = rect.bottom + 10;
-          
-          if (y + maxHeight > window.innerHeight - 20) {
-            y = rect.top - maxHeight - 10;
-            if (y < 20) {
-              y = Math.max(20, (window.innerHeight - maxHeight) / 2);
-              x = Math.max(20, (window.innerWidth - maxWidth) / 2);
-            }
+        if (y + maxHeight > window.innerHeight - 20) {
+          y = rect.top - maxHeight - 10;
+          if (y < 20) {
+            y = Math.max(20, (window.innerHeight - maxHeight) / 2);
+            x = Math.max(20, (window.innerWidth - maxWidth) / 2);
           }
-          
-          y = Math.max(20, Math.min(y, window.innerHeight - maxHeight - 20));
-          x = Math.max(20, Math.min(x, window.innerWidth - maxWidth - 20));
-          
-          setSmartSuggestion({
-            text: firstSuggestion.text,
-            position: { x, y },
-            confidence: firstSuggestion.confidence,
-            sources: firstSuggestion.sources
-          });
         }
+        
+        y = Math.max(20, Math.min(y, window.innerHeight - maxHeight - 20));
+        x = Math.max(20, Math.min(x, window.innerWidth - maxWidth - 20));
+        
+        setSmartSuggestion({
+          text: firstSuggestion.text,
+          position: { x, y },
+          confidence: firstSuggestion.confidence,
+          sources: firstSuggestion.sources
+        });
       }
     } catch (error) {
       debug.error('[SmartTypingAssist] Failed to generate smart suggestion', error);
@@ -130,24 +137,34 @@ const useSmartTypingAssist = (
     }
   };
 
-  const handleTypingChange = (newText: string) => {
+  const handleTypingChange = (newText: string, cursorPosition?: number) => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    setSmartSuggestion(null);
+    // Track initial content baseline on first user keystroke
+    // This prevents triggering suggestions on pre-filled content
+    if (initialContentLengthRef.current === null) {
+      initialContentLengthRef.current = newText.length;
+      debug.log('[SmartTypingAssist] Set initial content baseline', { length: newText.length });
+    }
+
+    // Store cursor position for use after debounce
+    const cursorPos = cursorPosition;
 
     typingTimeoutRef.current = setTimeout(() => {
       const cooldownMs = 15000;
       const now = Date.now();
       const sinceLast = now - lastGeneratedAtRef.current;
+      const baseline = initialContentLengthRef.current ?? 0;
+      const userAddedChars = newText.length - baseline;
 
-      if (!hasShownFirstRef.current && newText.length > 50 && !isGeneratingRef.current) {
+      if (!hasShownFirstRef.current && newText.length >= 50 && userAddedChars >= 30 && !isGeneratingRef.current) {
         debug.log('[SmartTypingAssist] Generating first suggestion');
-        generateSmartSuggestion(newText);
+        generateSmartSuggestion(newText, cursorPos);
         setHasShownFirstSuggestion(true);
         lastGeneratedAtRef.current = now;
-      } else if (hasShownFirstRef.current && newText.length > 100 && sinceLast >= cooldownMs && !isGeneratingRef.current && !smartSuggestionRef.current) {
+      } else if (hasShownFirstRef.current && newText.length > 100 && userAddedChars >= 30 && sinceLast >= cooldownMs && !isGeneratingRef.current && !smartSuggestionRef.current) {
         debug.log('[SmartTypingAssist] Showing "Continue writing" prompt');
         setShowContinueWritingPrompt(true);
       }
@@ -241,11 +258,14 @@ const useSmartTypingAssist = (
     
     const element = contentRef.current as HTMLTextAreaElement;
     const currentContent = element.value || '';
+    const cursorPos = element.selectionStart;
     
     setShowContinueWritingPrompt(false);
     
-    if (currentContent.length > 20) {
-      await generateSmartSuggestion(currentContent);
+    const baseline = initialContentLengthRef.current ?? 0;
+    const userAddedChars = currentContent.length - baseline;
+    if (currentContent.length > 20 && userAddedChars >= 10) {
+      await generateSmartSuggestion(currentContent, cursorPos);
     }
   };
 
@@ -274,9 +294,11 @@ const useSmartTypingAssist = (
   useEffect(() => { isGeneratingRef.current = isGeneratingSuggestion; }, [isGeneratingSuggestion]);
   useEffect(() => { smartSuggestionRef.current = smartSuggestion; }, [smartSuggestion]);
 
-  // Cleanup timeouts on unmount
+  // Mount guard and cleanup
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }

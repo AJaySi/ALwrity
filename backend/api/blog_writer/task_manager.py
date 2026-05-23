@@ -256,7 +256,8 @@ class TaskManager:
             self.task_storage[task_id]["status"] = "running"
             self.task_storage[task_id]["progress_messages"] = []
 
-            await self.update_progress(task_id, "📦 Packaging outline and metadata...")
+            await self.update_progress(task_id, "📝 Alwrity is preparing your blog content — this usually takes 20–40 seconds.")
+            await self.update_progress(task_id, "📦 Packaging your outline sections and research data...")
 
             # Basic guard: respect global target words
             total_target = int(request.globalTargetWords or 1000)
@@ -281,16 +282,22 @@ class TaskManager:
             # Check if result came from cache
             cache_hit = getattr(result, 'cache_hit', False)
             if cache_hit:
-                await self.update_progress(task_id, "⚡ Found cached content - loading instantly!")
+                await self.update_progress(task_id, "⚡ Found existing content in cache — no need to regenerate!")
             else:
-                await self.update_progress(task_id, "🤖 Generated fresh content with AI...")
-                await self.update_progress(task_id, "✨ Post-processing and assembling sections...")
+                await self.update_progress(task_id, "🧠 AI is writing each section with research-backed insights and natural flow...")
+                await self.update_progress(task_id, "✨ Polishing content — improving structure, readability, and transitions...")
 
             # Mark completed
             self.task_storage[task_id]["status"] = "completed"
             self.task_storage[task_id]["result"] = result.dict()
-            await self.update_progress(task_id, f"✅ Generated {len(result.sections)} sections successfully.")
-            
+            section_count = len(result.sections)
+            total_words = sum(getattr(s, 'wordCount', 0) or 0 for s in result.sections)
+            await self.update_progress(
+                task_id,
+                f"✅ Content generation complete! {section_count} sections written ({total_words} words). "
+                "Next up: SEO Analysis to optimize your blog for search engines."
+            )
+
             # Note: Blog content tracking is handled in the status endpoint
             # to ensure we have proper database session and user context
 
