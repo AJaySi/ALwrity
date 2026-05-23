@@ -71,6 +71,29 @@ export interface BacklinkDiscoveryResponse {
   opportunities: BacklinkOpportunity[];
 }
 
+export interface BacklinkCampaignRecord {
+  campaign_id: string;
+  name: string;
+  status: string;
+  created_at?: string;
+}
+
+export interface BacklinkCampaignCreateRequest {
+  user_id: string;
+  workspace_id: string;
+  name: string;
+}
+
+export interface BacklinkCampaignCreateResponse {
+  campaign_id: string;
+  name: string;
+  status: string;
+}
+
+export interface BacklinkCampaignListResponse {
+  campaigns: BacklinkCampaignRecord[];
+}
+
 export const fetchBacklinkModuleRegistry = async (): Promise<BacklinkModuleRegistryResponse> => (await apiClient.get('/api/backlink-outreach/modules')).data;
 export const fetchBacklinkMigrationCoverage = async (): Promise<BacklinkCoverageResponse> => (await apiClient.get('/api/backlink-outreach/migration-coverage')).data;
 export const fetchBacklinkQueryTemplates = async (keyword: string): Promise<BacklinkQueryTemplatesResponse> => (await apiClient.get('/api/backlink-outreach/query-templates', { params: { keyword } })).data;
@@ -78,3 +101,6 @@ export const discoverBacklinkOpportunities = async (payload: BacklinkDiscoveryRe
 
 export const validateBacklinkPolicy = async (payload: BacklinkPolicyValidationRequest): Promise<BacklinkPolicyValidationResponse> => (await apiClient.post('/api/backlink-outreach/policy-validate', payload)).data;
 export const fetchBacklinkReportingSnapshot = async (): Promise<BacklinkReportingSnapshot> => (await apiClient.get('/api/backlink-outreach/reporting')).data;
+
+export const createBacklinkCampaign = async (payload: BacklinkCampaignCreateRequest): Promise<BacklinkCampaignCreateResponse> => (await apiClient.post('/api/backlink-outreach/campaigns', payload)).data;
+export const listBacklinkCampaigns = async (user_id: string, workspace_id: string): Promise<BacklinkCampaignListResponse> => (await apiClient.get('/api/backlink-outreach/campaigns', { params: { user_id, workspace_id } })).data;
