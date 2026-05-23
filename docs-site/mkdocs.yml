@@ -250,6 +250,12 @@ nav:
       - Grounding UI: features/ai/grounding-ui.md
     - LinkedIn Writer:
       - Overview: features/linkedin-writer/overview.md
+    - Podcast Maker:
+      - Workflow Guide: features/podcast-maker/workflow-guide.md
+      - Persona Journey (Host): features/podcast-maker/persona-journey-host.md
+      - Persona Journey (Producer): features/podcast-maker/persona-journey-producer.md
+      - Implementation Overview: features/podcast-maker/implementation-overview.md
+      - API Reference: features/podcast-maker/api-reference.md
     - Integrations:
       - Wix:
         - Overview: features/integrations/wix/overview.md

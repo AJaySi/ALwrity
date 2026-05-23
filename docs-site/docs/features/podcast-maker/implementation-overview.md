@@ -1,8 +1,35 @@
 # Podcast Maker Implementation Overview
 
-This page keeps implementation details in one place for engineering and advanced troubleshooting.
+Podcast Maker orchestrates a multi-stage content pipeline: project configuration, research grounding, script composition, media rendering, and publish-state tracking.
 
-## Architecture
+## Architecture & Data Flow
+
+```mermaid
+flowchart LR
+    UI[Podcast Maker UI]
+    API[Podcast API Router]
+    PROJ[Project Service]
+    RESEARCH[Research Handler]
+    SCRIPT[Script Handler]
+    RENDER[Audio/Video Render Handlers]
+    STORE[(Podcast Tables)]
+    JOBS[(Render Queue)]
+
+    UI --> API
+    API --> PROJ
+    API --> RESEARCH
+    API --> SCRIPT
+    API --> RENDER
+
+    PROJ --> STORE
+    RESEARCH --> STORE
+    SCRIPT --> STORE
+    RENDER --> JOBS
+    RENDER --> STORE
+
+    JOBS --> UI
+    STORE --> UI
+```
 
 Podcast Maker is split into:
 
