@@ -138,6 +138,7 @@ if _is_full_mode():
     from routers.image_studio import router as image_studio_router
     from routers.product_marketing import router as product_marketing_router
     from routers.campaign_creator import router as campaign_creator_router
+    from routers.backlink_outreach import router as backlink_outreach_router
 else:
     # In feature-only modes, only load essential assets router
     from api.assets_serving import router as assets_serving_router
@@ -146,6 +147,7 @@ else:
     image_studio_router = None
     product_marketing_router = None
     campaign_creator_router = None
+    backlink_outreach_router = None
 
 # Import hallucination detector router
 try:
@@ -678,6 +680,8 @@ if _is_full_mode():
         app.include_router(product_marketing_router)
     if campaign_creator_router:
         app.include_router(campaign_creator_router)
+    if backlink_outreach_router:
+        app.include_router(backlink_outreach_router)
 
     router_group_status["platform_extensions"] = {
         "mounted": True,

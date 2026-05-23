@@ -351,3 +351,27 @@ If you encounter issues:
 ---
 
 **Happy coding! 🎉** 
+
+## Backlink Outreach Migration Map
+
+Canonical migrated backlinking module paths:
+
+- Router: `backend/routers/backlink_outreach.py`
+- Service: `backend/services/backlink_outreach_service.py`
+- Frontend API client: `frontend/src/api/backlinkOutreachApi.ts`
+- Frontend store: `frontend/src/stores/backlinkOutreachStore.ts`
+- Frontend UI integration: `frontend/src/components/SEODashboard/BacklinkOutreachModuleList.tsx`
+
+Invoke from backend:
+
+- `GET /api/backlink-outreach/modules`
+- `GET /api/backlink-outreach/query-templates?keyword=<keyword>`
+- `GET /api/backlink-outreach/migration-coverage`
+- `POST /api/backlink-outreach/discover` with JSON body: `{ "keyword": "...", "max_results": 10 }`
+- `POST /api/backlink-outreach/policy-validate` to enforce compliance/suppression/throttles before send
+- `GET /api/backlink-outreach/reporting` for send-volume and conversion snapshot
+- `POST /api/backlink-outreach/campaigns` and `GET /api/backlink-outreach/campaigns` for persisted campaign records (campaign-creator style storage flow)
+
+The modules endpoint returns migration identifiers: `backlink`, `outreach`, and `guest_post`.
+The query-template endpoint mirrors legacy `generate_search_queries(...)` behavior from `ToBeMigrated/ai_marketing_tools/ai_backlinker/ai_backlinking.py`.
+The migration-coverage endpoint summarizes what is already implemented vs planned from the legacy prototype roadmap.
