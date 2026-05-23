@@ -29,6 +29,7 @@ from services.seo_tools.opengraph_service import OpenGraphService
 from services.seo_tools.on_page_seo_service import OnPageSEOService
 from services.seo_tools.technical_seo_service import TechnicalSEOService
 from services.seo_tools.enterprise_seo_service import EnterpriseSEOService
+from services.seo_tools.gsc_analyzer_service import GSCAnalyzerService
 from services.seo_tools.content_strategy_service import ContentStrategyService
 from services.database import get_session_for_user
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
@@ -127,6 +128,28 @@ class WorkflowRequest(BaseModel):
 class CompetitiveSitemapBenchmarkingRunRequest(BaseModel):
     max_competitors: int = Field(default=5, ge=1, le=10, description="Max competitors to analyze")
     competitors: Optional[List[HttpUrl]] = Field(None, description="Optional explicit competitor URLs")
+
+class EnterpriseAuditRequest(BaseModel):
+    """Request model for complete enterprise SEO audit"""
+    website_url: HttpUrl = Field(..., description="Primary website URL to audit")
+    competitors: Optional[List[HttpUrl]] = Field(None, description="Competitor URLs for benchmarking (max 5)")
+    target_keywords: Optional[List[str]] = Field(None, description="Target keywords for analysis")
+    include_content_analysis: bool = Field(default=True, description="Include content strategy analysis")
+    include_competitive_analysis: bool = Field(default=True, description="Include competitive benchmarking")
+    generate_executive_report: bool = Field(default=True, description="Generate executive summary")
+
+class GSCAnalysisRequest(BaseModel):
+    """Request model for advanced GSC analysis"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in Google Search Console")
+    date_range_days: int = Field(default=90, ge=7, le=365, description="Number of days to analyze")
+    include_opportunities: bool = Field(default=True, description="Include content opportunity analysis")
+    include_competitive: bool = Field(default=True, description="Include competitive positioning")
+
+class ContentOpportunitiesRequest(BaseModel):
+    """Request model for content opportunities report"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
+    min_impressions: int = Field(default=100, ge=10, description="Minimum impressions threshold")
+    date_range_days: int = Field(default=90, ge=7, le=365, description="Number of days to analyze")
 
 # Exception Handler
 async def handle_seo_tool_exception(func_name: str, error: Exception, request_data: Dict) -> ErrorResponse:
@@ -836,3 +859,225 @@ async def get_tools_status() -> BaseResponse:
             "timestamp": datetime.utcnow().isoformat()
         }
     )
+
+
+# ==================== ENTERPRISE AUDIT ENDPOINTS ====================
+
+@router.post("/enterprise/complete-audit", response_model=BaseResponse)
+@log_api_call
+async def execute_enterprise_audit(
+    request: EnterpriseAuditRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Execute comprehensive enterprise SEO audit with full orchestration.
+    
+    Combines multiple SEO analysis tools into an intelligent workflow:
+    - Technical SEO audit with issue severity classification
+    - On-page SEO analysis with keyword optimization
+    - PageSpeed Insights with Core Web Vitals analysis
+    - Sitemap analysis with trend detection
+    - Content strategy with competitive comparison
+    - Competitive benchmarking across specified competitors
+    - AI-powered insights and recommendations
+    
+    Returns prioritized action items with implementation roadmap.
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Starting enterprise audit for {request.website_url}")
+        
+        # Initialize service
+        enterprise_service = EnterpriseSEOService()
+        
+        # Execute audit
+        audit_result = await enterprise_service.execute_complete_audit(
+            website_url=str(request.website_url),
+            competitors=[str(c) for c in request.competitors] if request.competitors else [],
+            target_keywords=request.target_keywords or [],
+            include_content_analysis=request.include_content_analysis,
+            include_competitive_analysis=request.include_competitive_analysis,
+            generate_executive_report=request.generate_executive_report
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Complete enterprise audit executed successfully",
+            execution_time=execution_time,
+            data=audit_result
+        )
+        
+    except Exception as e:
+        logger.error(f"Enterprise audit failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("execute_enterprise_audit", e, request.dict())
+
+
+@router.post("/enterprise/quick-audit", response_model=BaseResponse)
+@log_api_call
+async def execute_quick_enterprise_audit(
+    website_url: HttpUrl,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Execute quick 5-minute enterprise audit focusing on critical issues.
+    
+    Provides rapid assessment of most critical SEO problems:
+    - Technical SEO critical issues
+    - PageSpeed performance bottlenecks
+    - Top 3 actionable recommendations
+    - Estimated business impact
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Starting quick audit for {website_url}")
+        
+        enterprise_service = EnterpriseSEOService()
+        audit_result = await enterprise_service.execute_quick_audit(str(website_url))
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Quick audit completed",
+            execution_time=execution_time,
+            data=audit_result
+        )
+        
+    except Exception as e:
+        return await handle_seo_tool_exception("execute_quick_enterprise_audit", e, {"website_url": str(website_url)})
+
+
+# ==================== ADVANCED GSC ANALYSIS ENDPOINTS ====================
+
+@router.post("/gsc/analyze-search-performance", response_model=BaseResponse)
+@log_api_call
+async def analyze_gsc_search_performance(
+    request: GSCAnalysisRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Advanced Google Search Console analysis with comprehensive insights.
+    
+    Provides deep dive into search performance:
+    - Performance overview with aggregated metrics
+    - Keyword analysis with trend detection
+    - Page-level performance breakdown
+    - Content opportunity identification (15+ opportunities scored)
+    - Technical SEO signal analysis
+    - Competitive positioning assessment
+    - AI-powered strategic recommendations
+    
+    Each analysis component includes:
+    - Current metrics and trends
+    - Performance scores (0-100)
+    - Actionable recommendations
+    - Implementation priority
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Starting GSC analysis for {request.site_url}")
+        
+        user_id = str(current_user.get("id")) if current_user else None
+        
+        gsc_service = GSCAnalyzerService()
+        analysis_result = await gsc_service.analyze_search_performance(
+            site_url=str(request.site_url),
+            date_range_days=request.date_range_days,
+            user_id=user_id
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="GSC search performance analysis completed",
+            execution_time=execution_time,
+            data=analysis_result
+        )
+        
+    except Exception as e:
+        logger.error(f"GSC analysis failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("analyze_gsc_search_performance", e, request.dict())
+
+
+@router.post("/gsc/content-opportunities", response_model=BaseResponse)
+@log_api_call
+async def get_content_opportunities_report(
+    request: ContentOpportunitiesRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate detailed content opportunities report from GSC data.
+    
+    Identifies high-priority content gaps and optimization opportunities:
+    - Queries with high volume but low CTR (meta/title optimization)
+    - Keywords ranking 4-10 (ready for ranking improvement)
+    - Long-tail keywords with expansion potential
+    - Competitive white space analysis
+    
+    For each opportunity includes:
+    - Current position and metrics
+    - Estimated traffic gain
+    - Optimization strategy
+    - Implementation difficulty
+    - Phased roadmap (Phase 1, 2, 3)
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating content opportunities for {request.site_url}")
+        
+        gsc_service = GSCAnalyzerService()
+        report = await gsc_service.get_content_opportunities_report(
+            site_url=str(request.site_url),
+            min_impressions=request.min_impressions,
+            date_range_days=request.date_range_days
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Content opportunities report generated",
+            execution_time=execution_time,
+            data=report
+        )
+        
+    except Exception as e:
+        logger.error(f"Content opportunities report failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("get_content_opportunities_report", e, request.dict())
+
+
+@router.get("/enterprise/health", response_model=BaseResponse)
+@log_api_call
+async def check_enterprise_services_health() -> BaseResponse:
+    """Health check for enterprise services"""
+    try:
+        enterprise_service = EnterpriseSEOService()
+        gsc_service = GSCAnalyzerService()
+        
+        enterprise_health = await enterprise_service.health_check()
+        gsc_health = await gsc_service.health_check()
+        
+        return BaseResponse(
+            success=True,
+            message="Enterprise services health check completed",
+            data={
+                "enterprise_seo_service": enterprise_health,
+                "gsc_analyzer_service": gsc_health,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Enterprise health check failed: {str(e)}")
+        return BaseResponse(
+            success=False,
+            message="Enterprise health check failed",
+            data={"error": str(e)}
+        )

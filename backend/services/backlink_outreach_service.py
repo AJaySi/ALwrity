@@ -197,6 +197,12 @@ class BacklinkOutreachService:
             "placement_conversion": 0.0,
         }
 
+    async def deep_discover(self, keyword: str, max_results: int = 15) -> Dict[str, Any]:
+        """Enhanced discovery using Exa neural search + DuckDuckGo with full-page scraping."""
+        from services.backlink_outreach_scraper import BacklinkOutreachScraper
+        scraper = BacklinkOutreachScraper(user_id=self._user_id if hasattr(self, '_user_id') else None)
+        return await scraper.deep_discover(keyword, max_results)
+
     def get_migration_coverage(self) -> Dict[str, Any]:
         implemented = [
             "discoverable backend router + service",
@@ -204,9 +210,10 @@ class BacklinkOutreachService:
             "legacy guest-post search query generation templates",
             "provider-backed URL discovery + normalization + deduplication",
             "typed opportunity records and confidence score",
+            "deep webpage scraping + contact-page extraction via Exa",
+            "quality scoring and guest-post signal detection",
         ]
         planned = [
-            "deep webpage scraping + contact-page extraction",
             "email sending automation + response tracking",
             "follow-up orchestration and campaign analytics",
         ]

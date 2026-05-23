@@ -1,7 +1,7 @@
 """DB models for production backlink outreach tracking."""
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Index, Boolean
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -21,9 +21,15 @@ class BacklinkLead(Base):
     __tablename__ = "backlink_leads"
     id = Column(String(64), primary_key=True)
     campaign_id = Column(String(64), ForeignKey("backlink_campaigns.id"), nullable=False, index=True)
+    url = Column(String(1024), nullable=True)
     domain = Column(String(255), nullable=False, index=True)
+    page_title = Column(String(512), nullable=True)
+    snippet = Column(Text, nullable=True)
     email = Column(String(255), nullable=True, index=True)
-    status = Column(String(32), nullable=False, default="drafted", index=True)
+    confidence_score = Column(Float, nullable=True, default=0.0)
+    discovery_source = Column(String(32), nullable=True, default="duckduckgo")
+    status = Column(String(32), nullable=False, default="discovered", index=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 

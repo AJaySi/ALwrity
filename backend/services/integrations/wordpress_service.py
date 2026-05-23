@@ -245,6 +245,42 @@ class WordPressService:
             logger.error(f"Error getting site info for {site_id}: {e}")
             return None
 
+    def get_posts_for_site(self, user_id: str, site_id: int) -> List[Dict[str, Any]]:
+        """Get tracked WordPress posts for a specific site."""
+        db_path = self._get_db_path(user_id)
+        if not os.path.exists(db_path):
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='wordpress_posts'")
+                if not cursor.fetchone():
+                    return []
+                cursor.execute('''
+                    SELECT wp.id, wp.wp_post_id, wp.title, wp.status, wp.published_at, wp.created_at,
+                           ws.site_name, ws.site_url
+                    FROM wordpress_posts wp
+                    JOIN wordpress_sites ws ON wp.site_id = ws.id
+                    WHERE wp.user_id = ? AND wp.site_id = ? AND ws.is_active = 1
+                    ORDER BY wp.published_at DESC
+                ''', (user_id, site_id))
+                posts = []
+                for post_data in cursor.fetchall():
+                    posts.append({
+                        "id": post_data[0],
+                        "wp_post_id": post_data[1],
+                        "title": post_data[2],
+                        "status": post_data[3],
+                        "published_at": post_data[4],
+                        "created_at": post_data[5],
+                        "site_name": post_data[6],
+                        "site_url": post_data[7]
+                    })
+            return posts
+        except Exception as e:
+            logger.error(f"Error getting posts for site {site_id}: {e}")
+            return []
+
     def get_posts_for_all_sites(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all tracked WordPress posts for all sites of a user."""
         db_path = self._get_db_path(user_id)

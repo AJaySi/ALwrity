@@ -14,7 +14,7 @@ from services.integrations.wordpress_publisher import WordPressPublisher
 from middleware.auth_middleware import get_current_user
 
 
-router = APIRouter(prefix="/wordpress", tags=["WordPress"])
+router = APIRouter(prefix="/api/wordpress", tags=["WordPress"])
 
 
 # Pydantic Models
@@ -87,10 +87,9 @@ async def get_wordpress_status(user: dict = Depends(get_current_user)):
         logger.info(f"Checking WordPress status for user: {user_id}")
         
         # Get user's WordPress sites
-        sites = wp_service.get_all_sites(user_id)
-        
+sites = wp_service.get_user_sites(user_id)
+
         if sites:
-            # Convert to response format
             site_responses = [
                 WordPressSiteResponse(
                     id=site['id'],
@@ -103,15 +102,13 @@ async def get_wordpress_status(user: dict = Depends(get_current_user)):
                 )
                 for site in sites
             ]
-            
-            logger.info(f"Found {len(sites)} WordPress sites for user {user_id}")
+
             return WordPressStatusResponse(
                 connected=True,
                 sites=site_responses,
                 total_sites=len(sites)
             )
         else:
-            logger.info(f"No WordPress sites found for user {user_id}")
             return WordPressStatusResponse(
                 connected=False,
                 sites=[],
@@ -152,7 +149,7 @@ async def add_wordpress_site(
             )
         
         # Get the added site info
-        sites = wp_service.get_all_sites(user_id)
+        sites = wp_service.get_user_sites(user_id)
         if sites:
             latest_site = sites[0]  # Most recent site
             return WordPressSiteResponse(
@@ -184,7 +181,7 @@ async def get_wordpress_sites(user: dict = Depends(get_current_user)):
         
         logger.info(f"Getting WordPress sites for user: {user_id}")
         
-        sites = wp_service.get_all_sites(user_id)
+        sites = wp_service.get_user_sites(user_id)
         
         site_responses = [
             WordPressSiteResponse(

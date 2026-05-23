@@ -78,6 +78,9 @@ const ProductAnimationStudio = React.lazy(() => import('./components/ProductMark
 const ProductVideoStudio = React.lazy(() => import('./components/ProductMarketing').then(m => ({ default: m.ProductVideoStudio })));
 const ProductAvatarStudio = React.lazy(() => import('./components/ProductMarketing').then(m => ({ default: m.ProductAvatarStudio })));
 
+// BacklinkOutreach barrel (1 export)
+const BacklinkOutreachDashboard = React.lazy(() => import('./components/BacklinkOutreach').then(m => ({ default: m.BacklinkOutreachDashboard })));
+
 // Root route that chooses Landing (signed out) or InitialRouteHandler (signed in)
 const RootRoute: React.FC = () => {
   const { isSignedIn } = useAuth();
@@ -189,6 +192,7 @@ const App: React.FC = () => {
                     <Route path="/dashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
                     <Route path="/seo" element={<ProtectedRoute><FeatureRoute feature="seo"><SEODashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/seo-dashboard" element={<ProtectedRoute><FeatureRoute feature="seo"><SEODashboard /></FeatureRoute></ProtectedRoute>} />
+                    <Route path="/backlink-outreach" element={<ProtectedRoute><FeatureRoute feature="seo"><BacklinkOutreachDashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/content-planning" element={<ProtectedRoute><FeatureRoute feature="content-planning"><ContentPlanningDashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/facebook-writer" element={<ProtectedRoute><FeatureRoute feature="social"><FacebookWriter /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/linkedin-writer" element={<ProtectedRoute><FeatureRoute feature="social"><LinkedInWriter /></FeatureRoute></ProtectedRoute>} />

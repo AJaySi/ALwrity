@@ -18,7 +18,8 @@ import {
   CalendarMonth as CalendarIcon,
   AudioFile as AudioIcon,
   Image as ImageIcon,
-  VideoLibrary as VideoIcon
+  VideoLibrary as VideoIcon,
+  Link as LinkIcon
 } from '@mui/icons-material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import { ToolCategories } from '../components/shared/types';
@@ -124,6 +125,16 @@ export const toolCategories: ToolCategories = {
             status: 'beta',
             path: '/content-planning',
             features: ['Content Strategy', 'Gap Analysis', 'AI Recommendations', 'Calendar Management'],
+            isPinned: true,
+            isHighlighted: true
+          },
+          {
+            name: 'Backlink Outreach',
+            description: 'Discover guest post opportunities with AI-powered deep scraping',
+            icon: React.createElement(LinkIcon),
+            status: 'beta',
+            path: '/backlink-outreach',
+            features: ['AI Discovery', 'Guest Post Opportunities', 'Campaign Management'],
             isPinned: true,
             isHighlighted: true
           },

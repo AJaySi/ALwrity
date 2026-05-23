@@ -104,3 +104,87 @@ export const fetchBacklinkReportingSnapshot = async (): Promise<BacklinkReportin
 
 export const createBacklinkCampaign = async (payload: BacklinkCampaignCreateRequest): Promise<BacklinkCampaignCreateResponse> => (await apiClient.post('/api/backlink-outreach/campaigns', payload)).data;
 export const listBacklinkCampaigns = async (user_id: string, workspace_id: string): Promise<BacklinkCampaignListResponse> => (await apiClient.get('/api/backlink-outreach/campaigns', { params: { user_id, workspace_id } })).data;
+
+// -- Deep Discovery --
+
+export interface EnrichedOpportunity {
+  url: string;
+  domain: string;
+  page_title: string;
+  snippet: string;
+  full_text: string;
+  email: string | null;
+  contact_page: string | null;
+  confidence_score: number;
+  quality_score: number;
+  word_count: number;
+  has_guest_post_guidelines: boolean;
+  discovery_source: string;
+}
+
+export interface DeepDiscoveryRequest {
+  keyword: string;
+  max_results?: number;
+  campaign_id?: string;
+}
+
+export interface DeepDiscoveryResponse {
+  keyword: string;
+  source: string;
+  total_found: number;
+  opportunities: EnrichedOpportunity[];
+}
+
+export const discoverDeepBacklinkOpportunities = async (payload: DeepDiscoveryRequest): Promise<DeepDiscoveryResponse> => (await apiClient.post('/api/backlink-outreach/discover/deep', payload)).data;
+
+// -- Leads --
+
+export interface LeadRecord {
+  lead_id: string;
+  campaign_id: string;
+  url: string | null;
+  domain: string;
+  page_title: string;
+  snippet: string;
+  email: string | null;
+  confidence_score: number;
+  discovery_source: string;
+  status: string;
+  notes: string | null;
+  created_at: string | null;
+}
+
+export interface LeadListResponse {
+  leads: LeadRecord[];
+  total: number;
+}
+
+export interface LeadCreateRequest {
+  campaign_id: string;
+  url: string;
+  domain: string;
+  email?: string;
+  page_title?: string;
+  snippet?: string;
+  confidence_score?: number;
+  notes?: string;
+}
+
+export interface LeadStatusUpdateRequest {
+  status: string;
+  notes?: string;
+}
+
+export interface CampaignDetailResponse {
+  campaign_id: string;
+  name: string;
+  status: string;
+  created_at: string | null;
+  lead_count: number;
+  leads: LeadRecord[];
+}
+
+export const fetchCampaignDetail = async (campaign_id: string, user_id: string): Promise<CampaignDetailResponse> => (await apiClient.get(`/api/backlink-outreach/campaigns/${campaign_id}`, { params: { user_id } })).data;
+export const fetchCampaignLeads = async (campaign_id: string, user_id: string, status?: string): Promise<LeadListResponse> => (await apiClient.get(`/api/backlink-outreach/campaigns/${campaign_id}/leads`, { params: { user_id, status } })).data;
+export const addLeadToCampaign = async (campaign_id: string, payload: LeadCreateRequest): Promise<LeadRecord> => (await apiClient.post(`/api/backlink-outreach/campaigns/${campaign_id}/leads`, payload)).data;
+export const updateLeadStatus = async (lead_id: string, payload: LeadStatusUpdateRequest): Promise<LeadRecord> => (await apiClient.patch(`/api/backlink-outreach/leads/${lead_id}/status`, payload)).data;

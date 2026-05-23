@@ -29,6 +29,83 @@ class BacklinkDiscoveryResponse(BaseModel):
     opportunities: List[OpportunityRecord]
 
 
+# -- Deep Discovery Models --
+
+class DeepKeywordInput(BaseModel):
+    keyword: str = Field(..., min_length=2, max_length=120)
+    max_results: int = Field(default=15, ge=1, le=50)
+    campaign_id: Optional[str] = Field(default=None, description="If set, auto-saves leads to this campaign")
+
+
+class EnrichedOpportunity(BaseModel):
+    url: str
+    domain: str
+    page_title: str = ""
+    snippet: str = ""
+    full_text: str = ""
+    email: Optional[str] = None
+    contact_page: Optional[str] = None
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    word_count: int = 0
+    has_guest_post_guidelines: bool = False
+    discovery_source: str = "duckduckgo"
+
+
+class DeepDiscoveryResponse(BaseModel):
+    keyword: str
+    source: str
+    total_found: int
+    opportunities: List[EnrichedOpportunity]
+
+
+# -- Lead Models --
+
+class LeadCreateRequest(BaseModel):
+    campaign_id: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1)
+    domain: str = Field(..., min_length=1)
+    email: Optional[str] = None
+    page_title: Optional[str] = None
+    snippet: Optional[str] = None
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    notes: Optional[str] = None
+
+
+class LeadRecord(BaseModel):
+    lead_id: str
+    campaign_id: str
+    url: Optional[str]
+    domain: str
+    page_title: Optional[str] = ""
+    snippet: Optional[str] = ""
+    email: Optional[str] = None
+    confidence_score: float = 0.0
+    discovery_source: Optional[str] = "duckduckgo"
+    status: str = "discovered"
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class LeadListResponse(BaseModel):
+    leads: List[LeadRecord]
+    total: int
+
+
+class LeadStatusUpdateRequest(BaseModel):
+    status: str = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
+class CampaignDetailResponse(BaseModel):
+    campaign_id: str
+    name: str
+    status: str
+    created_at: Optional[str] = None
+    lead_count: int = 0
+    leads: List[LeadRecord] = Field(default_factory=list)
+
+
 class GeneratedEmailResponse(BaseModel):
     subject: str
     body: str

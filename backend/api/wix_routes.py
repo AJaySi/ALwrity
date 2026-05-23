@@ -99,13 +99,14 @@ def _map_wix_error(exc: Exception, fallback: str = "Wix API request failed") -> 
         return exc
     if isinstance(exc, requests.HTTPError):
         status = exc.response.status_code if exc.response is not None else None
+        msg = str(exc) if str(exc) != "" else fallback
         if status == 401:
-            return HTTPException(status_code=401, detail="Wix authentication expired or invalid")
+            return HTTPException(status_code=401, detail=msg)
         if status == 403:
-            return HTTPException(status_code=403, detail="Insufficient Wix permissions/scope")
-        return HTTPException(status_code=502, detail=fallback)
+            return HTTPException(status_code=403, detail=msg)
+        return HTTPException(status_code=502, detail=msg)
     if isinstance(exc, requests.RequestException):
-        return HTTPException(status_code=502, detail=fallback)
+        return HTTPException(status_code=502, detail=str(exc) or fallback)
     return HTTPException(status_code=500, detail=str(exc))
 
 
