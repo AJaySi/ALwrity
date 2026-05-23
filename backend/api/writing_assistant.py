@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/writing-assistant", tags=["writing-assistant"])
 
 class SuggestRequest(BaseModel):
     text: str
+    cursor_position: int | None = None
 
 
 class SourceModel(BaseModel):
@@ -32,6 +33,7 @@ class SuggestionModel(BaseModel):
 class SuggestResponse(BaseModel):
     success: bool
     suggestions: List[SuggestionModel]
+    message: str = ""
 
 
 assistant_service = WritingAssistantService()
@@ -41,9 +43,9 @@ assistant_service = WritingAssistantService()
 async def suggest_endpoint(req: SuggestRequest, current_user: Dict[str, Any] = Depends(get_current_user)) -> SuggestResponse:
     try:
         user_id = current_user.get("id")
-        suggestions = await assistant_service.suggest(req.text, user_id=user_id)
+        suggestions = await assistant_service.suggest(req.text, user_id=user_id, cursor_position=req.cursor_position)
         return SuggestResponse(
-            success=True,
+            success=len(suggestions) > 0,
             suggestions=[
                 SuggestionModel(
                     text=s.text,

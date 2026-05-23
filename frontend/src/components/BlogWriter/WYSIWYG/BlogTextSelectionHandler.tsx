@@ -61,7 +61,7 @@ const useBlogTextSelectionHandler = (
       }
     }, 2000); // Update every 2 seconds
     
-    // Set a timeout for the fact check (30 seconds)
+    // Set a timeout for the fact check (120 seconds)
     const timeoutId = setTimeout(() => {
       console.log('🔍 [BlogTextSelectionHandler] Fact check timeout reached');
       clearInterval(progressInterval);
@@ -76,9 +76,9 @@ const useBlogTextSelectionHandler = (
         refuted_claims: 0,
         insufficient_claims: 0,
         timestamp: new Date().toISOString(),
-        error: 'Fact check timed out after 30 seconds. Please try again with shorter text.'
+        error: 'Fact check timed out after 120 seconds. Please try again with shorter text.'
       });
-    }, 30000); // 30 second timeout
+    }, 120000); // 120 second timeout
     
     try {
       console.log('🔍 [BlogTextSelectionHandler] Calling hallucinationDetectorService.detectHallucinations...');
@@ -218,6 +218,27 @@ const useBlogTextSelectionHandler = (
     setSelectionMenu(null);
   };
 
+
+  // Close selection menu when clicking outside any selection menu
+  useEffect(() => {
+    if (!selectionMenu) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-selection-menu]') && !target.closest('[data-fact-check-results]')) {
+        setSelectionMenu(null);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleGlobalClick);
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleGlobalClick);
+    };
+  }, [selectionMenu]);
 
   // Cleanup progress and timeouts on unmount
   useEffect(() => {

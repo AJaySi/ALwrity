@@ -9,6 +9,7 @@ interface BlogWriterLandingSectionProps {
   currentPhase: string;
   navigateToPhase: (phase: string) => void;
   onResearchComplete: (research: any) => void;
+  onBeforeResearchSubmit?: (keywords: string, blogLength: string) => Promise<void>;
   restoreAttempted?: boolean;
 }
 
@@ -20,11 +21,12 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   currentPhase,
   navigateToPhase,
   onResearchComplete,
+  onBeforeResearchSubmit,
   restoreAttempted = false,
 }) => {
   if (!research) {
     if (currentPhase === 'research') {
-      return <ManualResearchForm onResearchComplete={onResearchComplete} />;
+      return <ManualResearchForm onResearchComplete={onResearchComplete} onBeforeResearchSubmit={onBeforeResearchSubmit} />;
     }
 
     if (currentPhase === '' || !VALID_PHASES.includes(currentPhase)) {

@@ -343,18 +343,28 @@ class HallucinationDetector:
             logger.error(f"Error in batch evidence search: {str(e)}")
             return []
 
+    def _map_source_refs_from_reasoning(self, reasoning: str, sources: List[Dict[str, Any]]) -> List[int]:
+        """Parse 'Source N' references from reasoning text and return 0-based indices."""
+        import re
+        indices = set()
+        for match in re.finditer(r'Source\s+(\d+)', reasoning):
+            ref = int(match.group(1))
+            if 1 <= ref <= len(sources):
+                indices.add(ref - 1)  # convert 1-based → 0-based
+        return sorted(indices)
+
     async def _assess_claims_batch(self, claims: List[str], sources: List[Dict[str, Any]], user_id: str = None) -> List[Claim]:
         """Assess multiple claims against sources in one LLM call."""
         try:
             claims_to_assess = claims[:3]
 
             combined_sources = "\n\n".join([
-                f"Source {i+1}: {src.get('url','')}\nText: {src.get('text','')[:1000]}"
+                f"Source [{i}]: {src.get('url','')}\nText: {src.get('text','')[:1000]}"
                 for i, src in enumerate(sources)
             ])
 
             claims_text = "\n".join([
-                f"Claim {i+1}: {claim}"
+                f"Claim {i}: {claim}"
                 for i, claim in enumerate(claims_to_assess)
             ])
 
@@ -367,12 +377,14 @@ class HallucinationDetector:
                 '      "claim_index": 0,\n'
                 '      "assessment": "supported" or "refuted" or "insufficient_information",\n'
                 '      "confidence": number between 0.0 and 1.0,\n'
-                '      "supporting_sources": [array of source indices that support the claim],\n'
-                '      "refuting_sources": [array of source indices that refute the claim],\n'
+                '      "supporting_sources": [array of 0-based source indices, e.g. [0, 2] for Source [0] and Source [2]],\n'
+                '      "refuting_sources": [array of 0-based source indices, e.g. [1] for Source [1]],\n'
                 '      "reasoning": "brief explanation of your assessment"\n'
                 '    }\n'
                 '  ]\n'
                 "}\n\n"
+                "IMPORTANT: Source indices are 0-based. Source [0] is the first source, Source [1] is the second, etc.\n"
+                "For every 'supported' or 'refuted' claim you MUST include the relevant source indices.\n\n"
                 f"Claims to verify:\n{claims_text}\n\n"
                 f"Sources:\n{combined_sources}\n\n"
                 "Return only the JSON object:"
@@ -406,6 +418,15 @@ class HallucinationDetector:
                         for idx in assessment['refuting_sources']:
                             if isinstance(idx, int) and 0 <= idx < len(sources):
                                 refuting_sources.append(sources[idx])
+
+                    # Fallback: parse "Source N" from reasoning text when LLM omits indices
+                    if not supporting_sources and not refuting_sources and sources and assessment.get('reasoning'):
+                        ref_indices = self._map_source_refs_from_reasoning(assessment.get('reasoning', ''), sources)
+                        if ref_indices:
+                            if assessment.get('assessment') == 'supported':
+                                supporting_sources = [sources[i] for i in ref_indices]
+                            elif assessment.get('assessment') == 'refuted':
+                                refuting_sources = [sources[i] for i in ref_indices]
 
                     verified_claims.append(Claim(
                         text=claim,
@@ -464,7 +485,7 @@ class HallucinationDetector:
         """Assess whether sources support or refute the claim using LLM."""
         try:
             combined_sources = "\n\n".join([
-                f"Source {i+1}: {src.get('url','')}\nText: {src.get('text','')[:2000]}"
+                f"Source [{i}]: {src.get('url','')}\nText: {src.get('text','')[:2000]}"
                 for i, src in enumerate(sources)
             ])
 
@@ -474,10 +495,12 @@ class HallucinationDetector:
                 "{\n"
                 '  "assessment": "supported" or "refuted" or "insufficient_information",\n'
                 '  "confidence": number between 0.0 and 1.0,\n'
-                '  "supporting_sources": [array of source indices that support the claim],\n'
-                '  "refuting_sources": [array of source indices that refute the claim],\n'
+                '  "supporting_sources": [array of 0-based source indices, e.g. [0, 2] for Source [0] and Source [2]],\n'
+                '  "refuting_sources": [array of 0-based source indices, e.g. [1] for Source [1]],\n'
                 '  "reasoning": "brief explanation of your assessment"\n'
                 "}\n\n"
+                "IMPORTANT: Source indices are 0-based. Source [0] is the first source, Source [1] is the second, etc.\n"
+                "For 'supported' or 'refuted' you MUST include the relevant source indices.\n\n"
                 f"Claim to verify: {claim}\n\n"
                 f"Sources:\n{combined_sources}\n\n"
                 "Return only the JSON object:"
@@ -507,6 +530,15 @@ class HallucinationDetector:
                 for idx in result['refuting_sources']:
                     if isinstance(idx, int) and 0 <= idx < len(sources):
                         refuting_sources.append(sources[idx])
+
+            # Fallback: parse "Source N" from reasoning text when LLM omits indices
+            if not supporting_sources and not refuting_sources and sources and result.get('reasoning'):
+                ref_indices = self._map_source_refs_from_reasoning(result.get('reasoning', ''), sources)
+                if ref_indices:
+                    if result.get('assessment') == 'supported':
+                        supporting_sources = [sources[i] for i in ref_indices]
+                    elif result.get('assessment') == 'refuted':
+                        refuting_sources = [sources[i] for i in ref_indices]
 
             # Validate assessment value
             valid_assessments = ['supported', 'refuted', 'insufficient_information']

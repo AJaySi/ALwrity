@@ -26,8 +26,11 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
     brainstormError,
     contentOpportunities,
     keywordGaps,
+    quickWins,
+    pageOpportunities,
     aiRecommendations,
     summary,
+    progressMessage,
     connectGSC,
     brainstorm,
     reset,
@@ -36,7 +39,6 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
   const wordCount = keywords.trim().split(/\s+/).filter(Boolean).length;
   const isVisible = wordCount >= 3;
 
-  // Auto-trigger brainstorm after GSC connection succeeds
   useEffect(() => {
     if (gscConnected && pendingBrainstormRef.current && !isConnecting) {
       pendingBrainstormRef.current = false;
@@ -100,7 +102,7 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
         }
         style={{
           padding: '12px 20px',
-          backgroundColor: disabled || isBrainstorming ? '#ccc' : '#4caf50',
+          backgroundColor: disabled || isBrainstorming ? '#999' : '#4caf50',
           color: 'white',
           border: 'none',
           borderRadius: '6px',
@@ -144,10 +146,13 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
         }}
         contentOpportunities={contentOpportunities}
         keywordGaps={keywordGaps}
+        quickWins={quickWins}
+        pageOpportunities={pageOpportunities}
         aiRecommendations={aiRecommendations}
         summary={summary}
         error={brainstormError}
         isBrainstorming={isBrainstorming}
+        progressMessage={progressMessage}
         onSelectSuggestion={handleSelectSuggestion}
       />
 
@@ -165,10 +170,6 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
   );
 };
 
-/* ------------------------------------------------------------------ */
-/*  GSC Connection Overlay                                              */
-/* ------------------------------------------------------------------ */
-
 const GSConnectOverlay: React.FC<{
   isConnecting: boolean;
   connectError: string | null;
@@ -177,7 +178,6 @@ const GSConnectOverlay: React.FC<{
   onSuccess: () => void;
   onCancel: () => void;
 }> = ({ isConnecting, connectError, gscConnected, onConnect, onSuccess, onCancel }) => {
-  // If connection just succeeded, auto-proceed
   if (gscConnected && !isConnecting) {
     onSuccess();
     return null;

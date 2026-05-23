@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface UseModalVisibilityProps {
   mediumPolling: { isPolling: boolean };
@@ -37,16 +37,24 @@ export const useModalVisibility = ({
     }
   }, [mediumPolling.isPolling, rewritePolling.isPolling, isMediumGenerationStarting, showModal, modalStartTime]);
 
-  // Handle outline modal visibility
+  // Handle outline modal visibility with proper timeout cleanup
+  const outlineHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (outlinePolling.isPolling && !showOutlineModal) {
       setShowOutlineModal(true);
     } else if (!outlinePolling.isPolling && showOutlineModal) {
-      // Add a small delay to ensure user sees completion message
-      setTimeout(() => {
+      outlineHideRef.current = setTimeout(() => {
         setShowOutlineModal(false);
+        outlineHideRef.current = null;
       }, 1000);
     }
+    return () => {
+      if (outlineHideRef.current) {
+        clearTimeout(outlineHideRef.current);
+        outlineHideRef.current = null;
+      }
+    };
   }, [outlinePolling.isPolling, showOutlineModal]);
 
   return {

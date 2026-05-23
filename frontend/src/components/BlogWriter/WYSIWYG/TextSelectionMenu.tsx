@@ -73,6 +73,7 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       {/* Text Selection Menu */}
       {selectionMenu && (
         <div
+          data-selection-menu="true"
           onClick={(e) => {
             console.log('🔍 [TextSelectionMenu] Selection menu clicked!', e.target);
             e.stopPropagation();
@@ -497,6 +498,27 @@ const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
           }}>
             "{smartSuggestion.text}"
           </div>
+
+          {smartSuggestion.sources && smartSuggestion.sources.length > 0 && (
+            <div style={{
+              marginBottom: '12px',
+              borderTop: '1px solid rgba(255,255,255,0.2)',
+              paddingTop: '10px'
+            }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, opacity: 0.8, marginBottom: '6px' }}>
+                Sources:
+              </div>
+              {smartSuggestion.sources.slice(0, 2).map((src, i) => (
+                <div key={i} style={{ fontSize: '11px', opacity: 0.85, marginBottom: '4px', lineHeight: '1.3' }}>
+                  <a href={src.url} target="_blank" rel="noopener noreferrer"
+                     style={{ color: 'white', textDecoration: 'underline' }}
+                     onClick={(e) => e.stopPropagation()}>
+                    {src.title || src.url}
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
           
           <div style={{
             display: 'flex',

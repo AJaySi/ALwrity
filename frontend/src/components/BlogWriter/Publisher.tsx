@@ -10,6 +10,7 @@ interface PublisherProps {
   buildFullMarkdown: () => string;
   convertMarkdownToHTML: (md: string) => string;
   seoMetadata: BlogSEOMetadataResponse | null;
+  onPublishComplete?: () => void;
 }
 
 const saveCompleteBlogAsset = async (
@@ -37,7 +38,8 @@ const useCopilotActionTyped = useCopilotAction as any;
 export const Publisher: React.FC<PublisherProps> = ({
   buildFullMarkdown,
   convertMarkdownToHTML,
-  seoMetadata
+  seoMetadata,
+  onPublishComplete,
 }) => {
   const {
     publishToWix,
@@ -87,6 +89,7 @@ export const Publisher: React.FC<PublisherProps> = ({
             md,
             seoMetadata
           );
+          onPublishComplete?.();
         }
         return wixResult;
       } else if (platform === 'wordpress') {
@@ -137,6 +140,7 @@ export const Publisher: React.FC<PublisherProps> = ({
           
           if (result.success) {
             saveCompleteBlogAsset(title, md, seoMetadata);
+            onPublishComplete?.();
             return {
               success: true,
               url: result.post_url || `${activeSite.site_url}/?p=${result.post_id}`,

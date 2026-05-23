@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -9,6 +9,7 @@ import Button from '@mui/material/Button';
 import { debug } from '../../utils/debug';
 import WriterCopilotSidebar from './BlogWriterUtils/WriterCopilotSidebar';
 import { blogWriterApi } from '../../services/blogWriterApi';
+import { researchCache } from '../../services/researchCache';
 import { useClaimFixer } from '../../hooks/useClaimFixer';
 import { useMarkdownProcessor } from '../../hooks/useMarkdownProcessor';
 import { useBlogWriterState } from '../../hooks/useBlogWriterState';
@@ -34,6 +35,7 @@ import { useModalVisibility } from './BlogWriterUtils/useModalVisibility';
 import { useBlogWriterRefs } from './BlogWriterUtils/useBlogWriterRefs';
 import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSection';
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
+import { useBlogAsset } from '../../hooks/useBlogAsset';
 
 const BlogWriter: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -205,6 +207,8 @@ const BlogWriter: React.FC = () => {
 
   // Store navigateToPhase in a ref for use in polling callbacks
   const navigateToPhaseRef = React.useRef<((phase: string) => void) | null>(null);
+  // When true (Re-Content), polling callback skips auto-confirm and SEO navigation
+  const skipContentAutoConfirmRef = React.useRef<boolean>(false);
 
   // Normalize section keys to match outline IDs when updating from API responses
   const handleSectionsUpdate = useCallback((newSections: Record<string, string>) => {
@@ -221,6 +225,83 @@ const BlogWriter: React.FC = () => {
     }
   }, [outline, setSections]);
 
+  // Blog asset persistence (phase-by-phase saving via ContentAsset)
+  const {
+    assetId,
+    createAsset,
+    updatePhase,
+    loadAsset,
+    resetAsset,
+  } = useBlogAsset();
+  // Load blog asset passed via React Router state (from Asset Library)
+  const location = useLocation();
+  const locationState = location.state as { restoreBlogAssetId?: number } | null;
+
+  // Persist last active asset_id across refreshes
+  const saveLastAssetId = useCallback((id: number) => {
+    try { localStorage.setItem('blog_last_asset_id', id.toString()); } catch { /* noop */ }
+  }, []);
+
+  React.useEffect(() => {
+    const assetIdFromState = locationState?.restoreBlogAssetId;
+    if (assetIdFromState) {
+      // Coming from Asset Library — load that specific asset
+      loadAsset(assetIdFromState).then(loaded => {
+        if (!loaded) return;
+        saveLastAssetId(assetIdFromState);
+        debug.log('[BlogWriter] Loaded blog asset from navigation state', { asset_id: assetIdFromState, phase: loaded.phase });
+      });
+    } else {
+      // No navigation state — try restoring last active asset from localStorage
+      const savedId = (() => { try { return localStorage.getItem('blog_last_asset_id'); } catch { return null; } })();
+      if (savedId) {
+        const id = parseInt(savedId, 10);
+        if (!isNaN(id)) {
+          loadAsset(id).then(loaded => {
+            if (loaded) {
+              debug.log('[BlogWriter] Restored last active blog', { asset_id: id, phase: loaded.phase });
+            } else {
+              // Asset was deleted or inaccessible — clear stale localStorage key
+              try { localStorage.removeItem('blog_last_asset_id'); } catch { /* noop */ }
+            }
+          });
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Create/get blog asset before research starts (saves to Asset Library immediately)
+  const handleBeforeResearchSubmit = useCallback(async (keywords: string, blogLength: string) => {
+    const id = await createAsset(keywords, keywords, parseInt(blogLength));
+    if (id) saveLastAssetId(id);
+  }, [createAsset, saveLastAssetId]);
+
+  // Wrap handlers to also update the blog ContentAsset
+  const wrappedHandleResearchComplete = useCallback((researchData: any) => {
+    handleResearchComplete(researchData);
+    if (assetId) { updatePhase('research', researchData); saveLastAssetId(assetId); }
+  }, [handleResearchComplete, assetId, updatePhase, saveLastAssetId]);
+
+  const wrappedHandleSEOAnalysisComplete = useCallback((analysis: any) => {
+    handleSEOAnalysisComplete(analysis);
+    if (assetId) { updatePhase('seo', analysis); saveLastAssetId(assetId); }
+  }, [handleSEOAnalysisComplete, assetId, updatePhase, saveLastAssetId]);
+
+  const wrappedHandleOutlineConfirmed = useCallback(() => {
+    handleOutlineConfirmed();
+    if (assetId) {
+      updatePhase('outline', { outline, selected_title: selectedTitle, title_options: titleOptions });
+      saveLastAssetId(assetId);
+    }
+  }, [handleOutlineConfirmed, assetId, updatePhase, outline, selectedTitle, titleOptions, saveLastAssetId]);
+
+  const wrappedConfirmBlogContent = useCallback(() => {
+    const result = confirmBlogContent();
+    if (assetId) { updatePhase('content', sections); saveLastAssetId(assetId); }
+    return result;
+  }, [confirmBlogContent, assetId, updatePhase, sections, saveLastAssetId]);
+
   // Polling hooks - extracted to useBlogWriterPolling
   const {
     researchPolling,
@@ -231,13 +312,17 @@ const BlogWriter: React.FC = () => {
     outlinePollingState,
     mediumPollingState,
   } = useBlogWriterPolling({
-    onResearchComplete: handleResearchComplete,
+    onResearchComplete: wrappedHandleResearchComplete,
     onOutlineComplete: handleOutlineComplete,
     onOutlineError: handleOutlineError,
     onSectionsUpdate: handleSectionsUpdate,
     onContentConfirmed: () => {
       debug.log('[BlogWriter] Content generation completed - auto-confirming content');
       setContentConfirmed(true);
+    },
+    onContentError: () => {
+      debug.log('[BlogWriter] Content generation failed - reverting outline confirmation');
+      setOutlineConfirmed(false);
     },
     navigateToPhase: (phase) => {
       debug.log('[BlogWriter] Navigating to phase after content generation', { phase });
@@ -248,6 +333,7 @@ const BlogWriter: React.FC = () => {
         }, 0);
       }
     },
+    skipContentAutoConfirmRef,
   });
 
   // Modal visibility management - extracted to useModalVisibility
@@ -304,11 +390,13 @@ const BlogWriter: React.FC = () => {
 
   const handlePhaseClick = useCallback((phaseId: string) => {
     navigateToPhase(phaseId);
-    // When clicking Research phase, ensure we navigate to research phase (this will trigger research form to show)
-    if (phaseId === 'research' && !research) {
-      debug.log('[BlogWriter] Research phase clicked - navigating to research phase to show form');
-      // navigateToPhase already called above, which will set currentPhase to 'research'
-      // BlogWriterLandingSection will detect currentPhase === 'research' and show ManualResearchForm
+    if (phaseId === 'research') {
+      if (!currentPhase) {
+        setResearch(null);
+        debug.log('[BlogWriter] Research phase clicked from landing - cleared research to show form');
+      } else {
+        debug.log('[BlogWriter] Research phase clicked - showing existing research data');
+      }
     }
     if (phaseId === 'seo') {
       if (seoAnalysis) {
@@ -318,7 +406,7 @@ const BlogWriter: React.FC = () => {
         runSEOAnalysisDirect();
       }
     }
-  }, [navigateToPhase, seoAnalysis, research, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
+  }, [navigateToPhase, currentPhase, seoAnalysis, research, setResearch, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
 
   const handleNewBlog = useCallback(() => {
     setResearch(null);
@@ -339,12 +427,16 @@ const BlogWriter: React.FC = () => {
       localStorage.removeItem('blogwriter_user_selected_phase');
       localStorage.removeItem('blog_content_confirmed');
       localStorage.removeItem('blog_seo_recommendations_applied');
+      localStorage.removeItem('blog_last_asset_id');
     } catch {
       // ignore localStorage errors
     }
+    researchCache.clearCache();
+    resetAsset();
+    setSearchParams({}, { replace: true });
   }, [setResearch, setOutline, setSections, setSeoAnalysis, setSeoMetadata,
       setContentConfirmed, setOutlineConfirmed, setSelectedTitle, setTitleOptions,
-      setCurrentPhase]);
+      setCurrentPhase, resetAsset, setSearchParams]);
 
   // Handle ?new=true query param from "New Blog" button in Asset Library
   React.useEffect(() => {
@@ -354,11 +446,11 @@ const BlogWriter: React.FC = () => {
     }
   }, [searchParams, handleNewBlog, setSearchParams]);
 
+  const [newBlogDialogOpen, setNewBlogDialogOpen] = useState(false);
+
   const handleMyBlogs = useCallback(() => {
     navigate('/asset-library?source_module=blog_writer&asset_type=text');
   }, [navigate]);
-
-  const [newBlogDialogOpen, setNewBlogDialogOpen] = useState(false);
 
   const hasExistingWork = !!(research || outline.length > 0 || Object.keys(sections).length > 0);
 
@@ -401,6 +493,7 @@ const BlogWriter: React.FC = () => {
     selectedTitle,
     contentConfirmed,
     sections,
+    seoAnalysis,
     navigateToPhase,
     handleOutlineConfirmed,
     setIsMediumGenerationStarting,
@@ -411,7 +504,8 @@ const BlogWriter: React.FC = () => {
     setIsSEOAnalysisModalOpen,
     setIsSEOMetadataModalOpen,
     runSEOAnalysisDirect,
-    onResearchComplete: handleResearchComplete,
+    skipContentAutoConfirmRef,
+    onResearchComplete: wrappedHandleResearchComplete,
     onOutlineComplete: handleCachedOutlineComplete,
     onContentComplete: handleCachedContentComplete,
   });
@@ -433,7 +527,7 @@ const BlogWriter: React.FC = () => {
     isSEOAnalysisModalOpen,
     lastSEOModalOpenRef,
     runSEOAnalysisDirect,
-    confirmBlogContent,
+    confirmBlogContent: wrappedConfirmBlogContent,
     sections,
     research,
     openSEOMetadata: () => setIsSEOMetadataModalOpen(true),
@@ -461,11 +555,11 @@ const BlogWriter: React.FC = () => {
           outlineConfirmed={outlineConfirmed}
           sections={sections}
           selectedTitle={selectedTitle}
-          onResearchComplete={handleResearchComplete}
+           onResearchComplete={wrappedHandleResearchComplete}
           onOutlineCreated={setOutline}
           onOutlineUpdated={setOutline}
           onTitleOptionsSet={setTitleOptions}
-          onOutlineConfirmed={handleOutlineConfirmed}
+          onOutlineConfirmed={wrappedHandleOutlineConfirmed}
           onOutlineRefined={(feedback?: string) => handleOutlineRefined(feedback || '')}
           onMediumGenerationStarted={handleMediumGenerationStarted}
           onMediumGenerationTriggered={handleMediumGenerationTriggered}
@@ -516,10 +610,21 @@ const BlogWriter: React.FC = () => {
         buildUpdatedMarkdownForClaim={buildUpdatedMarkdownForClaim}
         applyClaimFix={applyClaimFix}
       />
-      <Publisher
+        <Publisher
         buildFullMarkdown={buildFullMarkdown}
         convertMarkdownToHTML={convertMarkdownToHTML}
         seoMetadata={seoMetadata}
+        onPublishComplete={() => {
+          if (assetId) {
+            const fullContent = buildFullMarkdown();
+            updatePhase('publish', {
+              published_at: new Date().toISOString(),
+              content_preview: fullContent.substring(0, 500),
+              title: selectedTitle || seoMetadata?.seo_title || '',
+            });
+            saveLastAssetId(assetId);
+          }
+        }}
       />
       
       {/* Phase navigation header - always visible as default interface */}
@@ -540,7 +645,7 @@ const BlogWriter: React.FC = () => {
         hasResearch={!!research}
         hasOutline={outline.length > 0}
         outlineConfirmed={outlineConfirmed}
-        hasContent={Object.keys(sections).length > 0}
+        hasContent={hasContent}
         contentConfirmed={contentConfirmed}
         hasSEOAnalysis={!!seoAnalysis}
         seoRecommendationsApplied={seoRecommendationsApplied}
@@ -557,7 +662,8 @@ const BlogWriter: React.FC = () => {
         copilotKitAvailable={copilotKitAvailable}
         currentPhase={currentPhase}
         navigateToPhase={navigateToPhase}
-        onResearchComplete={handleResearchComplete}
+        onResearchComplete={wrappedHandleResearchComplete}
+        onBeforeResearchSubmit={handleBeforeResearchSubmit}
         restoreAttempted={restoreAttempted}
       />
 
@@ -592,7 +698,7 @@ const BlogWriter: React.FC = () => {
         onTitleSelect={handleTitleSelect}
         onCustomTitle={handleCustomTitle}
         copilotKitAvailable={copilotKitAvailable}
-        onResearchComplete={handleResearchComplete}
+        onResearchComplete={wrappedHandleResearchComplete}
         onOutlineGenerationStart={(taskId) => {
           setOutlineTaskId(taskId);
           outlinePolling.startPolling(taskId);
@@ -628,7 +734,7 @@ const BlogWriter: React.FC = () => {
         blogTitle={selectedTitle}
         researchData={research}
         onApplyRecommendations={handleApplySeoRecommendations}
-        onAnalysisComplete={handleSEOAnalysisComplete}
+        onAnalysisComplete={wrappedHandleSEOAnalysisComplete}
       />
 
       {/* SEO Metadata Modal */}

@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef } from 'react';
 import { useCopilotAction } from '@copilotkit/react-core';
 import { blogWriterApi, BlogResearchResponse } from '../../services/blogWriterApi';
 import { blogWriterCache } from '../../services/blogWriterCache';
@@ -22,11 +22,18 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
   navigateToPhase,
   onOutlineCreated
 }, ref) => {
+  // Guard against concurrent outline generation (multiple triggers: UI button + CopilotKit action)
+  const outlineGenInProgressRef = useRef(false);
+
   // Expose an imperative method to trigger outline generation directly (bypass LLM)
   useImperativeHandle(ref, () => ({
     generateNow: async () => {
       if (!research) {
         return { success: false, message: 'No research yet. Please research a topic first.' };
+      }
+      
+      if (outlineGenInProgressRef.current) {
+        return { success: false, message: 'Outline generation is already in progress.' };
       }
       
       // Check cache first (shared utility)
@@ -35,7 +42,6 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       
       if (cachedOutline) {
         console.log('[OutlineGenerator] Using cached outline', { sections: cachedOutline.outline.length });
-        // Return cached result - caller should handle setting outline state
         return { 
           success: true, 
           cached: true,
@@ -44,6 +50,7 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
         };
       }
       
+      outlineGenInProgressRef.current = true;
       try {
         onModalShow?.();
         const { task_id } = await blogWriterApi.startOutlineGeneration({ research });
@@ -53,6 +60,8 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return { success: false, message: errorMessage };
+      } finally {
+        outlineGenInProgressRef.current = false;
       }
     }
   }));
@@ -63,6 +72,10 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
     handler: async () => {
       if (!research) {
         return { success: false, message: 'No research yet. Please research a topic first.' };
+      }
+      
+      if (outlineGenInProgressRef.current) {
+        return { success: false, message: 'Outline generation is already in progress. Please wait...' };
       }
       
       // Check cache first (shared utility)
@@ -89,6 +102,7 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
         };
       }
       
+      outlineGenInProgressRef.current = true;
       try {
         // Navigate to outline phase when outline generation starts
         navigateToPhase?.('outline');
@@ -129,6 +143,8 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
           success: false, 
           message: userMessage
         };
+      } finally {
+        outlineGenInProgressRef.current = false;
       }
     },
     render: ({ status }: any) => {

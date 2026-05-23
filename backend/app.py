@@ -679,9 +679,6 @@ if _is_full_mode():
     if campaign_creator_router:
         app.include_router(campaign_creator_router)
 
-    # Include content assets router
-    from api.content_assets.router import router as content_assets_router
-    app.include_router(content_assets_router)
     router_group_status["platform_extensions"] = {
         "mounted": True,
         "reason": "Full mode",
@@ -691,6 +688,10 @@ else:
         "mounted": False,
         "reason": "Skipped in feature-only mode",
     }
+
+# Include content assets router (always — core utility, not feature-specific)
+from api.content_assets.router import router as content_assets_router
+app.include_router(content_assets_router)
 
 # Include Podcast Maker router (only when podcast feature is enabled)
 if _is_feature_enabled("podcast") and "all" not in get_enabled_features():

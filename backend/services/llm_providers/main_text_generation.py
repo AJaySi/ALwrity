@@ -46,6 +46,7 @@ def llm_text_gen(
     preferred_provider: Optional[str] = None,
     flow_type: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
 ) -> str:
     """
     Generate text using Language Model (LLM) based on the provided prompt.
@@ -58,6 +59,8 @@ def llm_text_gen(
         preferred_hf_models (list, optional): Preferred HuggingFace models.
         preferred_provider (str, optional): Preferred provider (google, huggingface).
         flow_type (str, optional): Flow type for logging (e.g., 'sif_agent', 'premium_tool').
+        max_tokens (int, optional): Max tokens for response. If None, provider default is used.
+        temperature (float, optional): Temperature for generation (0.0-1.0). If None, defaults to 0.7.
         
     Returns:
         str: Generated text based on the prompt.
@@ -75,9 +78,8 @@ def llm_text_gen(
         # Set default values for LLM parameters
         gpt_provider = "google"  # Default to Google Gemini
         model = "gemini-2.0-flash-001"
-        temperature = 0.7
-        if max_tokens is None:
-            max_tokens = 4000
+        if temperature is None:
+            temperature = 0.7
         top_p = 0.9
         n = 1
         fp = 16

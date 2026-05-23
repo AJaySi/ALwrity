@@ -9,10 +9,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from loguru import logger
+from datetime import datetime
 from middleware.auth_middleware import get_current_user
 from sqlalchemy.orm import Session
 from services.database import get_db as get_db_dependency
 from utils.text_asset_tracker import save_and_track_text_content
+from models.content_asset_models import AssetType, AssetSource
 
 from models.blog_models import (
     BlogResearchRequest,
@@ -36,6 +38,7 @@ from models.blog_models import (
 from services.blog_writer.blog_service import BlogWriterService
 from services.blog_writer.seo.blog_seo_recommendation_applier import BlogSEORecommendationApplier
 from services.llm_providers.main_text_generation import llm_text_gen
+from services.content_asset_service import ContentAssetService
 from .task_manager import task_manager
 from .cache_manager import cache_manager
 from models.blog_models import MediumBlogGenerateRequest
@@ -1260,3 +1263,233 @@ async def save_complete_blog_asset(
     except Exception as e:
         logger.error(f"Failed to save complete blog asset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------
+# Blog Asset API (phase-by-phase saving via ContentAsset)
+# ---------------------------------------
+
+
+class BlogAssetCreateRequest(BaseModel):
+    research_keywords: str = Field(..., max_length=2000, description="Research keywords / topic")
+    topic: Optional[str] = Field(default=None, max_length=500)
+    word_count_target: Optional[int] = Field(default=None, ge=100, le=20000)
+
+
+class BlogAssetUpdateRequest(BaseModel):
+    phase: Optional[str] = Field(default=None, pattern=r"^(research|outline|content|seo|publish)$")
+    topic: Optional[str] = Field(default=None, max_length=500)
+    selected_title: Optional[str] = Field(default=None, max_length=500)
+    word_count_target: Optional[int] = Field(default=None, ge=100, le=20000)
+    research_data: Optional[Dict[str, Any]] = None
+    outline_data: Optional[Dict[str, Any]] = None
+    content_data: Optional[Dict[str, Any]] = None
+    seo_data: Optional[Dict[str, Any]] = None
+    publish_data: Optional[Dict[str, Any]] = None
+
+
+def _normalize_keywords(kw: str) -> str:
+    """Normalize keywords for duplicate comparison."""
+    return " ".join(sorted(kw.lower().split()))
+
+
+@router.post("/asset", response_model=Dict[str, Any])
+async def create_blog_asset(
+    request: BlogAssetCreateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a blog ContentAsset on research start.
+    Returns existing asset if duplicate keywords found (unique topics only).
+    """
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id", ""))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID")
+
+        svc = ContentAssetService(db)
+        normalized_kw = _normalize_keywords(request.research_keywords)
+
+        # Duplicate check — search existing blog assets for matching keywords
+        existing_assets, _ = svc.get_user_assets(
+            user_id=user_id,
+            source_module=AssetSource.BLOG_WRITER,
+            asset_type=AssetType.TEXT,
+            limit=100,
+        )
+        for asset in existing_assets:
+            meta = asset.asset_metadata or {}
+            if meta.get("normalized_keywords") == normalized_kw:
+                logger.info(f"Duplicate blog asset found: {asset.id}, returning existing")
+                return {
+                    "success": True,
+                    "asset": _asset_to_response(asset),
+                    "existing": True,
+                }
+
+        # Create new ContentAsset for this blog
+        title = request.topic or request.research_keywords[:200]
+        asset_metadata = {
+            "phase": "research",
+            "research_keywords": request.research_keywords,
+            "normalized_keywords": normalized_kw,
+            "word_count_target": request.word_count_target,
+            "topic": request.topic,
+            "research_data": None,
+            "outline_data": None,
+            "content_data": None,
+            "seo_data": None,
+            "publish_data": None,
+        }
+        asset = svc.create_asset(
+            user_id=user_id,
+            asset_type=AssetType.TEXT,
+            source_module=AssetSource.BLOG_WRITER,
+            filename=f"blog_{int(datetime.utcnow().timestamp())}.md",
+            file_url=f"/api/blog/content/pending",
+            title=title,
+            description=f"Blog: {title}",
+            tags=["blog", "research"],
+            asset_metadata=asset_metadata,
+        )
+        logger.info(f"✅ Created blog asset: {asset.id}")
+        return {
+            "success": True,
+            "asset": _asset_to_response(asset),
+            "existing": False,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create blog asset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/asset/{asset_id}", response_model=Dict[str, Any])
+async def update_blog_asset(
+    asset_id: int,
+    request: BlogAssetUpdateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update a blog asset's phase, metadata, and tags."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id", ""))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID")
+
+        svc = ContentAssetService(db)
+        asset = svc.get_asset_by_id(asset_id, user_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Blog asset not found")
+
+        meta = dict(asset.asset_metadata or {})
+        tags = list(asset.tags or [])
+
+        if request.phase is not None:
+            meta["phase"] = request.phase
+            # Update tags to reflect phase
+            new_tags = [t for t in tags if t not in ("research", "outline", "content", "seo", "publish")]
+            new_tags.append(request.phase)
+            if "blog" not in new_tags:
+                new_tags.append("blog")
+            tags = new_tags
+
+        if request.topic is not None:
+            meta["topic"] = request.topic
+        if request.selected_title is not None:
+            meta["selected_title"] = request.selected_title
+        if request.word_count_target is not None:
+            meta["word_count_target"] = request.word_count_target
+
+        for field in ("research_data", "outline_data", "content_data", "seo_data", "publish_data"):
+            val = getattr(request, field, None)
+            if val is not None:
+                meta[field] = val
+
+        if meta.get("selected_title"):
+            new_title = meta["selected_title"]
+        elif meta.get("topic"):
+            new_title = meta["topic"]
+        else:
+            new_title = asset.title or "Blog Post"
+
+        updated = svc.update_asset(
+            asset_id=asset_id,
+            user_id=user_id,
+            title=new_title[:500],
+            tags=tags,
+            asset_metadata=meta,
+        )
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update asset")
+
+        logger.info(f"✅ Updated blog asset {asset_id}: phase={meta.get('phase')}")
+        return {"success": True, "asset": _asset_to_response(updated)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update blog asset {asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/asset/{asset_id}", response_model=Dict[str, Any])
+async def get_blog_asset(
+    asset_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get a blog asset with all phase data."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        user_id = str(current_user.get("id", ""))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID")
+
+        svc = ContentAssetService(db)
+        asset = svc.get_asset_by_id(asset_id, user_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Blog asset not found")
+
+        return {"success": True, "asset": _asset_to_response(asset, full=True)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get blog asset {asset_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _asset_to_response(asset: Any, full: bool = False) -> Dict[str, Any]:
+    """Convert a ContentAsset to a blog asset response dict."""
+    meta = asset.asset_metadata or {}
+    resp: Dict[str, Any] = {
+        "id": asset.id,
+        "title": asset.title,
+        "description": asset.description,
+        "tags": asset.tags or [],
+        "phase": meta.get("phase", "research"),
+        "research_keywords": meta.get("research_keywords"),
+        "topic": meta.get("topic"),
+        "selected_title": meta.get("selected_title"),
+        "word_count_target": meta.get("word_count_target"),
+        "has_research": meta.get("research_data") is not None,
+        "has_outline": meta.get("outline_data") is not None,
+        "has_content": meta.get("content_data") is not None,
+        "has_seo": meta.get("seo_data") is not None,
+        "has_publish": meta.get("publish_data") is not None,
+        "created_at": asset.created_at.isoformat() if asset.created_at else None,
+        "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+    }
+    if full:
+        resp["research_data"] = meta.get("research_data")
+        resp["outline_data"] = meta.get("outline_data")
+        resp["content_data"] = meta.get("content_data")
+        resp["seo_data"] = meta.get("seo_data")
+        resp["publish_data"] = meta.get("publish_data")
+    return resp

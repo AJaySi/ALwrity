@@ -71,7 +71,7 @@ async def detect_hallucinations(request: HallucinationDetectionRequest, current_
                     text=source.get('text', ''),
                     published_date=source.get('publishedDate'),
                     author=source.get('author'),
-                    score=source.get('score', 0.5)
+                    score=source.get('score') if source.get('score') is not None else 0.5
                 )
                 for source in claim.supporting_sources
             ]
@@ -83,7 +83,7 @@ async def detect_hallucinations(request: HallucinationDetectionRequest, current_
                     text=source.get('text', ''),
                     published_date=source.get('publishedDate'),
                     author=source.get('author'),
-                    score=source.get('score', 0.5)
+                    score=source.get('score') if source.get('score') is not None else 0.5
                 )
                 for source in claim.refuting_sources
             ]
@@ -214,7 +214,7 @@ async def verify_claim(request: ClaimVerificationRequest, current_user: Dict[str
                     text=source.get('text', ''),
                     published_date=source.get('publishedDate'),
                     author=source.get('author'),
-                    score=source.get('score', 0.5)
+                    score=source.get('score') if source.get('score') is not None else 0.5
                 )
                 for source in claim_result.supporting_sources
             ]
@@ -226,7 +226,7 @@ async def verify_claim(request: ClaimVerificationRequest, current_user: Dict[str
                     text=source.get('text', ''),
                     published_date=source.get('publishedDate'),
                     author=source.get('author'),
-                    score=source.get('score', 0.5)
+                    score=source.get('score') if source.get('score') is not None else 0.5
                 )
                 for source in claim_result.refuting_sources
             ]
