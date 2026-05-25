@@ -25,10 +25,17 @@ def _resolve_podcast_media_file(
     if not clean_filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
+    # Filename must be a basename only (no path separators / traversal)
+    filename_path = Path(clean_filename)
+    if filename_path.name != clean_filename or clean_filename in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     for base_dir in get_podcast_media_read_dirs(media_type, user_id):
         target_dir = (base_dir / subdir).resolve() if subdir else base_dir.resolve()
         candidate = (target_dir / clean_filename).resolve()
-        if not str(candidate).startswith(str(target_dir)):
+        try:
+            candidate.relative_to(target_dir)
+        except ValueError:
             logger.error(f"[Podcast] Attempted path traversal for {media_type}: {filename}")
             raise HTTPException(status_code=403, detail="Invalid media path")
         if candidate.exists():
@@ -75,10 +82,13 @@ def load_podcast_image_bytes(image_url: str, user_id: str | None = None) -> byte
     logger.info(f"[Podcast] Loading image from URL: {image_url}")
     
     try:
-        # Extract filename from URL path
+        parsed = urlparse(image_url)
+        path = parsed.path if parsed.scheme else image_url
+
+        # Extract filename from API image path
         prefix = "/api/podcast/images/"
-        if prefix in image_url:
-            filename = image_url.split(prefix, 1)[1].split("?", 1)[0].strip()
+        if path.startswith(prefix):
+            filename = path[len(prefix):].split("?", 1)[0].strip()
             # Handle subdirectories like avatars/
             subdir = None
             if "/" in filename:
