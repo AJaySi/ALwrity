@@ -38,6 +38,15 @@ MIME_MAP = {
 }
 
 
+def _verify_ownership(url_user_id: str, current_user: Dict[str, Any]) -> str:
+    """Verify the URL user_id matches the authenticated user. Returns sanitized user_id."""
+    raw = current_user.get("id") or current_user.get("user_id") or current_user.get("clerk_user_id")
+    authed_id = str(raw) if raw else ""
+    if not authed_id or sanitize_user_id(url_user_id) != sanitize_user_id(authed_id):
+        raise HTTPException(status_code=403, detail="Access denied: user mismatch")
+    return sanitize_user_id(url_user_id)
+
+
 def _resolve_asset_path(user_id: str, category: str, filename: str) -> Path:
     """Resolve asset path in user workspace with path-traversal protection."""
     safe_user_id = sanitize_user_id(user_id)
@@ -67,6 +76,7 @@ async def serve_avatar(
     """Serve avatar images. Supports auth via Authorization header or ?token= query param.
     Falls back to images/ directory for backward compatibility with old asset library entries."""
     require_authenticated_user(current_user)
+    _verify_ownership(user_id, current_user)
 
     safe_filename = os.path.basename(filename)
     file_path = _resolve_asset_path(user_id, "avatars", safe_filename)
@@ -95,6 +105,7 @@ async def serve_voice_sample(
     which cannot send Authorization headers.
     """
     require_authenticated_user(current_user)
+    _verify_ownership(user_id, current_user)
 
     safe_filename = os.path.basename(filename)
     file_path = _resolve_asset_path(user_id, "voice_samples", safe_filename)
@@ -117,6 +128,7 @@ async def serve_image(
 ):
     """Serve generated/uploaded images. Supports auth via Authorization header or ?token= query param."""
     require_authenticated_user(current_user)
+    _verify_ownership(user_id, current_user)
 
     safe_filename = os.path.basename(filename)
     file_path = _resolve_asset_path(user_id, "images", safe_filename)

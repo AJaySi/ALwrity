@@ -151,7 +151,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
 
       if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Checking subscription for user:', userId);
       const response = await apiClient.get(`/api/subscription/status/${userId}`);
-      const subscriptionData = response.data.data;
+      let subscriptionData = response.data.data;
 
       if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Subscription data received:', { active: subscriptionData?.active, plan: subscriptionData?.plan });
 

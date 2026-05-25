@@ -27,6 +27,8 @@ from services.subscription import UsageTrackingService, PricingService
 from models.subscription_models import APIProvider, UsageSummary
 from utils.asset_tracker import save_asset_to_library
 from utils.file_storage import save_file_safely, generate_unique_filename, sanitize_filename
+from services.content_asset_service import ContentAssetService
+from models.content_asset_models import ContentAsset
 
 
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -1022,12 +1024,28 @@ def edit(
 @router.get("/image-studio/images/{image_filename:path}")
 async def serve_image_studio_image(
     image_filename: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Serve a generated or edited image from Image Studio."""
+    """Serve a generated or edited image from Image Studio.
+    Verifies the authenticated user owns the image via asset library lookup."""
     try:
         if not current_user:
             raise HTTPException(status_code=401, detail="Authentication required")
+        
+        user_id = current_user.get("id") or current_user.get("user_id") or current_user.get("clerk_user_id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        # Verify ownership: the requesting user must have a content_assets record for this file_url
+        full_url = f"/api/images/image-studio/images/{image_filename}"
+        service = ContentAssetService(db)
+        owned = db.query(ContentAsset).filter(
+            ContentAsset.user_id == user_id,
+            ContentAsset.file_url == full_url,
+        ).first()
+        if not owned:
+            raise HTTPException(status_code=403, detail="Access denied: image not found in your library")
         
         # Determine if it's an edited image or regular image
         base_dir = Path(__file__).parent.parent
