@@ -52,7 +52,7 @@ class AutoFillRefreshService:
             
             logger.info(f"  - Website analysis keys: {list(website_analysis.keys()) if website_analysis else 'None'}")
             logger.info(f"  - Research preferences keys: {list(research_preferences.keys()) if research_preferences else 'None'}")
-            logger.info(f"  - API keys data keys: {list(api_keys_data.keys()) if api_keys_data else 'None'}")
+            logger.info("  - API keys data present: %s | entry_count=%s", bool(api_keys_data), len(api_keys_data) if isinstance(api_keys_data, dict) else 0)
             logger.info(f"  - Onboarding session keys: {list(onboarding_session.keys()) if onboarding_session else 'None'}")
             
             # Log specific data points
