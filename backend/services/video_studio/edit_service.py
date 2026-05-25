@@ -8,6 +8,7 @@ Phase 3: AI Features (Background Replacement, Object Removal, Color Grading)
 
 import asyncio
 import logging
+import math
 import subprocess
 import tempfile
 import uuid
@@ -412,6 +413,22 @@ class EditService:
         """Normalize audio levels using FFmpeg loudnorm filter (EBU R128)."""
         try:
             logger.info(f"[EditService] Audio normalization: user={user_id}, level={target_level} LUFS")
+
+            try:
+                sanitized_target_level = float(target_level)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Invalid target level")
+
+            if not math.isfinite(sanitized_target_level):
+                raise HTTPException(status_code=400, detail="Invalid target level")
+
+            if sanitized_target_level > 0.0 or sanitized_target_level < -50.0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Target level must be between -50 and 0 LUFS"
+                )
+
+            ffmpeg_target_level = f"{sanitized_target_level:.2f}"
             
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as input_file:
                 input_file.write(video_data)
@@ -425,7 +442,7 @@ class EditService:
                 
                 cmd = [
                     "ffmpeg", "-i", input_path,
-                    "-af", f"loudnorm=I={target_level}:TP=-1.5:LRA=11",
+                    "-af", f"loudnorm=I={ffmpeg_target_level}:TP=-1.5:LRA=11",
                     "-c:v", "copy", "-c:a", "aac", "-y", output_path
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -450,7 +467,7 @@ class EditService:
                         video_data=processed_video_bytes,
                         filename=filename,
                         asset_type="video_edit",
-                        metadata={"edit_type": "normalize", "target_level": target_level},
+                        metadata={"edit_type": "normalize", "target_level": sanitized_target_level},
                     )
                     
                     return {
@@ -459,7 +476,7 @@ class EditService:
                         "asset_id": asset_result.get("asset_id"),
                         "cost": 0.0,
                         "edit_type": "normalize",
-                        "metadata": {"target_level": target_level},
+                        "metadata": {"target_level": sanitized_target_level},
                     }
                 finally:
                     db.close()
