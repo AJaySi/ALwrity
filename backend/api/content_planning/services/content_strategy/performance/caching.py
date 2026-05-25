@@ -79,8 +79,8 @@ class CachingService:
             if kwargs:
                 key_data += ":" + json.dumps(kwargs, sort_keys=True)
             
-            # Create hash for consistent key length
-            key_hash = hashlib.md5(key_data.encode()).hexdigest()
+            # Create hash for consistent key length using a strong hash algorithm
+            key_hash = hashlib.sha256(key_data.encode("utf-8")).hexdigest()
             return f"content_strategy:{cache_type}:{key_hash}"
             
         except Exception as e:
