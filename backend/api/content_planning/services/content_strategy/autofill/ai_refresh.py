@@ -64,7 +64,7 @@ class AutoFillRefreshService:
                 logger.info(f"  - Content types: {research_preferences.get('content_types', 'Not found')}")
             if api_keys_data:
                 logger.info(f"  - API providers: {api_keys_data.get('providers', [])}")
-                logger.info(f"  - Total keys: {api_keys_data.get('total_keys', 0)}")
+                logger.info("  - API key data present: %s", bool(api_keys_data))
         else:
             logger.warning(f"AutoFillRefreshService: no base context available | user=%s", user_id)
         
