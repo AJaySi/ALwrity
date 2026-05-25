@@ -142,11 +142,11 @@ async def serve_transform_video(
                 detail="Invalid video path: path traversal detected"
             )
 
-        if not video_path.exists():
+        if not resolved_video_path.exists():
             raise HTTPException(status_code=404, detail="Video not found")
 
         return FileResponse(
-            path=str(video_path),
+            path=str(resolved_video_path),
             media_type="video/mp4",
             filename=video_filename
         )
