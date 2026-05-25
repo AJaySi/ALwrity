@@ -355,3 +355,72 @@ See next section...
 **Status**: Production Ready ✅
 
 For support, visit our documentation or contact support@alwrity.com
+
+
+## ✅ Implementation Alignment (May 2026)
+
+The following endpoints are currently mounted and used by the active SEO Dashboard implementation:
+
+### Analysis Execution
+- `POST /api/seo-dashboard/analyze-comprehensive`
+- `POST /api/seo-dashboard/analyze-full`
+- `POST /api/seo-dashboard/batch-analyze`
+- `POST /api/seo-dashboard/analyze-urls-ai`
+
+### Dashboard Data & Reporting
+- `GET /api/seo-dashboard/data`
+- `GET /api/seo-dashboard/overview`
+- `GET /api/seo-dashboard/metrics`
+- `GET /api/seo-dashboard/metrics-detailed`
+- `GET /api/seo-dashboard/analysis-summary`
+- `GET /api/seo-dashboard/health-score`
+- `GET /api/seo-dashboard/insights`
+
+### Integrations
+- `GET /api/seo-dashboard/platforms`
+- `GET /api/seo-dashboard/gsc/raw`
+- `GET /api/seo-dashboard/bing/raw`
+- `POST /api/seo-dashboard/refresh`
+
+### Competitive & Strategic Intelligence
+- `GET /api/seo-dashboard/competitive-insights`
+- `GET /api/seo-dashboard/deep-competitor-analysis`
+- `POST /api/seo-dashboard/strategic-insights/run`
+- `GET /api/seo-dashboard/strategic-insights/history`
+
+### Operations & Health
+- `GET /api/seo-dashboard/health`
+- `GET /api/seo-dashboard/semantic-health`
+- `GET /api/seo-dashboard/sif-health`
+- `GET /api/seo-dashboard/cache-stats`
+- `GET /api/seo-dashboard/onboarding-task-health`
+
+### Source-of-Truth Code Paths
+- Frontend dashboard: `frontend/src/components/SEODashboard/`
+- Frontend API clients: `frontend/src/api/seoDashboard.ts`, `frontend/src/api/seoAnalysis.ts`
+- Backend API router: `backend/api/seo_dashboard.py`
+- Backend SEO service: `backend/services/seo/dashboard_service.py`
+
+
+## 🆕 Recent SEO Enhancements (Reviewed: May 25, 2026)
+
+The SEO stack has expanded beyond core URL analysis. Based on the current frontend/backend code and latest SEO docs, these additions should be considered part of the current docs-site surface:
+
+### Dashboard + API enhancements
+- Strategic insights execution and history (`/api/seo-dashboard/strategic-insights/run`, `/api/seo-dashboard/strategic-insights/history`)
+- Deep competitor analysis endpoint (`/api/seo-dashboard/deep-competitor-analysis`)
+- Onboarding task health visibility (`/api/seo-dashboard/onboarding-task-health`)
+- Operational diagnostics (`/api/seo-dashboard/semantic-health`, `/api/seo-dashboard/sif-health`, `/api/seo-dashboard/cache-stats`)
+- Route aliases active in app routing: `/seo` and `/seo-dashboard`
+
+### Workflow enhancements connected to SEO
+- Blog Writer now includes GSC-powered brainstorming flows (`frontend/src/components/BlogWriter/GSCBrainstormModal.tsx`, `backend/services/gsc_brainstorm_service.py`)
+- SEO guidance is available both in dashboard workflows and in-editor Blog Writer SEO modules (e.g., `SEOMiniPanel`, `SEOAnalysisModal`, `SEOMetadataModal`)
+
+### Source docs reviewed for enhancement tracking
+- `docs/SEO/COMPLETE_SEO_TOOLS_INVENTORY.md`
+- `docs/SEO/API_REFERENCE.md`
+- `docs/SEO/PHASE2A_IMPLEMENTATION.md`
+- `docs/SEO/MIGRATION_STATUS_ANALYSIS.md`
+- `docs/SEO/MIGRATION_DETAILED_GAPS.md`
+- `docs/SEO/MIGRATION_EXECUTIVE_SUMMARY.md`
