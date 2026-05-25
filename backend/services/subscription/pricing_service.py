@@ -566,10 +566,10 @@ class PricingService:
                 "firecrawl_calls_limit": 0,  # DISABLED: Firecrawl not in Free tier
                 "stability_calls_limit": 3,  # 3 images - enough to try the product
                 "exa_calls_limit": 10,  # 10 research queries - enough to try the product
-                "video_calls_limit": 0,  # DISABLED: Video generation not in Free tier
+                "video_calls_limit": 2,  # 2 video renders - try podcast video on Free
                 "image_edit_calls_limit": 5,  # 5 image edits - enough to try the product
                 "audio_calls_limit": 5,  # 5 audio clips - enough to try the product
-                "wavespeed_calls_limit": 0,  # DISABLED: WaveSpeed not included in Free tier
+                "wavespeed_calls_limit": 0,  # 0 = unlimited for Free; video controlled via video_calls_limit
                 "gemini_tokens_limit": 50000,
                 "openai_tokens_limit": 0,  # DISABLED
                 "anthropic_tokens_limit": 0,  # DISABLED

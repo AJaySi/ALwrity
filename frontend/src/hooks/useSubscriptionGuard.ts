@@ -59,44 +59,10 @@ export const useSubscriptionGuard = (options: SubscriptionGuardOptions = {}) => 
   const getRemainingUsage = (feature: string): number => {
     if (!subscription?.active) return 0;
 
-    // This would typically come from usage tracking
-    // For now, return the limit as remaining usage
-    switch (feature) {
-      case 'gemini_calls':
-        return subscription.limits.gemini_calls;
-      case 'openai_calls':
-        return subscription.limits.openai_calls;
-      case 'anthropic_calls':
-        return subscription.limits.anthropic_calls;
-      case 'mistral_calls':
-        return subscription.limits.mistral_calls;
-      case 'tavily_calls':
-        return subscription.limits.tavily_calls;
-      case 'serper_calls':
-        return subscription.limits.serper_calls;
-      case 'metaphor_calls':
-        return subscription.limits.metaphor_calls;
-      case 'firecrawl_calls':
-        return subscription.limits.firecrawl_calls;
-      case 'stability_calls':
-        return subscription.limits.stability_calls;
-      case 'video_calls':
-        return subscription.limits.video_calls || 0;
-      case 'image_edit_calls':
-        return subscription.limits.image_edit_calls || 0;
-      case 'audio_calls':
-        return subscription.limits.audio_calls || 0;
-      case 'ai_text_generation_calls':
-        return subscription.limits.ai_text_generation_calls || 0;
-      case 'exa_calls':
-        return subscription.limits.exa_calls || 0;
-      case 'wavespeed_calls':
-        return subscription.limits.wavespeed_calls || 0;
-      case 'monthly_cost':
-        return subscription.limits.monthly_cost;
-      default:
-        return 0;
-    }
+    const limit = subscription.limits[feature as keyof typeof subscription.limits] ?? 0;
+    const used = subscription.currentUsage?.[feature as keyof typeof subscription.limits] ?? 0;
+    const remaining = Math.max(0, limit - used);
+    return remaining;
   };
 
   return {

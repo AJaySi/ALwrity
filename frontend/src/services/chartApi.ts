@@ -1,4 +1,5 @@
 import { aiApiClient, getAuthTokenGetter } from '../api/client';
+import { getApiBaseUrl } from '../utils/apiUrl';
 
 export interface ChartGenerateRequest {
   chart_data?: Record<string, any>;
@@ -23,11 +24,7 @@ class ChartApiService {
   private baseUrl: string;
 
   constructor() {
-    const url = process.env.REACT_APP_API_URL;
-    if (process.env.NODE_ENV === 'production' && !url) {
-      throw new Error('REACT_APP_API_URL environment variable is required for production');
-    }
-    this.baseUrl = url || 'http://localhost:8000';
+    this.baseUrl = getApiBaseUrl();
   }
 
   async generateChartExplicit(params: {

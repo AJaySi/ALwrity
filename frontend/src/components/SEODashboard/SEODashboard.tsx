@@ -32,8 +32,10 @@ import {
   Schedule as ScheduleIcon,
   Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
-  AutoAwesome as AIIcon
+  AutoAwesome as AIIcon,
+  Tab as TabIcon,
 } from '@mui/icons-material';
+import { Tabs, Tab as MuiTab } from '@mui/material';
 
 // Shared components
 import { DashboardContainer, GlassCard } from '../shared/styled';
@@ -66,6 +68,9 @@ import { AdvertoolsInsights } from './components/AdvertoolsInsights';
 // Phase 2B: Semantic Dashboard components
 import SemanticHealthCard from './components/SemanticHealthCard';
 import SemanticInsights from './components/SemanticInsights';
+
+// Phase 2A: Enterprise SEO Analysis
+import SEOAnalysisController from './SEOAnalysisController';
 
 const SEODashboard: React.FC = () => {
   // Clerk authentication hooks
@@ -109,6 +114,9 @@ const SEODashboard: React.FC = () => {
   // Menu state
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
+  
+  // Dashboard Tab State for Enterprise Analysis
+  const [dashboardTab, setDashboardTab] = useState<number>(0);
   
   // Competitor analysis data from onboarding step 3
   const [competitorAnalysisData, setCompetitorAnalysisData] = useState<any>(null);
@@ -778,6 +786,40 @@ const SEODashboard: React.FC = () => {
 
 
               {/* CopilotKit Test Panel removed */}
+
+              {/* Dashboard Tabs */}
+              <Box sx={{ mb: 4, display: 'flex', gap: 1, borderBottom: '1px solid rgba(255, 255, 255, 0.1)', pb: 1 }}>
+                <Button
+                  variant={dashboardTab === 0 ? 'contained' : 'text'}
+                  onClick={() => setDashboardTab(0)}
+                  sx={{
+                    color: dashboardTab === 0 ? 'white' : 'rgba(255, 255, 255, 0.7)',
+                    bgcolor: dashboardTab === 0 ? 'rgba(33, 150, 243, 0.3)' : 'transparent',
+                    borderBottom: dashboardTab === 0 ? '2px solid #2196F3' : 'none',
+                    borderRadius: 0,
+                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)' }
+                  }}
+                >
+                  📊 Overview
+                </Button>
+                <Button
+                  variant={dashboardTab === 1 ? 'contained' : 'text'}
+                  onClick={() => setDashboardTab(1)}
+                  sx={{
+                    color: dashboardTab === 1 ? 'white' : 'rgba(255, 255, 255, 0.7)',
+                    bgcolor: dashboardTab === 1 ? 'rgba(33, 150, 243, 0.3)' : 'transparent',
+                    borderBottom: dashboardTab === 1 ? '2px solid #2196F3' : 'none',
+                    borderRadius: 0,
+                    '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)' }
+                  }}
+                >
+                  🔍 Enterprise Analysis
+                </Button>
+              </Box>
+
+              {/* Tab Content: Overview */}
+              {dashboardTab === 0 && (
+              <>
 
               {/* Search Performance Overview */}
               <Box sx={{ mb: 4 }}>
@@ -1535,6 +1577,13 @@ const SEODashboard: React.FC = () => {
               
               {/* SEO Copilot Component for data loading and error handling */}
               <SEOCopilot />
+              </>
+              )}
+
+              {/* Tab Content: Enterprise Analysis */}
+              {dashboardTab === 1 && (
+                <SEOAnalysisController />
+              )}
             </motion.div>
           </AnimatePresence>
         </Container>

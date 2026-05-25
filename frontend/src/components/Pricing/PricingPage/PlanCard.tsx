@@ -652,36 +652,36 @@ const PlanCard: React.FC<PlanCardProps> = ({
             </Box>
           </ListItem>
 
-          {(plan.tier === 'basic' || plan.tier === 'pro' || plan.tier === 'enterprise') && (
-            <>
-              <ListItem>
-                <ListItemIcon sx={{ minWidth: 24 }}>
-                  <AudioIcon color="primary" fontSize="small" />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Audio Generation"
-                  secondary={
-                    plan.tier === 'basic'
-                      ? 'AI voice synthesis for podcasts, stories, and narration'
-                      : 'AI-powered audio content creation and voice synthesis'
-                  }
-                />
-              </ListItem>
+          {(plan.limits.audio_calls ?? 0) > 0 && (
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <AudioIcon color="primary" fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Audio Generation"
+                secondary={
+                  plan.tier === 'basic'
+                    ? 'AI voice synthesis for podcasts, stories, and narration'
+                    : 'AI-powered audio content creation and voice synthesis'
+                }
+              />
+            </ListItem>
+          )}
 
-              <ListItem>
-                <ListItemIcon sx={{ minWidth: 24 }}>
-                  <VideoIcon color="primary" fontSize="small" />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Video Generation"
-                  secondary={
-                    plan.tier === 'basic'
-                      ? 'Create AI videos for YouTube, social media, and stories'
-                      : 'AI video creation with script writing and editing'
-                  }
-                />
-              </ListItem>
-            </>
+          {(plan.limits.video_calls ?? 0) > 0 && (
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <VideoIcon color="primary" fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Video Generation"
+                secondary={
+                  plan.tier === 'basic'
+                    ? 'Create AI videos for YouTube, social media, and stories'
+                    : 'AI video creation with script writing and editing'
+                }
+              />
+            </ListItem>
           )}
 
           {plan.tier !== 'free' && (

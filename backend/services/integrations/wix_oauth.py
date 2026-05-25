@@ -8,7 +8,7 @@ import sqlite3
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from loguru import logger
-
+from cryptography.fernet import Fernet, InvalidToken
 
 from services.database import get_user_db_path
 
@@ -17,6 +17,66 @@ class WixOAuthService:
     
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path
+        self.token_encryption_key = (
+            os.getenv("WIX_TOKEN_ENCRYPTION_KEY")
+            or os.getenv("OAUTH_TOKEN_ENCRYPTION_KEY")
+        )
+        self._fernet = self._initialize_fernet()
+        self._migration_done: set = set()
+
+    def _initialize_fernet(self) -> Optional[Fernet]:
+        if not self.token_encryption_key:
+            logger.error("Wix token encryption key is not configured.")
+            return None
+        try:
+            return Fernet(self.token_encryption_key.encode("utf-8"))
+        except Exception:
+            logger.error("Wix token encryption key is invalid.")
+            return None
+
+    def _encrypt_token(self, token: Optional[str]) -> Optional[str]:
+        if not token:
+            return None
+        if not self._fernet:
+            raise ValueError("Token encryption is unavailable: missing/invalid managed key")
+        return self._fernet.encrypt(token.encode("utf-8")).decode("utf-8")
+
+    def _decrypt_token(self, token_blob: Optional[str]) -> Optional[str]:
+        if not token_blob:
+            return None
+        if not self._fernet:
+            raise ValueError("Token decryption is unavailable: missing/invalid managed key")
+        return self._fernet.decrypt(token_blob.encode("utf-8")).decode("utf-8")
+
+    def _is_likely_encrypted_blob(self, value: Optional[str]) -> bool:
+        return bool(value and value.startswith("gAAAAA"))
+
+    def _migrate_plaintext_tokens_if_needed(self, conn: sqlite3.Connection, user_id: str) -> None:
+        if not self._fernet or user_id in self._migration_done:
+            return
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, access_token, refresh_token FROM wix_oauth_tokens WHERE user_id = ?",
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        migrated = 0
+        for token_id, access_token, refresh_token in rows:
+            needs_access = access_token and not self._is_likely_encrypted_blob(access_token)
+            needs_refresh = refresh_token and not self._is_likely_encrypted_blob(refresh_token)
+            if not (needs_access or needs_refresh):
+                continue
+            enc_access = self._encrypt_token(access_token) if needs_access else access_token
+            enc_refresh = self._encrypt_token(refresh_token) if needs_refresh else refresh_token
+            cursor.execute(
+                "UPDATE wix_oauth_tokens SET access_token = ?, refresh_token = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+                (enc_access, enc_refresh, token_id, user_id),
+            )
+            migrated += 1
+        if migrated:
+            conn.commit()
+            logger.info(f"Wix OAuth token migration completed for user {user_id}; rows migrated={migrated}")
+        self._migration_done.add(user_id)
     
     def _get_db_path(self, user_id: str) -> str:
         if self.db_path:
@@ -173,13 +233,16 @@ class WixOAuthService:
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
             
+            encrypted_access = self._encrypt_token(access_token)
+            encrypted_refresh = self._encrypt_token(refresh_token) if refresh_token else None
+
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO wix_oauth_tokens 
                     (user_id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (user_id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id))
+                ''', (user_id, encrypted_access, encrypted_refresh, token_type, expires_at, expires_in, scope, site_id, member_id))
                 conn.commit()
                 logger.info(f"Wix OAuth: Token inserted into database for user {user_id}")
             
@@ -200,6 +263,7 @@ class WixOAuthService:
                 return []
                 
             with sqlite3.connect(db_path) as conn:
+                self._migrate_plaintext_tokens_if_needed(conn, user_id)
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at
@@ -210,10 +274,29 @@ class WixOAuthService:
                 
                 tokens = []
                 for row in cursor.fetchall():
+                    access_token_val = row[1]
+                    refresh_token_val = row[2]
+                    try:
+                        decrypted_access = (
+                            self._decrypt_token(access_token_val)
+                            if self._is_likely_encrypted_blob(access_token_val)
+                            else access_token_val
+                        )
+                    except InvalidToken:
+                        logger.error(f"Failed to decrypt Wix access token for user {user_id}, token_id={row[0]}")
+                        continue
+                    try:
+                        decrypted_refresh = (
+                            self._decrypt_token(refresh_token_val)
+                            if self._is_likely_encrypted_blob(refresh_token_val)
+                            else refresh_token_val
+                        )
+                    except InvalidToken:
+                        decrypted_refresh = None
                     tokens.append({
                         "id": row[0],
-                        "access_token": row[1],
-                        "refresh_token": row[2],
+                        "access_token": decrypted_access,
+                        "refresh_token": decrypted_refresh,
                         "token_type": row[3],
                         "expires_at": row[4],
                         "expires_in": row[5],
@@ -248,9 +331,9 @@ class WixOAuthService:
                 }
 
             with sqlite3.connect(db_path) as conn:
+                self._migrate_plaintext_tokens_if_needed(conn, user_id)
                 cursor = conn.cursor()
                 
-                # Get all tokens (active and expired)
                 cursor.execute('''
                     SELECT id, access_token, refresh_token, token_type, expires_at, expires_in, scope, site_id, member_id, created_at, is_active
                     FROM wix_oauth_tokens
@@ -263,10 +346,29 @@ class WixOAuthService:
                 expired_tokens = []
                 
                 for row in cursor.fetchall():
+                    access_token_val = row[1]
+                    refresh_token_val = row[2]
+                    try:
+                        decrypted_access = (
+                            self._decrypt_token(access_token_val)
+                            if self._is_likely_encrypted_blob(access_token_val)
+                            else access_token_val
+                        )
+                    except InvalidToken:
+                        decrypted_access = None
+                    try:
+                        decrypted_refresh = (
+                            self._decrypt_token(refresh_token_val)
+                            if self._is_likely_encrypted_blob(refresh_token_val)
+                            else refresh_token_val
+                        )
+                    except InvalidToken:
+                        decrypted_refresh = None
+
                     token_data = {
                         "id": row[0],
-                        "access_token": row[1],
-                        "refresh_token": row[2],
+                        "access_token": decrypted_access,
+                        "refresh_token": decrypted_refresh,
                         "token_type": row[3],
                         "expires_at": row[4],
                         "expires_in": row[5],
@@ -331,34 +433,46 @@ class WixOAuthService:
         user_id: str,
         access_token: str,
         refresh_token: Optional[str] = None,
-        expires_in: Optional[int] = None
+        expires_in: Optional[int] = None,
+        token_id: Optional[int] = None
     ) -> bool:
         """Update tokens for a user (e.g., after refresh)."""
         try:
-            # Ensure DB initialized for this user
             self._init_db(user_id)
             db_path = self._get_db_path(user_id)
 
             expires_at = None
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
+
+            encrypted_access = self._encrypt_token(access_token)
+            encrypted_refresh = self._encrypt_token(refresh_token) if refresh_token else None
             
             with sqlite3.connect(db_path) as conn:
+                self._migrate_plaintext_tokens_if_needed(conn, user_id)
                 cursor = conn.cursor()
-                if refresh_token:
-                    cursor.execute('''
-                        UPDATE wix_oauth_tokens 
-                        SET access_token = ?, refresh_token = ?, expires_at = ?, expires_in = ?, 
-                            is_active = TRUE, updated_at = datetime('now')
-                        WHERE user_id = ? AND refresh_token = ?
-                    ''', (access_token, refresh_token, expires_at, expires_in, user_id, refresh_token))
+                if token_id:
+                    if encrypted_refresh:
+                        cursor.execute('''
+                            UPDATE wix_oauth_tokens 
+                            SET access_token = ?, refresh_token = ?, expires_at = ?, expires_in = ?, 
+                                is_active = TRUE, updated_at = datetime('now')
+                            WHERE user_id = ? AND id = ?
+                        ''', (encrypted_access, encrypted_refresh, expires_at, expires_in, user_id, token_id))
+                    else:
+                        cursor.execute('''
+                            UPDATE wix_oauth_tokens 
+                            SET access_token = ?, expires_at = ?, expires_in = ?, 
+                                is_active = TRUE, updated_at = datetime('now')
+                            WHERE user_id = ? AND id = ?
+                        ''', (encrypted_access, expires_at, expires_in, user_id, token_id))
                 else:
                     cursor.execute('''
                         UPDATE wix_oauth_tokens 
                         SET access_token = ?, expires_at = ?, expires_in = ?, 
                             is_active = TRUE, updated_at = datetime('now')
                         WHERE user_id = ? AND id = (SELECT id FROM wix_oauth_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT 1)
-                    ''', (access_token, expires_at, expires_in, user_id, user_id))
+                    ''', (encrypted_access, expires_at, expires_in, user_id, user_id))
                 conn.commit()
                 logger.info(f"Wix OAuth: Tokens updated for user {user_id}")
             

@@ -13,7 +13,6 @@ import {
 } from "@mui/icons-material";
 import { AvatarAssetBrowser } from "../AvatarAssetBrowser";
 import { CameraSelfie } from "../CameraSelfie";
-import { SecondaryButton } from "../ui";
 import { PodcastMode } from "../types";
 
 interface AvatarSelectorProps {
@@ -65,8 +64,8 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
 
   // Shorter tab labels for mobile
   const tabLabels = isMobile 
-    ? ["Brand", "Library", "Selfie", "Upload"]
-    : ["Use Brand Avatar", "Asset Library", "Take Selfie", "Upload Your Photo"];
+    ? ["Brand", "Library", "Selfie", avatarFile && avatarPreview ? "Uploaded" : "Upload"]
+    : ["Use Brand Avatar", "Asset Library", "Take Selfie", avatarFile && avatarPreview ? "Successfully Uploaded" : "Upload Your Photo"];
 
   if (podcastMode === "audio_only") {
     return (
@@ -538,7 +537,7 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           {avatarTab === 3 && (
             <Stack spacing={2}>
               <Box>
-                {avatarFile && avatarPreview ? (
+                  {avatarFile && avatarPreview ? (
                   <Stack spacing={2} alignItems="center" sx={{ bgcolor: "#f8fafc", borderRadius: 2, p: { xs: 1.5, sm: 2 } }}>
                     <Box sx={{ position: "relative", display: "inline-block" }}>
                       <Box
@@ -550,8 +549,8 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                           height: { xs: 120, sm: 160 },
                           objectFit: "cover",
                           borderRadius: 2.5,
-                          border: "2px solid #e2e8f0",
-                          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+                          border: "2px solid #667eea",
+                          boxShadow: "0 4px 12px rgba(102, 126, 234, 0.25)",
                         }}
                       />
                       <IconButton
@@ -574,6 +573,12 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Box>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <CheckCircleIcon color="primary" fontSize="small" />
+                      <Typography variant="body2" sx={{ color: "#475569", fontStyle: "italic" }}>
+                        Photo uploaded successfully
+                      </Typography>
+                    </Stack>
 
                     {avatarUrl && (
                       <Tooltip
@@ -582,15 +587,37 @@ export const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                         placement="top"
                       >
                         <Box sx={{ width: "100%", maxWidth: { xs: 200, sm: 280 } }}>
-                          <SecondaryButton
+                          <Button
                             onClick={handleMakePresentable}
                             disabled={makingPresentable}
-                            loading={makingPresentable}
-                            startIcon={!makingPresentable ? <AutoAwesomeIcon fontSize="small" /> : undefined}
-                            sx={{ width: "100%" }}
+                            variant="contained"
+                            startIcon={!makingPresentable ? <AutoAwesomeIcon fontSize="small" /> : <CircularProgress size={14} thickness={5} sx={{ color: "rgba(255,255,255,0.92)" }} />}
+                            sx={{
+                              width: "100%",
+                              textTransform: "none",
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                              fontWeight: 600,
+                              borderRadius: 2.5,
+                              color: "#f8fbff",
+                              px: 1.8,
+                              border: "1px solid rgba(148, 211, 255, 0.6)",
+                              background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                              boxShadow: "0 8px 18px rgba(37, 99, 235, 0.28), inset 0 1px 0 rgba(255,255,255,0.22)",
+                              "&:hover": {
+                                background: "linear-gradient(120deg, #38bdf8 0%, #2563eb 50%, #1e40af 100%)",
+                                boxShadow: "0 12px 24px rgba(29, 78, 216, 0.35), inset 0 1px 0 rgba(255,255,255,0.26)",
+                                transform: "translateY(-1px)",
+                              },
+                              "&.Mui-disabled": {
+                                color: "#e2e8f0",
+                                borderColor: "rgba(186, 230, 253, 0.7)",
+                                background: "linear-gradient(120deg, #0ea5e9 0%, #2563eb 55%, #1d4ed8 100%)",
+                                opacity: 0.78,
+                              },
+                            }}
                           >
                             {makingPresentable ? "Transforming..." : "Make Presentable"}
-                          </SecondaryButton>
+                          </Button>
                         </Box>
                       </Tooltip>
                     )}

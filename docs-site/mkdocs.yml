@@ -214,6 +214,18 @@ nav:
       - Troubleshooting: user-journeys/enterprise/troubleshooting.md
       - Advanced Security: user-journeys/enterprise/advanced-security.md
   - Features:
+    - Backlink Outreach:
+      - Overview: features/backlink-outreach/overview.md
+      - Workflow Guide: features/backlink-outreach/workflow-guide.md
+      - Campaign Management: features/backlink-outreach/campaign-management.md
+      - Discovery: features/backlink-outreach/discovery.md
+      - Email Composer: features/backlink-outreach/email-composer.md
+      - Outreach Operations: features/backlink-outreach/outreach-operations.md
+      - Reply Inbox: features/backlink-outreach/reply-inbox.md
+      - Analytics: features/backlink-outreach/analytics.md
+      - API Reference: features/backlink-outreach/api-reference.md
+      - Configuration: features/backlink-outreach/configuration.md
+      - Implementation Overview: features/backlink-outreach/implementation-overview.md
     - Blog Writer:
       - Overview: features/blog-writer/overview.md
       - Implementation Overview: features/blog-writer/implementation-overview.md
@@ -235,6 +247,7 @@ nav:
       - GSC Integration: features/seo-dashboard/gsc-integration.md
       - Metadata Generation: features/seo-dashboard/metadata.md
       - Design Document: features/seo-dashboard/design-document.md
+      - Phase 2A Implementation: ../SEO/PHASE2A_IMPLEMENTATION.md
     - Content Strategy:
       - Overview: features/content-strategy/overview.md
       - Persona Development: features/content-strategy/personas.md

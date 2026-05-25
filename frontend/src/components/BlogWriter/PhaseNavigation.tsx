@@ -16,7 +16,9 @@ export interface Phase {
 
 export interface PhaseActionHandlers {
   onResearchAction?: () => void;
+  onResearchStartAction?: () => void;
   onOutlineAction?: () => void;
+  onOutlineStartAction?: () => void;
   onContentAction?: () => void;
   onSEOAction?: () => void;
   onApplySEORecommendations?: () => void;
@@ -29,6 +31,7 @@ interface PhaseNavigationProps {
   currentPhase: string;
   copilotKitAvailable?: boolean;
   actionHandlers?: PhaseActionHandlers;
+  researchKeywords?: string;
   hasResearch?: boolean;
   hasOutline?: boolean;
   outlineConfirmed?: boolean;
@@ -71,6 +74,7 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
   currentPhase,
   copilotKitAvailable = true,
   actionHandlers,
+  researchKeywords = '',
   hasResearch = false,
   hasOutline = false,
   outlineConfirmed = false,
@@ -91,13 +95,22 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
 
     switch (phaseId) {
       case 'research':
-        if (!hasResearch) {
-          return { label: 'Start Research', handler: actionHandlers.onResearchAction || null };
+        if (!hasResearch && !researchKeywords) {
+          return { label: 'Start Now', handler: actionHandlers.onResearchAction || null };
+        }
+        if (!hasResearch && researchKeywords) {
+          return { label: 'Click To Research', handler: actionHandlers.onResearchStartAction || null };
+        }
+        if (hasResearch) {
+          return { label: 'Re-Research', handler: actionHandlers.onResearchStartAction || null };
         }
         break;
       case 'outline':
-        if (hasResearch && !outlineConfirmed) {
-          return { label: 'Create Outline', handler: actionHandlers.onOutlineAction || null };
+        if (!hasOutline) {
+          return { label: 'Create Now', handler: actionHandlers.onOutlineAction || null };
+        }
+        if (hasOutline) {
+          return { label: 'Re-Generate', handler: actionHandlers.onOutlineStartAction || null };
         }
         break;
       case 'content':
@@ -181,10 +194,6 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
           const isDisabled = phase.disabled;
           const action = getActionForPhase(phase.id);
 
-          const isResearchPhase = phase.id === 'research' && action.handler;
-          const isOutlinePhase = phase.id === 'outline' && hasResearch && action.handler;
-          const isSEOPhase = phase.id === 'seo' && action.handler;
-
           /* Phase state derivation:
              - Active: phase is current AND not yet completed (user needs to work on it)
              - Done: phase is completed (show green regardless of whether it's current)
@@ -204,16 +213,9 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
             }
           };
 
-          /* Show action button only when phase is NOT completed.
-             Research action: only on landing page (not current), to invite start.
-             Other phase actions: show when current, pending, or next-actionable.
-             Content and SEO phases use only the chip (no separate action button). */
-          const showAction = action.handler && !isDone && phase.id !== 'content' && phase.id !== 'seo' && (
-            (!isCurrent && phase.id === 'research' && !hasResearch) ||
-            (isCurrent && phase.id !== 'research') ||
-            (!isCurrent && !isDisabled && phase.id !== 'research') ||
-            (phase.id !== 'research' && (isResearchPhase || isOutlinePhase || isSEOPhase))
-          );
+          /* No separate action buttons — every phase chip is self-contained.
+             Chip click directly triggers the action (create, run analysis, publish, etc.). */
+          const showAction = false;
 
           const iconOnly = isDone && !isCurrent;
 
@@ -334,7 +336,7 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                 title={
                   <Box>
                     <Box sx={{ fontWeight: 700, mb: 0.5, fontSize: '0.875rem' }}>
-                      {phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}
+                      {phase.id === 'research' && hasResearch ? 'Re-Research' : phase.id === 'research' && !hasResearch && researchKeywords ? 'Click To Research' : phase.id === 'research' && !hasResearch ? 'Start Now' : phase.id === 'outline' && hasOutline ? 'Re-Generate' : phase.id === 'outline' && !hasOutline ? 'Create Now' : phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}
                     </Box>
                     <Box sx={{ fontSize: '0.75rem', opacity: 0.9 }}>
                       {isDisabled
@@ -358,7 +360,9 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                   sx={chipSx}
                 >
                   <Box component="span" sx={iconSx}>{phase.icon}</Box>
-                  <Box component="span" sx={{ flexShrink: 0 }}>{phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}</Box>
+                  <Box component="span" sx={{ flexShrink: 0 }}>
+                    {phase.id === 'research' && hasResearch ? 'Re-Research' : phase.id === 'research' && !hasResearch && researchKeywords ? 'Click To Research' : phase.id === 'research' && !hasResearch ? 'Start Now' : phase.id === 'outline' && hasOutline ? 'Re-Generate' : phase.id === 'outline' && !hasOutline ? 'Create Now' : phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}
+                  </Box>
                   {isDone && (
                     <Box component="span" sx={{ fontSize: '12px', flexShrink: 0, ml: 0.25 }}>✓</Box>
                   )}

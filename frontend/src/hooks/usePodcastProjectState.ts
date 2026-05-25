@@ -73,6 +73,7 @@ const DEFAULT_KNOBS: Knobs = {
   is_voice_clone: undefined,
   voice_sample_url: undefined,
   voice_clone_engine: undefined,
+  voice_clone_stale: false,
   resolution: "720p",
   scene_length_target: 45,
   sample_rate: 24000,
@@ -85,7 +86,6 @@ const DEFAULT_KNOBS: Knobs = {
  * automatically pick up the latest voice clone info.
  */
 function mergeVoiceCloneCacheIntoKnobs(knobs: Knobs): Knobs {
-  // If knobs already has a custom voice ID, trust it (user explicitly set it)
   if (knobs.custom_voice_id) {
     return knobs;
   }
@@ -100,6 +100,7 @@ function mergeVoiceCloneCacheIntoKnobs(knobs: Knobs): Knobs {
     is_voice_clone: true,
     voice_sample_url: cached.voiceSampleUrl,
     voice_clone_engine: cached.engine || "qwen3",
+    voice_clone_stale: cached.stale || false,
   };
 }
 

@@ -189,44 +189,27 @@ def generate(
                                     billing_period=current_period
                                 )
                                 db_track.add(summary)
-                                db_track.flush()  # Ensure summary is persisted before updating
+                                db_track.flush()
                             
-                            # Get "before" state for unified log
                             current_calls_before = getattr(summary, "stability_calls", 0) or 0
-                            
-                            # Update provider-specific counters (stability for image generation)
-                            # Note: All image generation goes through STABILITY provider enum regardless of actual provider
                             new_calls = current_calls_before + 1
-                            setattr(summary, "stability_calls", new_calls)
-                            logger.debug(f"[images.generate] Updated stability_calls: {current_calls_before} -> {new_calls}")
                             
-                            # Update totals
-                            old_total_calls = summary.total_calls or 0
-                            summary.total_calls = old_total_calls + 1
-                            logger.debug(f"[images.generate] Updated totals: calls {old_total_calls} -> {summary.total_calls}")
-                            
-                            # Get plan details for unified log
                             limits = pricing.get_user_limits(user_id)
                             plan_name = limits.get('plan_name', 'unknown') if limits else 'unknown'
                             tier = limits.get('tier', 'unknown') if limits else 'unknown'
                             call_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                             
-                            # Get image editing stats for unified log
                             current_image_edit_calls = getattr(summary, "image_edit_calls", 0) or 0
                             image_edit_limit = limits['limits'].get("image_edit_calls", 0) if limits else 0
                             
-                            # Get video stats for unified log
                             current_video_calls = getattr(summary, "video_calls", 0) or 0
                             video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                             
-                            # Get audio stats for unified log
                             current_audio_calls = getattr(summary, "audio_calls", 0) or 0
                             audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
-                            # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
                             audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
                             
-                            db_track.commit()
-                            logger.info(f"[images.generate] ✅ Successfully tracked usage: user {user_id} -> stability -> {new_calls} calls")
+                            logger.debug(f"[images.generate] Usage snapshot for logging: stability_calls={current_calls_before}, total_calls={summary.total_calls or 0}")
                             
                             # UNIFIED SUBSCRIPTION LOG - Shows before/after state in one message
                             print(f"""
@@ -965,32 +948,19 @@ def edit(
                             billing_period=current_period
                         )
                         db_track.add(summary)
-                        db_track.flush()  # Ensure summary is persisted before updating
+                        db_track.flush()
                     
-                    # Get "before" state for unified log
                     current_calls_before = getattr(summary, "image_edit_calls", 0) or 0
-                    
-                    # Update image editing counters (separate from image generation)
                     new_calls = current_calls_before + 1
-                    setattr(summary, "image_edit_calls", new_calls)
-                    logger.debug(f"[images.edit] Updated image_edit_calls: {current_calls_before} -> {new_calls}")
                     
-                    # Update totals
-                    old_total_calls = summary.total_calls or 0
-                    summary.total_calls = old_total_calls + 1
-                    logger.debug(f"[images.edit] Updated totals: calls {old_total_calls} -> {summary.total_calls}")
-                    
-                    # Get plan details for unified log
                     limits = pricing.get_user_limits(user_id)
                     plan_name = limits.get('plan_name', 'unknown') if limits else 'unknown'
                     tier = limits.get('tier', 'unknown') if limits else 'unknown'
                     call_limit = limits['limits'].get("image_edit_calls", 0) if limits else 0
                     
-                    # Get image generation stats for unified log
                     current_image_gen_calls = getattr(summary, "stability_calls", 0) or 0
                     image_gen_limit = limits['limits'].get("stability_calls", 0) if limits else 0
                     
-                    # Get video stats for unified log
                     current_video_calls = getattr(summary, "video_calls", 0) or 0
                     video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                     
@@ -1000,8 +970,7 @@ def edit(
                     # Only show ∞ for Enterprise tier when limit is 0 (unlimited)
                     audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
                     
-                    db_track.commit()
-                    logger.info(f"[images.edit] ✅ Successfully tracked usage: user {user_id} -> image_edit -> {new_calls} calls")
+                    logger.debug(f"[images.edit] Usage snapshot for logging: image_edit_calls={current_calls_before}, total_calls={summary.total_calls or 0}")
                     
                     # UNIFIED SUBSCRIPTION LOG - Shows before/after state in one message
                     print(f"""

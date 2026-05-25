@@ -51,8 +51,8 @@ export interface StyleDetectionResponse {
   timestamp: string;
 }
 
-// Consistent API URL pattern - no hardcoded localhost fallback
-const API_BASE_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_BACKEND_URL || '';
+// API URL is handled by the shared apiClient which uses the centralized getApiBaseUrl utility
+// so we don't need a separate API_BASE_URL here
 
 /**
  * Analyze content style using AI

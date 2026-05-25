@@ -75,8 +75,14 @@ def update_basic_plan_limits():
             basic_plan.anthropic_tokens_limit = 20000
             basic_plan.mistral_tokens_limit = 20000
             
-            # Update image generation limit to 5
-            basic_plan.stability_calls_limit = 5
+            # Update image generation limit to 25 (minimum 10 for podcast workflows)
+            basic_plan.stability_calls_limit = 25
+
+            # Update image edit limit to 25 (podcast episode covers + scene images)
+            basic_plan.image_edit_calls_limit = 25
+
+            # Update audio generation limit to 100 (TTS for podcast narration)
+            basic_plan.audio_calls_limit = 100
             
             # Update timestamp
             basic_plan.updated_at = datetime.now(timezone.utc)
@@ -84,7 +90,9 @@ def update_basic_plan_limits():
             logger.info("\n📝 New Basic plan limits:")
             logger.info(f"  LLM Calls (all providers): 10")
             logger.info(f"  LLM Tokens (all providers): 20000 (increased from 5000)")
-            logger.info(f"  Images: 5")
+            logger.info(f"  Images (stability): 25")
+            logger.info(f"  Image Edits: 25")
+            logger.info(f"  Audio Calls: 100")
             
             # Count and get affected users
             user_subscriptions = db.query(UserSubscription).filter(

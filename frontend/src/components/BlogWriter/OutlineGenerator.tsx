@@ -42,6 +42,11 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       
       if (cachedOutline) {
         console.log('[OutlineGenerator] Using cached outline', { sections: cachedOutline.outline.length });
+        // Update parent state and navigate — same as CopilotKit action for cached outlines
+        navigateToPhase?.('outline');
+        if (onOutlineCreated) {
+          onOutlineCreated(cachedOutline.outline, cachedOutline.title_options);
+        }
         return { 
           success: true, 
           cached: true,

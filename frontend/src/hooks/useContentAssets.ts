@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { getApiBaseUrl } from '../utils/apiUrl';
 
 export interface ContentAsset {
   id: number;
@@ -48,14 +49,6 @@ export interface AssetListResponse {
   limit: number;
   offset: number;
 }
-
-const getApiBaseUrl = () => {
-  const url = process.env.REACT_APP_API_URL;
-  if (process.env.NODE_ENV === 'production' && !url) {
-    throw new Error('REACT_APP_API_URL environment variable is required for production');
-  }
-  return url || 'http://localhost:8000';
-};
 
 const API_BASE_URL = getApiBaseUrl();
 

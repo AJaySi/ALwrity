@@ -87,7 +87,7 @@ async def get_wordpress_status(user: dict = Depends(get_current_user)):
         logger.info(f"Checking WordPress status for user: {user_id}")
         
         # Get user's WordPress sites
-sites = wp_service.get_user_sites(user_id)
+        sites = wp_service.get_user_sites(user_id)
 
         if sites:
             site_responses = [

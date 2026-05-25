@@ -106,9 +106,40 @@ class CampaignDetailResponse(BaseModel):
     leads: List[LeadRecord] = Field(default_factory=list)
 
 
+class GenerateEmailRequest(BaseModel):
+    topic: str = Field(..., min_length=2, max_length=500)
+    target_site: Optional[str] = Field(None, description="Target website for guest post pitch")
+    tone: str = Field(default="professional", pattern="^(professional|friendly|casual|formal)$")
+    existing_template_id: Optional[str] = None
+
+
 class GeneratedEmailResponse(BaseModel):
     subject: str
     body: str
+
+
+class PersonalizeEmailRequest(BaseModel):
+    lead_name: str = Field(..., min_length=1, max_length=200)
+    lead_site: str = Field(..., min_length=1, max_length=500)
+    lead_content_topic: str = Field(..., min_length=1, max_length=500)
+    pitch_topic: str = Field(..., min_length=2, max_length=500)
+    existing_body: str = Field(default="", max_length=10000)
+
+
+class SubjectLinesRequest(BaseModel):
+    body: str = Field(..., min_length=10, max_length=10000)
+    count: int = Field(default=5, ge=1, le=10)
+
+
+class SubjectLinesResponse(BaseModel):
+    subjects: list[str]
+
+
+class FollowUpRequest(BaseModel):
+    original_subject: str = Field(..., min_length=1, max_length=500)
+    original_body: str = Field(..., min_length=10, max_length=10000)
+    days_elapsed: int = Field(default=7, ge=1, le=90)
+    reply_context: str = Field(default="", max_length=2000)
 
 
 class OutreachStatusRecord(BaseModel):
@@ -117,11 +148,96 @@ class OutreachStatusRecord(BaseModel):
     notes: Optional[str] = None
 
 
+class SendOutreachRequest(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+    campaign_id: str = Field(..., min_length=1)
+    user_id: str = Field(..., min_length=1)
+    workspace_id: str = Field(default="default")
+    sender_email: str = Field(..., min_length=3)
+    subject: str = Field(..., min_length=1)
+    body: str = Field(..., min_length=1)
+    idempotency_key: str = Field(..., min_length=8)
+    template_id: Optional[str] = Field(None, description="Optional template ID for personalization")
+    template_variables: Optional[dict] = Field(None, description="Variable values for template personalization")
+
+
+class SendOutreachResponse(BaseModel):
+    attempt_id: str
+    status: str
+    policy_allowed: bool
+    policy_reasons: List[str] = Field(default_factory=list)
+
+
+class OutreachAttemptRecord(BaseModel):
+    attempt_id: str
+    lead_id: str
+    campaign_id: str
+    idempotency_key: str
+    sender_email: Optional[str] = None
+    subject: Optional[str] = None
+    status: str = "queued"
+    decision_reason: Optional[str] = None
+    sent_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class OutreachAttemptListResponse(BaseModel):
+    attempts: List[OutreachAttemptRecord]
+    total: int
+
+
+class OutreachReplyRecord(BaseModel):
+    reply_id: str
+    attempt_id: str
+    from_email: Optional[str] = None
+    subject: Optional[str] = None
+    received_at: Optional[str] = None
+    classification: str = "replied"
+    body: Optional[str] = None
+
+
+class OutreachReplyListResponse(BaseModel):
+    replies: List[OutreachReplyRecord]
+    total: int
+
+
+class ScheduleFollowUpRequest(BaseModel):
+    attempt_id: str = Field(..., min_length=1)
+    scheduled_for: str = Field(..., min_length=1)
+    subject: Optional[str] = None
+    body: Optional[str] = None
+
+
+class FollowUpScheduleRecord(BaseModel):
+    schedule_id: str
+    attempt_id: str
+    subject: Optional[str] = None
+    scheduled_for: str
+    sent: bool = False
+
+
+class EmailTemplateRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    subject_template: str = Field(..., min_length=1)
+    body_template: str = Field(..., min_length=1)
+    variables: Optional[List[str]] = None
+
+
+class EmailTemplateRecord(BaseModel):
+    template_id: str
+    user_id: str
+    name: str
+    subject_template: str
+    body_template: str
+    variables: Optional[List[str]] = None
+    created_at: Optional[str] = None
+
+
 class PolicyValidationRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     workspace_id: str = Field(..., min_length=1)
     campaign_id: str = Field(..., min_length=1)
-    recipient_email: EmailStr
+    recipient_email: str = Field(..., min_length=1)
     recipient_domain: str
     recipient_region: str = Field(default="unknown")
     legal_basis: str = Field(..., min_length=2)
@@ -135,3 +251,61 @@ class PolicyValidationResponse(BaseModel):
     allowed: bool
     reasons: List[str] = Field(default_factory=list)
     final_status: str
+
+
+# -- Analytics & Reporting Models --
+
+class CampaignAnalyticsResponse(BaseModel):
+    campaign_id: str
+    lead_count: int = 0
+    send_volume: int = 0
+    blocked_count: int = 0
+    reply_count: int = 0
+    response_rate: float = 0.0
+    placement_rate: float = 0.0
+    reply_classification: Dict[str, int] = Field(default_factory=dict)
+
+
+class BacklinkReportingSnapshot(BaseModel):
+    send_volume: int = 0
+    decision_events: int = 0
+    response_rate: float = 0.0
+    placement_conversion: float = 0.0
+
+
+class CampaignVolumePoint(BaseModel):
+    date: str
+    count: int = 0
+
+
+class CampaignVolumeResponse(BaseModel):
+    campaign_id: str
+    days: int = 30
+    volume: List[CampaignVolumePoint] = Field(default_factory=list)
+
+
+class FunnelStage(BaseModel):
+    status: str
+    count: int = 0
+
+
+class ConversionFunnelResponse(BaseModel):
+    campaign_id: str
+    stages: List[FunnelStage] = Field(default_factory=list)
+
+
+class BulkStatusUpdateRequest(BaseModel):
+    lead_ids: List[str] = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
+class BulkStatusUpdateResponse(BaseModel):
+    updated: int = 0
+    failed: List[str] = Field(default_factory=list)
+
+
+class SuppressionAddRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+    reason: str = Field(default="")
+    domain: str = Field(default="")

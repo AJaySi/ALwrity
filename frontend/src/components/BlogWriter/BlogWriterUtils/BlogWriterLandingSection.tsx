@@ -9,7 +9,9 @@ interface BlogWriterLandingSectionProps {
   currentPhase: string;
   navigateToPhase: (phase: string) => void;
   onResearchComplete: (research: any) => void;
-  onBeforeResearchSubmit?: (keywords: string, blogLength: string) => Promise<void>;
+  onKeywordsChange?: (kw: string) => void;
+  blogLengthRef?: React.MutableRefObject<string>;
+  startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
   restoreAttempted?: boolean;
 }
 
@@ -21,12 +23,21 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   currentPhase,
   navigateToPhase,
   onResearchComplete,
-  onBeforeResearchSubmit,
+  onKeywordsChange,
+  blogLengthRef,
+  startResearchRef,
   restoreAttempted = false,
 }) => {
   if (!research) {
     if (currentPhase === 'research') {
-      return <ManualResearchForm onResearchComplete={onResearchComplete} onBeforeResearchSubmit={onBeforeResearchSubmit} />;
+      return (
+        <ManualResearchForm
+          onResearchComplete={onResearchComplete}
+          onKeywordsChange={onKeywordsChange}
+          blogLengthRef={blogLengthRef}
+          researchRef={startResearchRef}
+        />
+      );
     }
 
     if (currentPhase === '' || !VALID_PHASES.includes(currentPhase)) {

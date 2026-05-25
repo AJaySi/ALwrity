@@ -24,6 +24,7 @@ interface HeaderBarProps {
   onPhaseClick: (phaseId: string) => void;
   copilotKitAvailable?: boolean;
   actionHandlers?: PhaseActionHandlers;
+  researchKeywords?: string;
   hasResearch?: boolean;
   hasOutline?: boolean;
   outlineConfirmed?: boolean;
@@ -39,7 +40,7 @@ interface HeaderBarProps {
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({ 
   phases, currentPhase, onPhaseClick, copilotKitAvailable = true, actionHandlers,
-  hasResearch = false, hasOutline = false, outlineConfirmed = false,
+  researchKeywords = '', hasResearch = false, hasOutline = false, outlineConfirmed = false,
   hasContent = false, contentConfirmed = false, hasSEOAnalysis = false,
   seoRecommendationsApplied = false, hasSEOMetadata = false,
   onNewBlog, onMyBlogs, onHelp,
@@ -168,6 +169,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onPhaseClick={onPhaseClick}
           copilotKitAvailable={copilotKitAvailable}
           actionHandlers={actionHandlers}
+          researchKeywords={researchKeywords}
           hasResearch={hasResearch}
           hasOutline={hasOutline}
           outlineConfirmed={outlineConfirmed}

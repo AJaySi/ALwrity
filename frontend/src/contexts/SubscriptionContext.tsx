@@ -35,6 +35,7 @@ export interface SubscriptionStatus {
   can_use_api: boolean;
   reason?: string;
   limits: SubscriptionLimits;
+  currentUsage?: Partial<SubscriptionLimits>;
 }
 
 interface SubscriptionContextType {
@@ -153,9 +154,57 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       const subscriptionData = response.data.data;
 
       if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Subscription data received:', { active: subscriptionData?.active, plan: subscriptionData?.plan });
+
+      try {
+        const usageResponse = await apiClient.get(`/api/subscription/usage/${userId}`);
+        const usagePayload = usageResponse.data?.data || usageResponse.data || {};
+        const providerBreakdown = usagePayload.provider_breakdown || {};
+        const reverseMapping: Record<string, string> = {
+          gemini: 'gemini_calls',
+          openai: 'openai_calls',
+          anthropic: 'anthropic_calls',
+          huggingface: 'mistral_calls',
+          wavespeed: 'wavespeed_calls',
+          exa: 'exa_calls',
+          tavily: 'tavily_calls',
+          serper: 'serper_calls',
+          firecrawl: 'firecrawl_calls',
+          metaphor: 'metaphor_calls',
+          stability: 'stability_calls',
+          video: 'video_calls',
+          image_edit: 'image_edit_calls',
+          audio: 'audio_calls',
+        };
+        const currentUsage: Partial<SubscriptionLimits> = {};
+        for (const [provider, data] of Object.entries(providerBreakdown)) {
+          const limitKey = reverseMapping[provider];
+          if (limitKey) {
+            (currentUsage as Record<string, number>)[limitKey] = (data as { calls: number })?.calls ?? 0;
+          }
+        }
+        subscriptionData.currentUsage = currentUsage;
+      } catch (usageErr) {
+        console.warn('SubscriptionContext: Could not fetch usage stats, proceeding without current usage data');
+      }
+
       setSubscription(subscriptionData);
       // Update ref immediately so callbacks can access latest value
       subscriptionRef.current = subscriptionData;
+
+      if (subscriptionData && (subscriptionData.plan === 'free' || subscriptionData.plan === 'none')) {
+        try {
+          const verifyResponse = await apiClient.get(`/api/subscription/verify-checkout/${userId}`);
+          const verifiedData = verifyResponse.data?.data;
+          if (verifiedData && verifiedData.plan && verifiedData.plan !== 'free' && verifiedData.plan !== 'none') {
+            subscriptionData = { ...subscriptionData, ...verifiedData };
+            setSubscription(subscriptionData);
+            subscriptionRef.current = subscriptionData;
+            console.log('SubscriptionContext: Plan corrected via Stripe re-verification:', verifiedData.plan);
+          }
+        } catch {
+          // Silently ignore — Stripe may not be configured or user has no Stripe customer
+        }
+      }
 
       // Check if subscription is expired/inactive and show modal
       // Show modal if subscription is inactive on initial load (when subscription was null before)

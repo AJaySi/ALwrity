@@ -459,20 +459,21 @@ async def start_video_render(
     try:
         user_id = require_authenticated_user(current_user)
         
-        # Validate subscription limits
-        pricing_service = PricingService(db)
-        validate_scene_animation_operation(
-            pricing_service=pricing_service,
-            user_id=user_id
-        )
-        
-        # Filter enabled scenes
+        # Filter enabled scenes FIRST so we can validate credits for the actual count
         enabled_scenes = [s for s in request.scenes if s.get("enabled", True)]
         if not enabled_scenes:
             return VideoRenderResponse(
                 success=False,
                 message="No enabled scenes to render"
             )
+
+        # Validate subscription limits for ALL scenes in the batch
+        pricing_service = PricingService(db)
+        validate_scene_animation_operation(
+            pricing_service=pricing_service,
+            user_id=user_id,
+            scene_count=len(enabled_scenes),
+        )
         
         # VALIDATION: Pre-validate scenes before creating task to prevent wasted API calls
         validation_errors = []

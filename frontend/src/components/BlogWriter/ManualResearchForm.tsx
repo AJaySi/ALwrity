@@ -6,12 +6,24 @@ import { BrainstormButton } from './BrainstormButton';
 
 interface ManualResearchFormProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
-  onBeforeResearchSubmit?: (keywords: string, blogLength: string) => Promise<void>;
+  onKeywordsChange?: (kw: string) => void;
+  blogLengthRef?: React.MutableRefObject<string>;
+  researchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
 }
 
-export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onBeforeResearchSubmit }) => {
+export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onKeywordsChange, blogLengthRef, researchRef }) => {
   const [keywords, setKeywords] = useState('');
   const [blogLength, setBlogLength] = useState('1000');
+
+  // Sync keywords to parent for header chip label
+  React.useEffect(() => {
+    onKeywordsChange?.(keywords);
+  }, [keywords, onKeywordsChange]);
+
+  // Sync blog length to parent ref
+  React.useEffect(() => {
+    if (blogLengthRef) blogLengthRef.current = blogLength;
+  }, [blogLength, blogLengthRef]);
 
   const {
     startResearch,
@@ -24,6 +36,12 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
     error,
   } = useResearchSubmit({ onResearchComplete });
 
+  // Expose startResearch to parent for header chip "Click To Research"
+  React.useEffect(() => {
+    if (researchRef) researchRef.current = startResearch;
+    return () => { if (researchRef) researchRef.current = null; };
+  }, [startResearch, researchRef]);
+
   const handleSubmit = async () => {
     const trimmed = keywords.trim();
     if (!trimmed) {
@@ -31,7 +49,6 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
       return;
     }
     try {
-      await onBeforeResearchSubmit?.(trimmed, blogLength);
       await startResearch(trimmed, blogLength);
     } catch (err) {
       alert(`Research failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -112,7 +129,7 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
               opacity: isSubmitting ? 0.7 : 1
             }}
           >
-            {isSubmitting ? '⏳ Starting Research...' : '🚀 Start Research'}
+            {isSubmitting ? '⏳ Researching...' : '🔍 Click To Research'}
           </button>
         </div>
       </div>

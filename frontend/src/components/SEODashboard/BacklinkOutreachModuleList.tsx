@@ -21,12 +21,12 @@ const BacklinkOutreachModuleList: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchCampaigns('default', 'default').catch(() => {});
+    fetchCampaigns('default').catch(() => {});
   }, [fetchCampaigns]);
 
   const handleCreateCampaign = useCallback(async () => {
     if (!newCampaignName.trim()) return;
-    await createCampaign('default', 'default', newCampaignName.trim());
+    await createCampaign('default', newCampaignName.trim());
     setNewCampaignName('');
   }, [newCampaignName, createCampaign]);
 

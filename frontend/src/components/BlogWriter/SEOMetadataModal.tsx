@@ -369,7 +369,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
 
   // Precompute hash when modal opens and trigger cache check
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !contentHash) {
       (async () => {
         const h = await hashContent(`${blogTitle || ''}\n${blogContent}`);
         setContentHash(h);
@@ -381,18 +381,17 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
           }, 100);
         }
       })();
-    } else {
-      // Reset hash when modal closes
-      setContentHash('');
     }
-  }, [isOpen, blogContent, blogTitle, metadataResult, generateMetadata]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, blogContent, blogTitle]);
 
   // Fallback: if modal opens and hash is already computed, check cache immediately
   useEffect(() => {
     if (isOpen && !metadataResult && contentHash) {
       generateMetadata(false);
     }
-  }, [isOpen, metadataResult, contentHash, generateMetadata]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, contentHash]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
     setTabValue(newValue);

@@ -8,16 +8,115 @@ const MINOR_TITLE_WORDS = new Set([
   'of', 'in', 'with', 'as', 'vs', 'vs.', 'into', 'over', 'under'
 ]);
 
+// Helper: read and parse localStorage synchronously (safe for useState initializer)
+const readLS = <T>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const readLSString = (key: string, fallback: string): string => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw !== null ? raw : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const readLSBool = (key: string, fallback: boolean): boolean => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw !== null ? raw === 'true' : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+// Perform synchronous restoration from localStorage/caches so that
+// phase-navigation hooks see real data on the very first render.
+const restoreInitialState = () => {
+  let research: BlogResearchResponse | null = null;
+  let outline: BlogOutlineSection[] = [];
+  let titleOptions: string[] = [];
+  let selectedTitle: string = '';
+  let sections: Record<string, string> = {};
+  let seoAnalysis: BlogSEOAnalyzeResponse | null = null;
+  let seoMetadata: BlogSEOMetadataResponse | null = null;
+  let outlineConfirmed: boolean = false;
+  let contentConfirmed: boolean = false;
+
+  try {
+    // Restore research from the research cache (synchronous localStorage reads)
+    const cachedEntries = researchCache.getAllCachedEntries();
+    if (cachedEntries.length > 0) {
+      research = cachedEntries[0].result;
+    }
+
+    // Restore outline from localStorage
+    const savedOutline = readLS<BlogOutlineSection[] | null>('blog_outline', null);
+    if (savedOutline && savedOutline.length > 0) {
+      outline = savedOutline;
+
+      // Restore content sections from cache
+      const outlineIds = savedOutline.map((s: any) => String(s.id));
+      const cachedContent = blogWriterCache.getCachedContent(outlineIds);
+      if (cachedContent && Object.keys(cachedContent).length > 0) {
+        sections = cachedContent;
+      }
+    }
+
+    // Restore titles
+    titleOptions = readLS<string[]>('blog_title_options', []);
+    selectedTitle = readLSString('blog_selected_title', '');
+
+    // Restore confirmation flags
+    outlineConfirmed = readLSBool('blog_outline_confirmed', false);
+    // Backward compatibility: if outline exists but confirmation wasn't saved, assume confirmed
+    if (!outlineConfirmed && outline.length > 0) {
+      outlineConfirmed = true;
+    }
+    contentConfirmed = readLSBool('blog_content_confirmed', false);
+
+    // Restore SEO data
+    seoAnalysis = readLS<BlogSEOAnalyzeResponse | null>('blog_seo_analysis', null);
+    seoMetadata = readLS<BlogSEOMetadataResponse | null>('blog_seo_metadata', null);
+  } catch (error) {
+    console.error('Error during initial state restoration:', error);
+  }
+
+  return {
+    research,
+    outline,
+    titleOptions,
+    selectedTitle,
+    sections,
+    seoAnalysis,
+    seoMetadata,
+    outlineConfirmed,
+    contentConfirmed,
+  };
+};
+
 export const useBlogWriterState = () => {
-  // Core state
-  const [research, setResearch] = useState<BlogResearchResponse | null>(null);
-  const [outline, setOutline] = useState<BlogOutlineSection[]>([]);
-  const [titleOptions, setTitleOptions] = useState<string[]>([]);
-  const [selectedTitle, setSelectedTitle] = useState<string>('');
-  const [sections, setSections] = useState<Record<string, string>>({});
-  const [seoAnalysis, setSeoAnalysis] = useState<BlogSEOAnalyzeResponse | null>(null);
+  // Restore initial state synchronously from localStorage (like StoryWriter pattern)
+  // This ensures phase-navigation hooks see real data on the first render,
+  // preventing unwanted redirects during the async restoration gap.
+  const initialState = restoreInitialState();
+
+  // Core state — initialized from localStorage when available
+  const [research, setResearch] = useState<BlogResearchResponse | null>(initialState.research);
+  const [outline, setOutline] = useState<BlogOutlineSection[]>(initialState.outline);
+  const [titleOptions, setTitleOptions] = useState<string[]>(initialState.titleOptions);
+  const [selectedTitle, setSelectedTitle] = useState<string>(initialState.selectedTitle);
+  const [sections, setSections] = useState<Record<string, string>>(initialState.sections);
+  const [seoAnalysis, setSeoAnalysis] = useState<BlogSEOAnalyzeResponse | null>(initialState.seoAnalysis);
   const [genMode, setGenMode] = useState<'draft' | 'polished'>('polished');
-  const [seoMetadata, setSeoMetadata] = useState<BlogSEOMetadataResponse | null>(null);
+  const [seoMetadata, setSeoMetadata] = useState<BlogSEOMetadataResponse | null>(initialState.seoMetadata);
   const [continuityRefresh, setContinuityRefresh] = useState<number>(0);
   const [outlineTaskId, setOutlineTaskId] = useState<string | null>(null);
   const [flowAnalysisCompleted, setFlowAnalysisCompleted] = useState<boolean>(false);
@@ -34,10 +133,10 @@ export const useBlogWriterState = () => {
   const [aiGeneratedTitles, setAiGeneratedTitles] = useState<string[]>([]);
   
   // Outline confirmation state
-  const [outlineConfirmed, setOutlineConfirmed] = useState<boolean>(false);
+  const [outlineConfirmed, setOutlineConfirmed] = useState<boolean>(initialState.outlineConfirmed);
   
   // Content confirmation state
-  const [contentConfirmed, setContentConfirmed] = useState<boolean>(false);
+  const [contentConfirmed, setContentConfirmed] = useState<boolean>(initialState.contentConfirmed);
 
   // Section images state - persists images generated in outline phase to content phase
   const [sectionImages, setSectionImages] = useState<Record<string, string>>({});
@@ -93,79 +192,7 @@ export const useBlogWriterState = () => {
     return result;
   }, []);
 
-  const [restoreAttempted, setRestoreAttempted] = useState(false);
-
-  // Cache recovery - restore most recent research on page load
-  useEffect(() => {
-    const restoreState = async () => {
-      const cachedEntries = researchCache.getAllCachedEntries();
-      if (cachedEntries.length > 0) {
-        // Get the most recent cached research
-        const mostRecent = cachedEntries[0];
-        console.log('Restoring cached research from page load:', mostRecent.keywords);
-        setResearch(mostRecent.result);
-        
-        // Also try to restore outline if it exists in localStorage
-        try {
-          const savedOutline = localStorage.getItem('blog_outline');
-          const savedTitleOptions = localStorage.getItem('blog_title_options');
-          const savedSelectedTitle = localStorage.getItem('blog_selected_title');
-          
-          if (savedOutline) {
-            const parsedOutline = JSON.parse(savedOutline);
-            setOutline(parsedOutline);
-            
-            // Restore content sections from cache when outline is available
-            const outlineIds = parsedOutline.map((s: any) => String(s.id));
-            const cachedContent = blogWriterCache.getCachedContent(outlineIds);
-            if (cachedContent && Object.keys(cachedContent).length > 0) {
-              setSections(cachedContent);
-              console.log('Restored content sections from cache', { sections: Object.keys(cachedContent).length });
-            }
-          }
-          if (savedTitleOptions) {
-            setTitleOptions(JSON.parse(savedTitleOptions));
-          }
-          if (savedSelectedTitle) {
-            setSelectedTitle(savedSelectedTitle);
-          }
-          
-          // Restore contentConfirmed from localStorage
-          const savedContentConfirmed = localStorage.getItem('blog_content_confirmed');
-          if (savedContentConfirmed === 'true') {
-            setContentConfirmed(true);
-          }
-          
-          console.log('Restored outline, content, and title data from localStorage');
-          // Restore seoAnalysis and seoMetadata from localStorage
-        const savedSeoAnalysis = localStorage.getItem('blog_seo_analysis');
-        if (savedSeoAnalysis) {
-          try { setSeoAnalysis(JSON.parse(savedSeoAnalysis)); } catch {}
-        }
-        const savedSeoMetadata = localStorage.getItem('blog_seo_metadata');
-        if (savedSeoMetadata) {
-          try { setSeoMetadata(JSON.parse(savedSeoMetadata)); } catch {}
-        }
-
-        // Restore outlineConfirmed - if outline exists and was previously confirmed, mark as confirmed.
-        // The user had to confirm outline to reach content/SEO/publish phases.
-        const savedOutlineConfirmed = localStorage.getItem('blog_outline_confirmed');
-        if (savedOutlineConfirmed === 'true') {
-          setOutlineConfirmed(true);
-        } else if (savedOutline) {
-          // Backward compatibility: if outline exists but outline_confirmed wasn't saved,
-          // assume it was confirmed (user wouldn't have progressed without confirming).
-          setOutlineConfirmed(true);
-        }
-      } catch (error) {
-          console.error('Error restoring outline data:', error);
-        }
-      }
-      setRestoreAttempted(true);
-    };
-
-    restoreState();
-  }, []);
+  const [restoreAttempted, setRestoreAttempted] = useState(true); // Always true — state is restored synchronously
 
   // Persist contentConfirmed to localStorage whenever it changes
   useEffect(() => {

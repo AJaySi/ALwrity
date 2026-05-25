@@ -63,8 +63,8 @@ async def save_to_library(
     file_path = assets_dir / filename
     file_path.write_bytes(image_bytes)
 
-    # Build serving URL (assets_serving.py serves /{user_id}/avatars/{filename})
-    file_url = f"/api/assets/{safe_user}/avatars/{filename}"
+    # Build serving URL (assets_serving.py serves /{user_id}/images/{filename})
+    file_url = f"/api/assets/{safe_user}/images/{filename}"
 
     # Save to unified asset library via existing utility
     from utils.asset_tracker import save_asset_to_library

@@ -8,76 +8,18 @@ from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from loguru import logger
-import json
-import os
-from urllib.parse import urlparse
 
 from services.integrations.wordpress_oauth import WordPressOAuthService
+from services.integrations.oauth_callback_utils import (
+    build_oauth_callback_html,
+    sanitize_string,
+)
 from middleware.auth_middleware import get_current_user
 
 router = APIRouter(prefix="/wp", tags=["WordPress OAuth"])
 
 # Initialize OAuth service
 oauth_service = WordPressOAuthService()
-
-
-def _sanitize_string(value: Any, max_len: int = 500) -> str:
-    if value is None:
-        return ""
-    return " ".join(str(value).split())[:max_len]
-
-
-def _normalize_origin(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return None
-    parsed = urlparse(url.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
-def _trusted_frontend_origin() -> Optional[str]:
-    origins_env = os.getenv("OAUTH_CALLBACK_ALLOWED_ORIGINS", "")
-    configured_origins = [
-        _normalize_origin(origin)
-        for origin in origins_env.split(",")
-        if origin.strip()
-    ]
-    configured_origins = [origin for origin in configured_origins if origin]
-    if configured_origins:
-        return configured_origins[0]
-    return _normalize_origin(os.getenv("FRONTEND_URL"))
-
-
-def _oauth_callback_html(payload: Dict[str, Any], title: str, heading: str, message: str) -> str:
-    payload_json = json.dumps(payload)
-    target_origin = json.dumps(_trusted_frontend_origin() or "")
-    heading_html = heading.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    message_html = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><title>{title}</title></head>
-    <body>
-      <h1>{heading_html}</h1>
-      <p>{message_html}</p>
-      <script>
-        (function() {{
-          var payload = {payload_json};
-          var targetOrigin = {target_origin};
-          var destination = window.opener || window.parent;
-          if (destination && targetOrigin) {{
-            try {{
-              destination.postMessage(payload, targetOrigin);
-              window.close();
-              return;
-            }} catch (_e) {{}}
-          }}
-        }})();
-      </script>
-    </body>
-    </html>
-    """
 
 # Pydantic Models
 class WordPressOAuthResponse(BaseModel):
@@ -140,8 +82,8 @@ async def handle_wordpress_callback(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={"success": False, "error": error}
                 )
-            html_content = _oauth_callback_html(
-                payload={"type": "WPCOM_OAUTH_ERROR", "success": False, "error": _sanitize_string(error)},
+            html_content = build_oauth_callback_html(
+                payload={"type": "WPCOM_OAUTH_ERROR", "success": False, "error": sanitize_string(error)},
                 title="WordPress.com Connection Failed",
                 heading="Connection Failed",
                 message="There was an error connecting to WordPress.com. You can close this window and try again."
@@ -158,7 +100,7 @@ async def handle_wordpress_callback(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={"success": False, "error": "Missing parameters"}
                 )
-            html_content = _oauth_callback_html(
+            html_content = build_oauth_callback_html(
                 payload={"type": "WPCOM_OAUTH_ERROR", "success": False, "error": "Missing parameters"},
                 title="WordPress.com Connection Failed",
                 heading="Connection Failed",
@@ -179,7 +121,7 @@ async def handle_wordpress_callback(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={"success": False, "error": "Token exchange failed"}
                 )
-            html_content = _oauth_callback_html(
+            html_content = build_oauth_callback_html(
                 payload={"type": "WPCOM_OAUTH_ERROR", "success": False, "error": "Token exchange failed"},
                 title="WordPress.com Connection Failed",
                 heading="Connection Failed",
@@ -201,12 +143,12 @@ async def handle_wordpress_callback(
                 }
             )
 
-        html_content = _oauth_callback_html(
+        html_content = build_oauth_callback_html(
             payload={
                 "type": "WPCOM_OAUTH_SUCCESS",
                 "success": True,
-                "blogUrl": _sanitize_string(blog_url, 300),
-                "blogId": _sanitize_string(blog_id, 128)
+                "blogUrl": sanitize_string(blog_url, 300),
+                "blogId": sanitize_string(blog_id, 128)
             },
             title="WordPress.com Connection Successful",
             heading="Connection Successful",
@@ -220,7 +162,7 @@ async def handle_wordpress_callback(
         
     except Exception as e:
         logger.error(f"Error handling WordPress OAuth callback: {e}")
-        html_content = _oauth_callback_html(
+        html_content = build_oauth_callback_html(
             payload={"type": "WPCOM_OAUTH_ERROR", "success": False, "error": "Callback error"},
             title="WordPress.com Connection Failed",
             heading="Connection Failed",

@@ -9,76 +9,21 @@ from fastapi.responses import HTMLResponse
 from typing import Dict, Any, Optional
 from loguru import logger
 from pydantic import BaseModel
+import os
 import uuid
+import requests
 
 from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
+from services.integrations.oauth_callback_utils import (
+    build_oauth_callback_html,
+    sanitize_error,
+)
 from middleware.auth_middleware import get_current_user
-import os
-import json
-from urllib.parse import urlparse
-import requests
 
 router = APIRouter(prefix="/api/wix", tags=["Wix Integration"])
 qa_router = APIRouter(prefix="/api/wix/test", tags=["Wix Integration QA"])
 
-
-def _sanitize_error_message(error: Exception) -> str:
-    return " ".join(str(error).split())[:500]
-
-
-def _normalize_origin(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return None
-    parsed = urlparse(url.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return None
-    return f"{parsed.scheme}://{parsed.netloc}"
-
-
-def _trusted_frontend_origin() -> Optional[str]:
-    origins_env = os.getenv("OAUTH_CALLBACK_ALLOWED_ORIGINS", "")
-    configured_origins = [
-        _normalize_origin(origin)
-        for origin in origins_env.split(",")
-        if origin.strip()
-    ]
-    configured_origins = [origin for origin in configured_origins if origin]
-    if configured_origins:
-        return configured_origins[0]
-    return _normalize_origin(os.getenv("FRONTEND_URL"))
-
-
-def _build_oauth_callback_html(payload: Dict[str, Any], title: str, heading: str, message: str) -> str:
-    trusted_origin = _trusted_frontend_origin()
-    payload_json = json.dumps(payload)
-    target_origin_json = json.dumps(trusted_origin or "")
-    heading_html = heading.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    message_html = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><title>{title}</title></head>
-    <body>
-      <h1>{heading_html}</h1>
-      <p>{message_html}</p>
-      <script>
-        (function() {{
-          var payload = {payload_json};
-          var targetOrigin = {target_origin_json};
-          var destination = window.opener || window.parent;
-          if (destination && targetOrigin) {{
-            try {{
-              destination.postMessage(payload, targetOrigin);
-              window.close();
-              return;
-            }} catch (_e) {{}}
-          }}
-        }})();
-      </script>
-    </body>
-    </html>
-    """
 
 # Initialize Wix service
 wix_service = WixService()
@@ -121,34 +66,38 @@ def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
     if not expired_tokens:
         raise HTTPException(status_code=401, detail="Wix account not connected")
 
-    latest = expired_tokens[0]
-    refresh_token = latest.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="Wix token expired and cannot be refreshed")
-    try:
-        refreshed = wix_service.refresh_access_token(refresh_token)
-    except Exception as exc:
-        raise _map_wix_error(exc, "Failed to refresh Wix access token")
+    for candidate in expired_tokens:
+        refresh_token = candidate.get("refresh_token")
+        token_id = candidate.get("id")
+        if not refresh_token:
+            continue
+        try:
+            refreshed = wix_service.refresh_access_token(refresh_token)
+        except Exception as exc:
+            continue
 
-    wix_oauth_service.update_tokens(
-        user_id=user_id,
-        access_token=refreshed.get("access_token"),
-        refresh_token=refreshed.get("refresh_token", refresh_token),
-        expires_in=refreshed.get("expires_in"),
-    )
+        wix_oauth_service.update_tokens(
+            user_id=user_id,
+            access_token=refreshed.get("access_token"),
+            refresh_token=refreshed.get("refresh_token", refresh_token),
+            expires_in=refreshed.get("expires_in"),
+            token_id=token_id,
+        )
 
-    return {
-        "access_token": refreshed.get("access_token"),
-        "refresh_token": refreshed.get("refresh_token", refresh_token),
-        "member_id": latest.get("member_id"),
-        "site_id": latest.get("site_id"),
-    }
+        return {
+            "access_token": refreshed.get("access_token"),
+            "refresh_token": refreshed.get("refresh_token", refresh_token),
+            "member_id": candidate.get("member_id"),
+            "site_id": candidate.get("site_id"),
+        }
+
+    raise HTTPException(status_code=401, detail="Wix token expired and cannot be refreshed")
 
 
 class WixAuthRequest(BaseModel):
     """Request model for Wix authentication"""
     code: str
-    state: Optional[str] = None
+    state: str
 
 
 class WixPublishRequest(BaseModel):
@@ -377,7 +326,7 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
             "permissions": permissions
         }
 
-        html = _build_oauth_callback_html(
+        html = build_oauth_callback_html(
             payload=payload,
             title="Wix Connected",
             heading="Connection Successful",
@@ -389,8 +338,8 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
         })
     except Exception as e:
         logger.error(f"Wix OAuth GET callback failed: {e}")
-        html = _build_oauth_callback_html(
-            payload={"type": "WIX_OAUTH_ERROR", "success": False, "error": _sanitize_error_message(e)},
+        html = build_oauth_callback_html(
+            payload={"type": "WIX_OAUTH_ERROR", "success": False, "error": sanitize_error(e)},
             title="Wix Connection Failed",
             heading="Connection Failed",
             message="There was an issue connecting your Wix account. You can close this window and try again."
@@ -420,19 +369,17 @@ async def get_connection_status(current_user: dict = Depends(get_current_user)) 
         }
     except HTTPException as e:
         if e.status_code == 401:
-            return {"connected": False, "has_permissions": False}
+            return {"connected": False, "has_permissions": False, "error": "Wix account not connected"}
         raise
     except Exception as e:
         logger.error(f"Failed to check connection status: {e}")
-        return {"connected": False, "has_permissions": False}
+        return {"connected": False, "has_permissions": False, "error": "Unable to check Wix connection"}
 
 
 @router.get("/status")
 async def get_wix_status(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """
     Get Wix connection status (similar to GSC/WordPress pattern)
-    Note: Wix tokens are stored in frontend sessionStorage, so we can't directly check them here.
-    The frontend will check sessionStorage and update the UI accordingly.
     """
     try:
         token_info = _resolve_valid_wix_token(current_user)
@@ -671,8 +618,8 @@ async def get_test_authorization_url(state: Optional[str] = None, _: Dict[str, A
                 "message": "WIX_CLIENT_ID not configured. Please set it in your .env file to get a real authorization URL."
             }
         
-        auth_url = wix_service.get_authorization_url(state)
-        return {"url": auth_url, "state": state or "test_state"}
+        auth_payload = wix_service.get_authorization_url(state)
+        return {"url": auth_payload.get("authorization_url", ""), "state": state or "test_state"}
     except Exception as e:
         logger.error(f"TEST: Failed to generate authorization URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -699,28 +646,44 @@ async def test_publish_to_wix(request: WixPublishRequest, _: Dict[str, Any] = De
 
 
 @router.post("/refresh-token")
-async def refresh_wix_token(request: Dict[str, Any]) -> Dict[str, Any]:
+async def refresh_wix_token(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """
-    Refresh Wix access token using refresh token
+    Refresh Wix access token using stored refresh token.
     
     Args:
-        request: Dict containing refresh_token
+        current_user: Current authenticated user
         
     Returns:
         New token information with access_token, refresh_token, expires_in
     """
     try:
-        refresh_token = request.get("refresh_token")
-        if not refresh_token:
-            raise HTTPException(status_code=400, detail="Missing refresh_token")
+        user_id = _get_current_user_id(current_user)
+        token_status = wix_oauth_service.get_user_token_status(user_id)
+        all_tokens = token_status.get("active_tokens", []) + token_status.get("expired_tokens", [])
         
-        # Refresh the token
+        refresh_token = None
+        token_id = None
+        for t in all_tokens:
+            if t.get("refresh_token"):
+                refresh_token = t["refresh_token"]
+                token_id = t["id"]
+                break
+        
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="No refresh token found. Please reconnect your Wix account.")
+        
         new_tokens = wix_service.refresh_access_token(refresh_token)
+        
+        wix_oauth_service.update_tokens(
+            user_id=user_id,
+            access_token=new_tokens.get("access_token"),
+            refresh_token=new_tokens.get("refresh_token", refresh_token),
+            expires_in=new_tokens.get("expires_in"),
+            token_id=token_id,
+        )
         
         return {
             "success": True,
-            "access_token": new_tokens.get("access_token"),
-            "refresh_token": new_tokens.get("refresh_token"),
             "expires_in": new_tokens.get("expires_in"),
             "token_type": new_tokens.get("token_type", "Bearer")
         }
@@ -728,7 +691,7 @@ async def refresh_wix_token(request: Dict[str, Any]) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Failed to refresh Wix token: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
+        raise _map_wix_error(e, "Failed to refresh token")
 
 
 @qa_router.post("/publish/real")
@@ -800,7 +763,6 @@ async def test_publish_real(payload: Dict[str, Any], _: Dict[str, Any] = Depends
             "post_id": (result.get("draftPost") or result.get("post") or {}).get("id"),
             "url": (result.get("draftPost") or result.get("post") or {}).get("url"),
             "message": "Blog post published to Wix",
-            "raw": result,
         }
     except HTTPException:
         raise

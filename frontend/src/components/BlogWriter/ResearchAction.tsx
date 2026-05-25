@@ -10,9 +10,10 @@ const useCopilotActionTyped = useCopilotAction as any;
 interface ResearchActionProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
   navigateToPhase?: (phase: string) => void;
+  researchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
 }
 
-export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase }) => {
+export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase, researchRef }) => {
   const [copilotKeywords, setCopilotKeywords] = useState('');
   const [copilotBlogLength, setCopilotBlogLength] = useState('1000');
   const hasNavigatedRef = useRef<boolean>(false);
@@ -29,6 +30,12 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
     isPolling,
     result,
   } = useResearchSubmit({ onResearchComplete, navigateToPhase });
+
+  // Expose startResearch to parent for header chip "Re-Research"
+  React.useEffect(() => {
+    if (researchRef) researchRef.current = startResearch;
+    return () => { if (researchRef) researchRef.current = null; };
+  }, [startResearch, researchRef]);
 
   // Close modal when research completes (status becomes a completed state or polling stops with a result)
   const COMPLETED_STATUSES = React.useMemo(
@@ -141,21 +148,21 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
               onKeywordsChange={setCopilotKeywords}
               disabled={isSubmitting}
             />
-            <button
-onClick={async () => {
-                   const kw = copilotKeywords.trim();
-                   const bl = copilotBlogLength;
-                   if (!kw) return;
-                   try {
-                     await startResearch(kw, bl);
-                   } catch (error) {
-                     console.error(`Research failed: ${error}`);
-                   }
-                 }}
+<button
+                  onClick={async () => {
+                    const kw = copilotKeywords.trim();
+                    const bl = copilotBlogLength;
+                    if (!kw) return;
+                    try {
+                      await startResearch(kw, bl);
+                    } catch (error) {
+                      console.error(`Research failed: ${error}`);
+                    }
+                  }}
                 disabled={isSubmitting}
               style={{ padding: '12px 24px', backgroundColor: isSubmitting ? '#ccc' : '#1976d2', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
             >
-              {isSubmitting ? '⏳ Starting Research...' : '🚀 Start Research'}
+              {isSubmitting ? '⏳ Researching...' : '🔍 Click To Research'}
             </button>
           </div>
         </div>

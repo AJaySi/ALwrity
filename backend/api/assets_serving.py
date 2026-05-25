@@ -64,13 +64,18 @@ async def serve_avatar(
     filename: str,
     current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
 ):
-    """Serve avatar images. Supports auth via Authorization header or ?token= query param."""
+    """Serve avatar images. Supports auth via Authorization header or ?token= query param.
+    Falls back to images/ directory for backward compatibility with old asset library entries."""
     require_authenticated_user(current_user)
 
     safe_filename = os.path.basename(filename)
     file_path = _resolve_asset_path(user_id, "avatars", safe_filename)
 
     if not file_path.exists():
+        alt_path = _resolve_asset_path(user_id, "images", safe_filename)
+        if alt_path.exists():
+            media_type = _get_media_type(safe_filename)
+            return FileResponse(alt_path, media_type=media_type)
         raise HTTPException(status_code=404, detail="Asset not found")
 
     media_type = _get_media_type(safe_filename)
@@ -101,4 +106,23 @@ async def serve_voice_sample(
     media_type = _get_media_type(safe_filename)
     file_size = file_path.stat().st_size
     logger.warning(f"[Assets] Serving voice sample: {safe_filename} ({media_type}, {file_size} bytes)")
+    return FileResponse(file_path, media_type=media_type)
+
+
+@router.get("/{user_id}/images/{filename}")
+async def serve_image(
+    user_id: str,
+    filename: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
+):
+    """Serve generated/uploaded images. Supports auth via Authorization header or ?token= query param."""
+    require_authenticated_user(current_user)
+
+    safe_filename = os.path.basename(filename)
+    file_path = _resolve_asset_path(user_id, "images", safe_filename)
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    media_type = _get_media_type(safe_filename)
     return FileResponse(file_path, media_type=media_type)

@@ -672,6 +672,9 @@ if _is_full_mode():
     # Include Bing Analytics Storage router to expose storage-backed endpoints
     from routers.bing_analytics_storage import router as bing_analytics_storage_router
     app.include_router(bing_analytics_storage_router)
+    # Include SEO Tools router with enterprise audit and GSC analysis
+    if seo_tools_router:
+        app.include_router(seo_tools_router)
     if images_router:
         app.include_router(images_router)
     if image_studio_router:

@@ -14,6 +14,7 @@ interface CopilotKitComponentsProps {
   sections: Record<string, string>;
   selectedTitle: string | null;
   onResearchComplete: (research: any) => void;
+  startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
   onOutlineCreated: (outline: any[]) => void;
   onOutlineUpdated: (outline: any[]) => void;
   onTitleOptionsSet: (titles: any[]) => void;
@@ -37,6 +38,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
   sections,
   selectedTitle,
   onResearchComplete,
+  startResearchRef,
   onOutlineCreated,
   onOutlineUpdated,
   onTitleOptionsSet,
@@ -59,7 +61,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
         onTaskStart={(taskId) => researchPolling.startPolling(taskId)}
       />
       <CustomOutlineForm onOutlineCreated={onOutlineCreated} />
-      <ResearchAction onResearchComplete={onResearchComplete} navigateToPhase={navigateToPhase} />
+      <ResearchAction onResearchComplete={onResearchComplete} researchRef={startResearchRef} navigateToPhase={navigateToPhase} />
       
       <ResearchDataActions 
         research={research} 

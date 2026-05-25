@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { debug } from '../../../utils/debug';
 
 interface UsePhaseRestorationProps {
@@ -18,10 +18,12 @@ export const usePhaseRestoration = ({
   navigateToPhase,
   setCurrentPhase,
 }: UsePhaseRestorationProps) => {
-  // When CopilotKit is unavailable and there's no research, ensure we're on research phase
+  const hasRestoredRef = useRef(false);
+
   useEffect(() => {
-    if (!copilotKitAvailable && !research && phases.length > 0 && currentPhase !== 'research') {
+    if (!copilotKitAvailable && !research && phases.length > 0 && currentPhase !== 'research' && !hasRestoredRef.current) {
       navigateToPhase('research');
+      hasRestoredRef.current = true;
       debug.log('[BlogWriter] Auto-navigating to research phase (CopilotKit unavailable)');
     }
   }, [copilotKitAvailable, research, phases.length, currentPhase, navigateToPhase]);

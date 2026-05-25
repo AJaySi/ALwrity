@@ -548,9 +548,11 @@ def validate_video_generation_operations(
 def validate_scene_animation_operation(
     pricing_service: PricingService,
     user_id: str,
+    scene_count: int = 1,
 ) -> None:
     """
     Validate the per-scene animation workflow before API calls.
+    Validates that the user has sufficient credits for *all* scenes in the batch.
     """
     try:
         operations_to_validate = [
@@ -560,6 +562,7 @@ def validate_scene_animation_operation(
                 'actual_provider_name': 'wavespeed',
                 'operation_type': 'scene_animation',
             }
+            for _ in range(scene_count)
         ]
 
         can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
@@ -581,9 +584,8 @@ def validate_scene_animation_operation(
                 }
             )
 
-        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id}")
-        # Validation passed - no return needed (function raises HTTPException if validation fails)
-        
+        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id} ({scene_count} scene(s))")
+
     except HTTPException:
         raise
     except Exception as e:
@@ -730,9 +732,11 @@ def validate_video_generation_operations(
 def validate_scene_animation_operation(
     pricing_service: PricingService,
     user_id: str,
+    scene_count: int = 1,
 ) -> None:
     """
     Validate the per-scene animation workflow before API calls.
+    Validates that the user has sufficient credits for *all* scenes in the batch.
     """
     try:
         operations_to_validate = [
@@ -742,6 +746,7 @@ def validate_scene_animation_operation(
                 'actual_provider_name': 'wavespeed',
                 'operation_type': 'scene_animation',
             }
+            for _ in range(scene_count)
         ]
 
         can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
@@ -763,7 +768,7 @@ def validate_scene_animation_operation(
                 }
             )
 
-        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id}")
+        logger.info(f"[Pre-flight Validator] ✅ Scene animation validated for user {user_id} ({scene_count} scene(s))")
 
     except HTTPException:
         raise

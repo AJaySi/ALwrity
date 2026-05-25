@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getApiBaseUrl } from '../utils/apiUrl';
 
 interface RealTimeDataOptions {
   strategyId: number;
@@ -50,14 +51,6 @@ export const useRealTimeData = (options: RealTimeDataOptions) => {
 
     try {
       // Build WebSocket URL from environment variables
-      const getApiBaseUrl = () => {
-        const url = process.env.REACT_APP_API_URL;
-        if (process.env.NODE_ENV === 'production' && !url) {
-          throw new Error('REACT_APP_API_URL environment variable is required for production');
-        }
-        return url || 'http://localhost:8000';
-      };
-      
       const apiUrl = getApiBaseUrl();
       
       // In development, use proxy (empty string means use same origin)

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../utils/apiUrl';
 
 const sanitizeUrlForLogging = (url: string | undefined): string => {
   if (!url) return '';
@@ -62,26 +63,8 @@ export const getAuthTokenGetter = (): (() => Promise<string | null>) | null => {
   return authTokenGetter;
 };
 
-// Get API URL from environment variables
-export const getApiUrl = () => {
-  const apiUrl = process.env.REACT_APP_API_URL;
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  // In production, require REACT_APP_API_URL to be set
-  if (isProduction && !apiUrl) {
-    console.error('[apiClient] ❌ REACT_APP_API_URL is not set for production! Please configure in Vercel environment variables.');
-    throw new Error('REACT_APP_API_URL environment variable is required for production. Please set it in your Vercel project settings.');
-  }
-  
-  // Always respect REACT_APP_API_URL if explicitly set — behavior is independent of
-  // whether the browser is on localhost, ngrok, or any other hostname.
-  if (apiUrl) {
-    return apiUrl;
-  }
-  
-  // Development fallback when no env var is configured
-  return 'http://localhost:8000';
-};
+// Get API URL using shared utility that handles localhost vs ngrok detection
+export const getApiUrl = getApiBaseUrl;
 
 // Create a shared axios instance for all API calls
 const apiBaseUrl = getApiUrl();

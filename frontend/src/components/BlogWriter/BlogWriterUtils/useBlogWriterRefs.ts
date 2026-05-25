@@ -10,6 +10,7 @@ interface UseBlogWriterRefsProps {
   currentPhase: string;
   isSEOAnalysisModalOpen: boolean;
   resetUserSelection: () => void;
+  restoreAttempted?: boolean;
 }
 
 export const useBlogWriterRefs = ({
@@ -21,7 +22,23 @@ export const useBlogWriterRefs = ({
   currentPhase,
   isSEOAnalysisModalOpen,
   resetUserSelection,
+  restoreAttempted,
 }: UseBlogWriterRefsProps) => {
+  // Skip resetUserSelection during state restoration to avoid overriding
+  // the user's last known phase. After restoration completes, we allow
+  // resets for natural user-driven transitions.
+  const isRestoringRef = useRef(true);
+
+  useEffect(() => {
+    if (restoreAttempted) {
+      // Give React a render cycle to settle before allowing resets
+      const timer = setTimeout(() => {
+        isRestoringRef.current = false;
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [restoreAttempted]);
+
   // Track when outlines/content become available for the first time
   const prevOutlineLenRef = useRef<number>(outline.length);
   const prevOutlineConfirmedRef = useRef<boolean>(outlineConfirmed);
@@ -30,7 +47,9 @@ export const useBlogWriterRefs = ({
   useEffect(() => {
     const prevLen = prevOutlineLenRef.current;
     if (research && prevLen === 0 && outline.length > 0) {
-      resetUserSelection();
+      if (!isRestoringRef.current) {
+        resetUserSelection();
+      }
     }
     prevOutlineLenRef.current = outline.length;
   }, [research, outline.length, resetUserSelection]);
@@ -39,7 +58,9 @@ export const useBlogWriterRefs = ({
   useEffect(() => {
     const wasConfirmed = prevOutlineConfirmedRef.current;
     if (!wasConfirmed && outlineConfirmed && Object.keys(sections).length > 0) {
-      resetUserSelection(); // Allow auto-progression to content phase
+      if (!isRestoringRef.current) {
+        resetUserSelection();
+      }
     }
     prevOutlineConfirmedRef.current = outlineConfirmed;
   }, [outlineConfirmed, sections, resetUserSelection]);
@@ -47,7 +68,9 @@ export const useBlogWriterRefs = ({
   useEffect(() => {
     const wasConfirmed = prevContentConfirmedRef.current;
     if (!wasConfirmed && contentConfirmed) {
-      resetUserSelection(); // Allow auto-progression to SEO phase
+      if (!isRestoringRef.current) {
+        resetUserSelection();
+      }
     }
     prevContentConfirmedRef.current = contentConfirmed;
   }, [contentConfirmed, resetUserSelection]);

@@ -36,6 +36,7 @@ import { useBlogWriterRefs } from './BlogWriterUtils/useBlogWriterRefs';
 import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSection';
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
 import { useBlogAsset } from '../../hooks/useBlogAsset';
+import { blogAssetAPI } from '../../api/blogAsset';
 
 const BlogWriter: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -210,6 +211,12 @@ const BlogWriter: React.FC = () => {
   // When true (Re-Content), polling callback skips auto-confirm and SEO navigation
   const skipContentAutoConfirmRef = React.useRef<boolean>(false);
 
+  // Lifted keywords from ManualResearchForm (for header chip "Click To Research" label)
+  const [researchKeywords, setResearchKeywords] = useState<string>('');
+  const researchBlogLengthRef = useRef<string>('1000');
+  // Shared ref exposed by ManualResearchForm / ResearchAction for header-triggered research
+  const startResearchRef = useRef<((keywords: string, blogLength?: string) => Promise<any>) | null>(null);
+
   // Normalize section keys to match outline IDs when updating from API responses
   const handleSectionsUpdate = useCallback((newSections: Record<string, string>) => {
     if (outline && outline.length > 0 && Object.keys(newSections).length > 0) {
@@ -271,17 +278,46 @@ const BlogWriter: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Create/get blog asset before research starts (saves to Asset Library immediately)
-  const handleBeforeResearchSubmit = useCallback(async (keywords: string, blogLength: string) => {
-    const id = await createAsset(keywords, keywords, parseInt(blogLength));
-    if (id) saveLastAssetId(id);
-  }, [createAsset, saveLastAssetId]);
-
   // Wrap handlers to also update the blog ContentAsset
-  const wrappedHandleResearchComplete = useCallback((researchData: any) => {
+  const wrappedHandleResearchComplete = useCallback(async (researchData: any) => {
     handleResearchComplete(researchData);
-    if (assetId) { updatePhase('research', researchData); saveLastAssetId(assetId); }
-  }, [handleResearchComplete, assetId, updatePhase, saveLastAssetId]);
+    const kw = researchData?.original_keywords
+      ? (Array.isArray(researchData.original_keywords) ? researchData.original_keywords.join(', ') : researchData.original_keywords)
+      : (researchKeywords || '');
+    const bl = researchBlogLengthRef.current || researchData?.word_count_target?.toString() || '1000';
+    if (assetId) {
+      // Re-Research: update existing asset
+      updatePhase('research', researchData);
+      saveLastAssetId(assetId);
+    } else {
+      // First research: create blog asset AFTER research completes
+      const id = await createAsset(kw, kw, parseInt(bl));
+      if (id) {
+        saveLastAssetId(id);
+        // Direct API call: createAsset sets React state but the closure is stale
+        await blogAssetAPI.update(id, { phase: 'research', research_data: researchData });
+      }
+    }
+  }, [handleResearchComplete, researchKeywords, assetId, createAsset, saveLastAssetId, updatePhase]);
+
+  // Handler for header chip "Click To Research" / "Re-Research"
+  const handleResearchStartAction = useCallback(async () => {
+    // Navigate first so ManualResearchForm mounts and sets the ref (for non-CopilotKit path)
+    navigateToPhase('research');
+    let kw = researchKeywords;
+    if (!kw && research) {
+      kw = Array.isArray(research.original_keywords)
+        ? research.original_keywords.join(', ')
+        : research.original_keywords || '';
+    }
+    const bl = researchBlogLengthRef.current || (research as any)?.word_count_target?.toString() || '1000';
+    if (!kw) return;
+    // Yield to React so the navigation renders and the form sets startResearchRef
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (startResearchRef.current) {
+      await startResearchRef.current(kw, bl);
+    }
+  }, [navigateToPhase, researchKeywords, research]);
 
   const wrappedHandleSEOAnalysisComplete = useCallback((analysis: any) => {
     handleSEOAnalysisComplete(analysis);
@@ -386,6 +422,7 @@ const BlogWriter: React.FC = () => {
     currentPhase,
     isSEOAnalysisModalOpen,
     resetUserSelection,
+    restoreAttempted,
   });
 
   const handlePhaseClick = useCallback((phaseId: string) => {
@@ -483,6 +520,7 @@ const BlogWriter: React.FC = () => {
   const {
     handleResearchAction,
     handleOutlineAction,
+    handleOutlineStartAction,
     handleContentAction,
     handleSEOAction,
     handleApplySEORecommendations,
@@ -555,7 +593,8 @@ const BlogWriter: React.FC = () => {
           outlineConfirmed={outlineConfirmed}
           sections={sections}
           selectedTitle={selectedTitle}
-           onResearchComplete={wrappedHandleResearchComplete}
+          onResearchComplete={wrappedHandleResearchComplete}
+          startResearchRef={startResearchRef}
           onOutlineCreated={setOutline}
           onOutlineUpdated={setOutline}
           onTitleOptionsSet={setTitleOptions}
@@ -636,12 +675,15 @@ const BlogWriter: React.FC = () => {
         copilotKitAvailable={copilotKitAvailable}
         actionHandlers={{
           onResearchAction: handleResearchAction,
+          onResearchStartAction: handleResearchStartAction,
           onOutlineAction: handleOutlineAction,
+          onOutlineStartAction: handleOutlineStartAction,
           onContentAction: handleContentAction,
           onSEOAction: handleSEOAction,
           onApplySEORecommendations: handleApplySEORecommendations,
           onPublishAction: handlePublishAction,
         }}
+        researchKeywords={researchKeywords}
         hasResearch={!!research}
         hasOutline={outline.length > 0}
         outlineConfirmed={outlineConfirmed}
@@ -663,7 +705,9 @@ const BlogWriter: React.FC = () => {
         currentPhase={currentPhase}
         navigateToPhase={navigateToPhase}
         onResearchComplete={wrappedHandleResearchComplete}
-        onBeforeResearchSubmit={handleBeforeResearchSubmit}
+        onKeywordsChange={setResearchKeywords}
+        blogLengthRef={researchBlogLengthRef}
+        startResearchRef={startResearchRef}
         restoreAttempted={restoreAttempted}
       />
 
@@ -699,6 +743,9 @@ const BlogWriter: React.FC = () => {
         onCustomTitle={handleCustomTitle}
         copilotKitAvailable={copilotKitAvailable}
         onResearchComplete={wrappedHandleResearchComplete}
+        onKeywordsChange={setResearchKeywords}
+        blogLengthRef={researchBlogLengthRef}
+        startResearchRef={startResearchRef}
         onOutlineGenerationStart={(taskId) => {
           setOutlineTaskId(taskId);
           outlinePolling.startPolling(taskId);

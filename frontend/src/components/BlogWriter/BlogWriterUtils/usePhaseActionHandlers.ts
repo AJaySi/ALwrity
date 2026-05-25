@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { debug } from '../../../utils/debug';
 import { mediumBlogApi } from '../../../services/blogWriterApi';
-import { researchCache } from '../../../services/researchCache';
 import { blogWriterCache } from '../../../services/blogWriterCache';
 
 interface UsePhaseActionHandlersProps {
@@ -58,27 +57,20 @@ export const usePhaseActionHandlers = ({
       alert('Please complete research first before generating an outline.');
       return;
     }
-    
-    // Check cache first (shared utility)
-    const researchKeywords = research.original_keywords || research.keyword_analysis?.primary || [];
-    const cachedOutline = blogWriterCache.getCachedOutline(researchKeywords);
-    
-    if (cachedOutline) {
-      debug.log('[BlogWriter] Using cached outline from localStorage', { sections: cachedOutline.outline.length });
-      setOutline(cachedOutline.outline);
-      if (onOutlineComplete) {
-        onOutlineComplete({ outline: cachedOutline.outline, title_options: cachedOutline.title_options });
-      }
-      navigateToPhase('outline');
-      return;
-    }
-    
     navigateToPhase('outline');
     if (outlineGenRef.current) {
       try {
         const result = await outlineGenRef.current.generateNow();
         if (!result.success) {
           alert(result.message || 'Failed to generate outline');
+        } else if (result.cached && result.outline) {
+          // Cached result: set state directly (onOutlineCreated was already called by generateNow)
+          setOutline(result.outline);
+          if (result.title_options) {
+            if (onOutlineComplete) {
+              onOutlineComplete({ outline: result.outline, title_options: result.title_options });
+            }
+          }
         }
       } catch (error) {
         console.error('Outline generation failed:', error);
@@ -86,6 +78,37 @@ export const usePhaseActionHandlers = ({
       }
     }
     debug.log('[BlogWriter] Outline action triggered');
+  }, [research, navigateToPhase, outlineGenRef, setOutline, onOutlineComplete]);
+
+  const handleOutlineStartAction = useCallback(async () => {
+    if (!research) {
+      alert('Please complete research first before generating an outline.');
+      return;
+    }
+    navigateToPhase('outline');
+    // Clear cached outline + title options to force re-generation
+    try {
+      localStorage.removeItem('blog_outline');
+      localStorage.removeItem('blog_title_options');
+    } catch { /* noop */ }
+    if (outlineGenRef.current) {
+      try {
+        const result = await outlineGenRef.current.generateNow();
+        if (!result.success) {
+          alert(result.message || 'Failed to generate outline');
+        } else if (result.cached && result.outline) {
+          // Should not normally happen since we cleared cache, but handle defensively
+          setOutline(result.outline);
+          if (result.title_options && onOutlineComplete) {
+            onOutlineComplete({ outline: result.outline, title_options: result.title_options });
+          }
+        }
+      } catch (error) {
+        console.error('Outline re-generation failed:', error);
+        alert(`Outline re-generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+    debug.log('[BlogWriter] Outline re-generation triggered');
   }, [research, navigateToPhase, outlineGenRef, setOutline, onOutlineComplete]);
 
   const handleContentAction = useCallback(async () => {
@@ -207,6 +230,7 @@ export const usePhaseActionHandlers = ({
   return {
     handleResearchAction,
     handleOutlineAction,
+    handleOutlineStartAction,
     handleContentAction,
     handleSEOAction,
     handleApplySEORecommendations,

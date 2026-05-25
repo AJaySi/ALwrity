@@ -39,14 +39,14 @@ const DEFAULT_KNOBS: Knobs = {
 };
 
 const VOICE_CLONE_STORAGE_KEY = "alwrity_voice_clone_info";
-const VOICE_CLONE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const VOICE_CLONE_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours (WaveSpeed IDs last longer than documented 30 min)
 
 function _readVoiceCloneCache() {
   try {
     const raw = localStorage.getItem(VOICE_CLONE_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed.timestamp === "number" && Date.now() - parsed.timestamp < VOICE_CLONE_CACHE_TTL) {
+    if (parsed && typeof parsed.timestamp === "number") {
       return parsed;
     }
   } catch {
@@ -78,10 +78,14 @@ function _clearVoiceCloneCache() {
 
 /**
  * Get cached voice clone info from localStorage (survives page refresh).
- * Returns null if expired (>30 min) or not set.
+ * Returns null if not set. Includes `stale` flag if older than 2 hours
+ * so consumers can proactively re-clone before the API rejects the ID.
  */
-export function getCachedVoiceCloneInfo() {
-  return _readVoiceCloneCache();
+export function getCachedVoiceCloneInfo(): (ReturnType<typeof _readVoiceCloneCache> & { stale?: boolean }) | null {
+  const cached = _readVoiceCloneCache();
+  if (!cached) return null;
+  const stale = typeof cached.timestamp === "number" && Date.now() - cached.timestamp > VOICE_CLONE_CACHE_TTL;
+  return { ...cached, stale };
 }
 
 /**

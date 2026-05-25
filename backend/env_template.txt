@@ -21,6 +21,11 @@ FRONTEND_URL=https://alwrity-ai.vercel.app
 # Example: OAUTH_CALLBACK_ALLOWED_ORIGINS=https://alwrity-ai.vercel.app,http://localhost:3000
 OAUTH_CALLBACK_ALLOWED_ORIGINS=
 
+# OAuth Token Encryption (Fernet key - generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+# Used by both WordPress and Wix OAuth token encryption at rest.
+# WORDPRESS_TOKEN_ENCRYPTION_KEY and WIX_TOKEN_ENCRYPTION_KEY can override per-provider.
+OAUTH_TOKEN_ENCRYPTION_KEY=
+
 # OAuth Redirect URIs (Using environment variable for flexibility)
 GSC_REDIRECT_URI=${FRONTEND_URL}/gsc/callback
 WORDPRESS_REDIRECT_URI=${FRONTEND_URL}/wp/callback

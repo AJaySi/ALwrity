@@ -1,7 +1,10 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { BlogResearchResponse, BlogOutlineSection } from '../services/blogWriterApi';
+import { readLSString } from '../utils/persistence';
+import { usePhaseNavigationCore, usePhaseValidation } from './usePhaseNavigationCore';
+import type { PhaseBase } from './usePhaseNavigationCore';
 
-export interface Phase {
+export interface Phase extends PhaseBase {
   id: string;
   name: string;
   icon: string;
@@ -21,48 +24,26 @@ export const usePhaseNavigation = (
   seoMetadata: any,
   seoRecommendationsApplied?: boolean
 ) => {
-  // Initialize from localStorage if available
-  // If no research exists, default to empty string to show landing page
-  // Only default to 'research' if research already exists (resuming a session)
-  const VALID_PHASES = ['research', 'outline', 'content', 'seo', 'publish'];
+  // Compute adjusted initial phase: if stored as 'research' but no research
+  // data exists yet (cross-origin restore), show landing page instead.
+  const adjustedInitialPhase = ((): string => {
+    const stored = readLSString('blogwriter_current_phase', '');
+    if (stored === 'research' && !research) return '';
+    return stored;
+  })();
 
-  const getInitialPhase = (): string => {
-    try {
-      if (typeof window !== 'undefined') {
-        const stored = window.localStorage.getItem('blogwriter_current_phase');
-        if (stored) {
-          if (stored === 'research' && !research) {
-            return '';
-          }
-          return stored;
-        }
-        const hashPhase = window.location.hash.replace('#', '');
-        if (hashPhase && VALID_PHASES.includes(hashPhase)) {
-          return hashPhase;
-        }
-      }
-    } catch {}
-    return research ? 'research' : '';
-  };
-
-  const [currentPhase, setCurrentPhase] = useState<string>(getInitialPhase());
-  const [userSelectedPhase, setUserSelectedPhase] = useState<boolean>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const stored = window.localStorage.getItem('blogwriter_user_selected_phase');
-        return stored === 'true';
-      }
-    } catch {}
-    return false;
+  const core = usePhaseNavigationCore({
+    phaseKey: 'blogwriter_current_phase',
+    userSelectedKey: 'blogwriter_user_selected_phase',
+    emptyPhaseId: '',
+    initialPhase: adjustedInitialPhase,
   });
-  const lastClickAtRef = useRef<number>(0);
 
   // Determine phase states based on current data
   const phases = useMemo((): Phase[] => {
     const researchCompleted = !!research;
     const outlineCompleted = outline.length > 0;
     const contentCompleted = hasContent && contentConfirmed;
-    // SEO is complete when analysis exists AND recommendations are applied
     const seoCompleted = !!seoAnalysis && (seoRecommendationsApplied === true || !!seoMetadata);
 
     return [
@@ -72,8 +53,8 @@ export const usePhaseNavigation = (
         icon: '🔍',
         description: 'Research your topic and gather data',
         completed: researchCompleted,
-        current: currentPhase === 'research',
-        disabled: false // Research is always accessible
+        current: core.currentPhase === 'research',
+        disabled: false,
       },
       {
         id: 'outline',
@@ -81,8 +62,8 @@ export const usePhaseNavigation = (
         icon: '📝',
         description: 'Create and refine your blog outline',
         completed: outlineCompleted,
-        current: currentPhase === 'outline',
-        disabled: !researchCompleted // Disabled only if research not completed (can always go back if completed)
+        current: core.currentPhase === 'outline',
+        disabled: !researchCompleted,
       },
       {
         id: 'content',
@@ -90,8 +71,8 @@ export const usePhaseNavigation = (
         icon: '✍️',
         description: 'Generate and edit your blog content',
         completed: contentCompleted,
-        current: currentPhase === 'content',
-        disabled: !outlineCompleted // Disabled only if outline not completed (can always go back if completed)
+        current: core.currentPhase === 'content',
+        disabled: !outlineCompleted,
       },
       {
         id: 'seo',
@@ -99,145 +80,88 @@ export const usePhaseNavigation = (
         icon: '📈',
         description: 'Optimize for search engines',
         completed: seoCompleted,
-        current: currentPhase === 'seo',
-        disabled: !contentCompleted // Disabled only if content not completed (can always go back if completed)
+        current: core.currentPhase === 'seo',
+        disabled: !contentCompleted,
       },
       {
         id: 'publish',
         name: 'Publish',
         icon: '🚀',
         description: 'Publish your blog post',
-        completed: false, // This would be set when actually published
-        current: currentPhase === 'publish',
-        disabled: !seoCompleted // Can access if SEO done
-      }
+        completed: false,
+        current: core.currentPhase === 'publish',
+        disabled: !seoCompleted,
+      },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, currentPhase]);
+  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase]);
 
-  // Persist current phase and user selection
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('blogwriter_current_phase', currentPhase);
-        window.localStorage.setItem('blogwriter_user_selected_phase', String(userSelectedPhase));
-      }
-    } catch {}
-  }, [currentPhase, userSelectedPhase]);
-
-  // Validate stored phase against current availability (quiet)
-  useEffect(() => {
-    // Allow empty string as a valid phase (landing page state)
-    if (currentPhase === '') {
-      return; // Don't validate empty phase - it's intentional for landing page
-    }
-
-    // If user manually selected this phase, respect their choice even if data
-    // hasn't been restored yet (e.g., on page load before cache restoration).
-    // The data restoration effects will populate the necessary state shortly.
-    if (userSelectedPhase) {
-      return;
-    }
-    
-    const current = phases.find(p => p.id === currentPhase);
-    if (!current) {
-      // If phase not found and no research exists, go to landing (empty string)
-      // Otherwise, default to research
-      setCurrentPhase(research ? 'research' : '');
-      return;
-    }
-    if (current.disabled) {
-      // Find the first non-disabled phase in order of progression the user qualifies for
-      // If no research exists, default to landing (empty string) instead of research
-      const fallback = phases.find(p => !p.disabled) || ({ id: research ? 'research' : '' } as Phase);
-      if (fallback.id !== currentPhase) {
-        setCurrentPhase(fallback.id);
-      }
-    }
-  }, [phases, currentPhase, research, userSelectedPhase]);
+  // Shared validation: redirect if current phase is disabled
+  usePhaseValidation(
+    phases,
+    core.currentPhase,
+    core.userSelectedPhase,
+    core.setCurrentPhase,
+    core.oscillationGuardRef,
+    '',
+    research,
+  );
 
   // Auto-update current phase based on completion status (only if user hasn't manually selected a phase)
   useEffect(() => {
-    if (userSelectedPhase) {
-      return; // Don't auto-update if user has manually selected a phase
-    }
-    
-    // If no research exists and phase is empty/landing, stay on landing
-    if (!research && currentPhase === '') {
-      return; // Keep showing landing page
+    if (core.userSelectedPhase) {
+      return;
     }
 
-    // Auto-progress to the next available phase when conditions are met
+    if (!research && core.currentPhase === '') {
+      return;
+    }
+
+    const canNavigateTo = (phaseId: string): boolean => {
+      const phase = phases.find(p => p.id === phaseId);
+      return !!phase && !phase.disabled;
+    };
+
     if (research && outline.length === 0) {
-      // Research completed, but no outline yet - stay on research
-      if (currentPhase !== 'research') {
-        setCurrentPhase('research');
+      if (core.currentPhase !== 'research') {
+        core.setCurrentPhase('research');
       }
     } else if (research && outline.length > 0 && !outlineConfirmed) {
-      // Outline created but not confirmed - move to outline phase
-      if (currentPhase !== 'outline') {
-        setCurrentPhase('outline');
+      if (core.currentPhase !== 'outline' && canNavigateTo('outline')) {
+        core.setCurrentPhase('outline');
       }
     } else if (outlineConfirmed && hasContent && !contentConfirmed) {
-      // Content generated but not confirmed - move to content phase
-      if (currentPhase !== 'content') {
-        setCurrentPhase('content');
+      if (core.currentPhase !== 'content' && canNavigateTo('content')) {
+        core.setCurrentPhase('content');
       }
     } else if (contentConfirmed && !seoAnalysis) {
-      // Content confirmed but no SEO analysis yet - move to SEO phase
-      if (currentPhase !== 'seo') {
-        setCurrentPhase('seo');
+      if (core.currentPhase !== 'seo' && canNavigateTo('seo')) {
+        core.setCurrentPhase('seo');
       }
     } else if (seoAnalysis && !seoRecommendationsApplied && !seoMetadata) {
-      // SEO analysis done but recommendations not applied - stay on SEO phase
-      if (currentPhase !== 'seo') {
-        setCurrentPhase('seo');
+      if (core.currentPhase !== 'seo' && canNavigateTo('seo')) {
+        core.setCurrentPhase('seo');
       }
     } else if (seoAnalysis && (seoRecommendationsApplied || seoMetadata)) {
-      // SEO recommendations applied or metadata generated
-      if (currentPhase === 'seo') {
-        // CRITICAL: Stay in SEO phase so user can review updated content - don't auto-progress
-        // User will manually navigate to publish when ready
-        // This prevents blank screen by keeping user in SEO phase where BlogEditor is visible
-        // No action needed - already in SEO phase, stay here
-      } else {
-        // User is NOT in SEO phase - can progress to publish
-        // This handles cases where user navigates away and comes back
-        // Only auto-progress if user is already in a different phase (not actively in SEO)
-      if (currentPhase !== 'publish') {
-        setCurrentPhase('publish');
-        }
+      if (core.currentPhase === 'seo') {
+        // Stay in SEO phase so user can review — don't auto-progress
+      } else if (core.currentPhase !== 'publish' && canNavigateTo('publish')) {
+        core.setCurrentPhase('publish');
       }
     }
-  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, currentPhase, userSelectedPhase]);
+  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase, core.userSelectedPhase, phases]);
 
-  const navigateToPhase = useCallback((phaseId: string) => {
-    // Minimal debounce (200ms) to avoid race conditions on rapid clicks
-    const now = Date.now();
-    if (now - lastClickAtRef.current < 200) { return; }
-    lastClickAtRef.current = now;
-
-    const phase = phases.find(p => p.id === phaseId);
-
-    if (phase && !phase.disabled) {
-      setCurrentPhase(phaseId);
-      setUserSelectedPhase(true); // Mark that user has manually selected a phase
-    } else {
-      // Quietly ignore blocked navigation
-    }
-  }, [phases, currentPhase]);
-
-  // Reset user selection when a new phase is completed (to allow auto-progression)
-  const resetUserSelection = () => {
-    setUserSelectedPhase(false);
-  };
+  const navigateToPhase = useCallback(
+    (phaseId: string) => core.navigateToPhase(phaseId, phases),
+    [core.navigateToPhase, phases],
+  );
 
   return {
     phases,
-    currentPhase,
+    currentPhase: core.currentPhase,
     navigateToPhase,
-    setCurrentPhase,
-    resetUserSelection
+    setCurrentPhase: core.setCurrentPhase,
+    resetUserSelection: core.resetUserSelection,
   };
 };
 

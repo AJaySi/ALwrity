@@ -43,7 +43,7 @@ def cap_basic_plan_usage():
             # New limits
             new_call_limit = basic_plan.gemini_calls_limit  # Should be 10
             new_token_limit = basic_plan.gemini_tokens_limit  # Should be 2000
-            new_image_limit = basic_plan.stability_calls_limit  # Should be 5
+            new_image_limit = basic_plan.stability_calls_limit  # 25
             
             logger.info(f"📋 Basic Plan Limits:")
             logger.info(f"  Calls: {new_call_limit}")

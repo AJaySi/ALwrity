@@ -343,7 +343,7 @@ class GoogleTrendsService:
         logger.info(
             f"[Trends] ===== DONE analyze_trends ===== total={total_ms}ms "
             f"iot={len(interest_over_time)} ibr={len(interest_by_region)} "
-            f"rt_top={rt_top} rq_top={rq_top}"
+            f"rt_top={len(related_topics.get('top', []))} rq_top={len(related_queries.get('top', []))}"
         )
 
         result = {

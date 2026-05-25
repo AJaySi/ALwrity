@@ -30,46 +30,46 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
     
     // Outline phase messages
     if (message.includes('Starting outline generation')) {
-      return '🧩 Starting to create your blog outline...';
+      return '🧩 Launching outline generation — analyzing your research to build a structured blog plan. This usually takes 20–40 seconds. Next up: you will review and refine the outline, then generate each section.';
     }
     if (message.includes('Analyzing research data and building content strategy')) {
-      return '📊 Analyzing your research data to build the perfect content strategy...';
+      return '📊 Analyzing your research data — identifying key themes, content gaps, and strategic angles for your blog. This shapes the structure and flow of your outline.';
     }
     if (message.includes('Generating AI-powered outline with research insights')) {
-      return '🤖 Creating an intelligent outline using AI and your research insights...';
+      return '🤖 AI is generating your outline using research insights — selecting the best structure, ordering sections logically, and incorporating source citations.';
     }
     if (message.includes('Making AI request to generate structured outline')) {
-      return '🔄 Generating your structured blog outline...';
+      return '🔄 Sending request to AI — crafting a structured outline with section headings, key points, and word-count targets.';
     }
     if (message.includes('Calling Gemini API for outline generation')) {
-      return '🤖 AI is crafting your personalized blog structure...';
+      return '🤖 AI is crafting your personalized blog structure — this step involves complex reasoning about your research topic.';
     }
     if (message.includes('Processing outline structure and validating sections')) {
-      return '📝 Processing and validating your outline sections...';
+      return '📝 Processing and validating your outline — checking section ordering, heading clarity, and ensuring each section has actionable key points.';
     }
     if (message.includes('Running parallel processing for maximum speed')) {
-      return '⚡ Optimizing processing speed for faster results...';
+      return '⚡ Running parallel processing — optimizing multiple sections simultaneously for faster results.';
     }
     if (message.includes('Applying intelligent source-to-section mapping')) {
-      return '🔗 Intelligently matching your research sources to outline sections...';
+      return '🔗 Mapping research sources to outline sections — each section is linked to the most relevant sources for credibility.';
     }
     if (message.includes('Extracting grounding metadata insights')) {
-      return '🧠 Extracting valuable insights from your research data...';
+      return '🧠 Extracting grounding insights — identifying statistics, quotes, and expert opinions from your research to include in each section.';
     }
     if (message.includes('Enhancing sections with grounding insights')) {
-      return '✨ Enhancing your outline sections with research-backed insights...';
+      return '✨ Enhancing outline sections with research-backed insights — adding data points, expert quotes, and content angles for stronger sections.';
     }
     if (message.includes('Optimizing outline for better flow and engagement')) {
-      return '🎯 Optimizing your outline for maximum reader engagement...';
+      return '🎯 Optimizing outline flow — ensuring smooth transitions between sections, logical progression of ideas, and maximum reader engagement.';
     }
     if (message.includes('Rebalancing word count distribution')) {
-      return '⚖️ Balancing content distribution across sections...';
+      return '⚖️ Rebalancing word counts — distributing content across sections to ensure depth where needed and concise treatment of supporting points.';
     }
     if (message.includes('Outline generation and optimization completed successfully')) {
-      return '✅ Your blog outline has been successfully created and optimized!';
+      return '✅ Outline complete! Review and confirm your sections, then proceed to the Content phase to generate full blog text for each section.';
     }
     if (message.includes('Outline generated successfully')) {
-      return '🎉 Success! Your personalized blog outline is ready!';
+      return '🎉 Outline ready! You can now review the section structure, adjust headings, and confirm before generating content.';
     }
     
     // Content generation phase messages
@@ -163,7 +163,11 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
             }}>
               {titleOverride
                 ? (status === 'complete' ? '🎉 Content Ready!' : status === 'error' ? '❌ Generation Failed' : '📝 Generating Your Blog Content')
-                : (status === 'complete' ? '🎉 Outline Ready!' : status === 'error' ? '❌ Generation Failed' : '🧩 Creating Your Blog Outline')}
+                : (status === 'complete' 
+                    ? '🎉 Outline Ready! Review it, then proceed to the Content phase.'
+                    : status === 'error' 
+                      ? '❌ Outline Generation Failed — you can retry from the Outline chip.'
+                      : '🧩 Creating Your Blog Outline (20–40 seconds)')}
             </h2>
             
             {/* Progress Bar */}
@@ -196,10 +200,10 @@ export const OutlineProgressModal: React.FC<OutlineProgressModalProps> = ({
                       ? 'Content generation encountered an issue. You can retry from the content phase.'
                       : 'Alwrity is writing your blog content using AI...')
                 : (status === 'complete' 
-                    ? '✅ Your blog outline is ready! Review and confirm it, then proceed to generate content.'
+                    ? '✅ Your outline is ready! Review section headings and key points, then confirm to proceed to the Content phase.'
                     : status === 'error' 
-                      ? 'Outline generation encountered an issue. Please try again.'
-                      : 'Alwrity is analyzing your research and building your blog structure...')}
+                      ? 'Outline generation encountered an issue. Please try again from the Outline chip.'
+                      : 'Analyzing your research and building a structured outline. After this, you will confirm the outline, generate content for each section, then optimize for SEO.')}
             </p>
           </div>
         </div>

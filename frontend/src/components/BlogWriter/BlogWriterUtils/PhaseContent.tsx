@@ -3,9 +3,7 @@ import ResearchResults from '../ResearchResults';
 import EnhancedTitleSelector from '../EnhancedTitleSelector';
 import EnhancedOutlineEditor from '../EnhancedOutlineEditor';
 import { BlogEditor } from '../WYSIWYG';
-import OutlineCtaBanner from './OutlineCtaBanner';
 import ManualResearchForm from '../ManualResearchForm';
-import ManualOutlineButton from '../ManualOutlineButton';
 import ManualContentButton from '../ManualContentButton';
 import PublishContent from './PublishContent';
 
@@ -39,6 +37,9 @@ interface PhaseContentProps {
   setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
   copilotKitAvailable?: boolean; // Whether CopilotKit is available
   onResearchComplete?: (research: any) => void; // Callback when research completes (for manual form)
+  onKeywordsChange?: (kw: string) => void; // Sync keywords to parent for header chip label
+  blogLengthRef?: React.MutableRefObject<string>; // Ref to sync blog length to parent
+  startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>; // Ref to expose startResearch
   onOutlineGenerationStart?: (taskId: string) => void; // Callback when outline generation starts
   onContentGenerationStart?: (taskId: string) => void; // Callback when content generation starts
   buildFullMarkdown?: () => string;
@@ -75,6 +76,9 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   setSectionImages,
   copilotKitAvailable = true,
   onResearchComplete,
+  onKeywordsChange,
+  blogLengthRef,
+  startResearchRef,
   onOutlineGenerationStart,
   onContentGenerationStart,
   buildFullMarkdown,
@@ -95,7 +99,12 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                     <p>Use the copilot to begin researching your blog topic.</p>
                   </div>
                 ) : (
-                  <ManualResearchForm onResearchComplete={onResearchComplete} />
+                  <ManualResearchForm
+                    onResearchComplete={onResearchComplete}
+                    onKeywordsChange={onKeywordsChange}
+                    blogLengthRef={blogLengthRef}
+                    researchRef={startResearchRef}
+                  />
                 )}
               </>
             )}
@@ -104,20 +113,16 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
 
         {currentPhase === 'outline' && research && (
           <>
-            {outline.length === 0 && (
-              <>
-                {copilotKitAvailable ? (
-                  <OutlineCtaBanner onGenerate={() => outlineGenRef.current?.generateNow()} />
-                ) : (
-                  <ManualOutlineButton
-                    outlineGenRef={outlineGenRef}
-                    hasResearch={!!research}
-                    onGenerationStart={onOutlineGenerationStart}
-                  />
-                )}
-              </>
-            )}
-            {outline.length > 0 ? (
+            {outline.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📝</div>
+                <h3 style={{ margin: '0 0 8px 0', color: '#334155' }}>Creating Your Outline</h3>
+                <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.6' }}>
+                  Your outline is being generated from the research data. 
+                  The progress modal shows detailed status — once complete, you can review and refine the sections here.
+                </p>
+              </div>
+            ) : (
               <>
                 <EnhancedTitleSelector
                   titleOptions={titleOptions}
@@ -141,17 +146,6 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                   setSectionImages={setSectionImages}
                 />
               </>
-            ) : !copilotKitAvailable ? (
-              <ManualOutlineButton
-                outlineGenRef={outlineGenRef}
-                hasResearch={!!research}
-                onGenerationStart={onOutlineGenerationStart}
-              />
-            ) : (
-              <div style={{ padding: '20px', textAlign: 'center' }}>
-                <h3>Create Your Outline</h3>
-                <p>Use the copilot to generate an outline based on your research.</p>
-              </div>
             )}
           </>
         )}

@@ -11,15 +11,7 @@ import {
   CopilotActionResponse,
   CopilotSuggestion
 } from '../types/seoCopilotTypes';
-
-// API URL - require REACT_APP_API_URL in production
-const getApiBaseUrl = () => {
-  const url = process.env.REACT_APP_API_URL;
-  if (process.env.NODE_ENV === 'production' && !url) {
-    throw new Error('REACT_APP_API_URL environment variable is required for production');
-  }
-  return url || 'http://localhost:8000';
-};
+import { getApiBaseUrl } from '../utils/apiUrl';
 
 const API_BASE_URL = getApiBaseUrl();
 

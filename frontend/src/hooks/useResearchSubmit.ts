@@ -1,7 +1,22 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { blogWriterApi, BlogResearchRequest, BlogResearchResponse } from '../services/blogWriterApi';
 import { useBlogWriterResearchPolling } from './usePolling';
 import { researchCache } from '../services/researchCache';
+
+// Simulated progress messages shown while waiting for real backend updates.
+// Research takes 40-60s; the backend sends 5-8 messages. These bridge the gaps
+// so the user always sees something helpful.
+const SIMULATED_MESSAGES: Array<{ delaySec: number; message: string }> = [
+  { delaySec: 3,  message: '🔍 Validating keywords and preparing search queries…' },
+  { delaySec: 8,  message: '🌐 Connecting to Exa deep-web search for authoritative sources…' },
+  { delaySec: 14, message: '📊 Analyzing top-ranking pages and extracting structured data…' },
+  { delaySec: 20, message: '🔍 Running Tavily real-time web search for current coverage…' },
+  { delaySec: 26, message: '🧠 Cross-referencing results from multiple search engines…' },
+  { delaySec: 32, message: '📋 Extracting key statistics, quotes, and content angles…' },
+  { delaySec: 38, message: '🔬 Filtering and ranking sources by authority and relevance…' },
+  { delaySec: 44, message: '📦 Assembling your research brief with source citations…' },
+  { delaySec: 50, message: '💾 Caching results for future use — next up: Outline phase' },
+];
 
 export interface UseResearchSubmitOptions {
   onResearchComplete?: (research: BlogResearchResponse) => void;
@@ -29,6 +44,8 @@ export const useResearchSubmit = ({
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [currentMessage, setCurrentMessage] = useState('');
   const keywordListRef = useRef<string[]>([]);
+  const simulatedTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const startedAtRef = useRef<number>(0);
 
   const polling = useBlogWriterResearchPolling({
     onProgress: (message) => {
@@ -43,17 +60,42 @@ export const useResearchSubmit = ({
           result
         );
       }
+      // Clear any pending simulated messages
+      simulatedTimersRef.current.forEach(clearTimeout);
+      simulatedTimersRef.current = [];
       onResearchComplete?.(result);
       setCurrentMessage('');
       setShowProgressModal(false);
       setIsSubmitting(false);
     },
     onError: (error) => {
+      simulatedTimersRef.current.forEach(clearTimeout);
+      simulatedTimersRef.current = [];
       setCurrentMessage('');
       setShowProgressModal(false);
       setIsSubmitting(false);
     },
   });
+
+  // Schedule simulated progress messages when modal is open and polling is active
+  useEffect(() => {
+    if (!showProgressModal || !isSubmitting) {
+      return;
+    }
+    const elapsed = Date.now() - startedAtRef.current;
+    SIMULATED_MESSAGES.forEach(({ delaySec, message }) => {
+      const msUntil = (delaySec * 1000) - elapsed;
+      if (msUntil <= 0) return; // already past this point
+      const timer = setTimeout(() => {
+        setCurrentMessage(message);
+      }, msUntil);
+      simulatedTimersRef.current.push(timer);
+    });
+    return () => {
+      simulatedTimersRef.current.forEach(clearTimeout);
+      simulatedTimersRef.current = [];
+    };
+  }, [showProgressModal, isSubmitting]);
 
   const startResearch = useCallback(async (
     keywords: string,
@@ -65,6 +107,7 @@ export const useResearchSubmit = ({
     if (!trimmed) return null;
 
     setIsSubmitting(true);
+    startedAtRef.current = Date.now();
 
     try {
       const keywordList = trimmed.includes(',')
@@ -83,7 +126,7 @@ export const useResearchSubmit = ({
       navigateToPhase?.('research');
 
       setShowProgressModal(true);
-      setCurrentMessage('Starting research...');
+      setCurrentMessage('🔍 Research pipeline initializing — validating your topic and preparing search queries…');
 
       const payload: BlogResearchRequest = {
         keywords: keywordList,
@@ -96,6 +139,8 @@ export const useResearchSubmit = ({
       polling.startPolling(task_id);
       return null;
     } catch (error) {
+      simulatedTimersRef.current.forEach(clearTimeout);
+      simulatedTimersRef.current = [];
       setCurrentMessage('');
       setShowProgressModal(false);
       setIsSubmitting(false);

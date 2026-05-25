@@ -77,25 +77,39 @@ const stageDefinitions = [
     keywords: ['cache', 'cached', 'stored']
   },
   {
-    id: 'discovery',
-    label: 'Source Discovery',
-    description: 'Exploring trusted sources across the web.',
-    icon: '🔎',
-    keywords: ['search', 'source', 'gather', 'google', 'discover']
+    id: 'validation',
+    label: 'Request Validation',
+    description: 'Verifying your topic and preparing the research pipeline.',
+    icon: '✅',
+    keywords: ['starting', 'launching', 'bootstrap', 'validat']
+  },
+  {
+    id: 'exa',
+    label: 'Deep Web Search (Exa)',
+    description: 'Searching academic databases, research papers, and structured content.',
+    icon: '🌐',
+    keywords: ['exa', 'neural search']
+  },
+  {
+    id: 'tavily',
+    label: 'AI Web Search (Tavily)',
+    description: 'Scanning news, blogs, and real-time web content.',
+    icon: '🔍',
+    keywords: ['tavily', 'ai search']
   },
   {
     id: 'analysis',
-    label: 'Insight Extraction',
-    description: 'Extracting data points, statistics, and quotes.',
+    label: 'Content Analysis',
+    description: 'Extracting key data points, statistics, and actionable insights.',
     icon: '🧠',
-    keywords: ['analysis', 'analyz', 'extract', 'insight', 'processing']
+    keywords: ['analyz', 'analyz', 'extract', 'insight', 'keywords', 'angles', 'filter']
   },
   {
     id: 'assembly',
-    label: 'Structuring Findings',
-    description: 'Packaging insights and preparing summaries.',
-    icon: '📝',
-    keywords: ['assembling', 'structuring', 'summary', 'completed', 'ready', 'post-processing']
+    label: 'Structuring Results',
+    description: 'Packaging findings into a ready-to-use research brief.',
+    icon: '📦',
+    keywords: ['caching', 'assembling', 'structuring', 'post-processing', 'completed', 'ready']
   }
 ] as const;
 
@@ -144,72 +158,205 @@ const friendlyMappings: Array<{
   tone: Tone;
   stage?: StageId;
 }> = [
+  // ── Cache stage ─────────────────────────────────────────────────
   {
-    keywords: ['checking cache', 'cache'],
-    title: 'Checking existing research cache',
-    subtitle: 'Looking for previously generated insights so we can respond instantly.',
+    keywords: ['checking cache', 'looking for saved'],
+    title: 'Checking for saved research results',
+    subtitle: 'If you have run this topic before, we skip straight to the cached results — saving 30–50 seconds.',
     icon: '🗂️',
     tone: 'info',
     stage: 'cache'
   },
   {
-    keywords: ['found cached research', 'loading cached'],
-    title: 'Loaded cached research results',
-    subtitle: 'Serving saved insights to keep things fast.',
+    keywords: ['found cached research', 'found cached', 'loading cached', 'returning instantly'],
+    title: 'Using cached research — no fresh search needed',
+    subtitle: 'Previous results loaded instantly. You can review them and proceed directly to the Outline phase.',
     icon: '⚡',
     tone: 'success',
     stage: 'cache'
   },
   {
-    keywords: ['starting research'],
-    title: 'Launching fresh research',
-    subtitle: 'Bootstrapping the workflow and validating your request.',
+    keywords: ['cache miss', 'no cached'],
+    title: 'No cached results found — starting fresh research',
+    subtitle: 'This will take 40–60 seconds as we search multiple sources, extract insights, and build your research brief.',
+    icon: '🔍',
+    tone: 'active',
+    stage: 'cache'
+  },
+
+  // ── Validation / Start stage ──────────────────────────────────
+  {
+    keywords: ['starting research', 'starting research operation', 'launching fresh'],
+    title: 'Launching research pipeline',
+    subtitle: 'We validate your topic, then fan out across multiple search engines (Exa, Tavily) to gather diverse perspectives. This runs in parallel so you get results faster.',
     icon: '🚀',
     tone: 'active',
-    stage: 'discovery'
+    stage: 'validation'
   },
   {
-    keywords: ['search', 'query', 'sources', 'web'],
-    title: 'Collecting authoritative sources',
-    subtitle: 'Evaluating top-ranked pages, studies, and reports.',
-    icon: '🔎',
+    keywords: ['user id is required', 'validation error'],
+    title: 'Validation check in progress',
+    subtitle: 'Ensuring your account and request parameters are properly configured before the search begins.',
+    icon: '🔐',
+    tone: 'info',
+    stage: 'validation'
+  },
+
+  // ── Exa neural search stage ──────────────────────────────────
+  {
+    keywords: ['connecting to exa', 'exa neural search'],
+    title: 'Connecting to deep-web search engine (Exa)',
+    subtitle: 'Exa searches academic databases, technical documentation, and structured content repositories. This is the most thorough search layer and typically takes 10–15 seconds.',
+    icon: '🌐',
     tone: 'active',
-    stage: 'discovery'
+    stage: 'exa'
   },
   {
-    keywords: ['extracting', 'analyzing', 'analysis', 'insight'],
-    title: 'Extracting key insights',
-    subtitle: 'Summarising statistics, trends, and quotes that matter.',
+    keywords: ['executing exa neural search', 'exa research'],
+    title: 'Running deep-web search via Exa AI',
+    subtitle: 'Exa scans millions of indexed pages for authoritative, high-signal content. Results feed into your research brief with source citations and relevance scores.',
+    icon: '🤖',
+    tone: 'active',
+    stage: 'exa'
+  },
+  {
+    keywords: ['exa research failed', 'exa research did not return'],
+    title: 'Exa search completed with limited results',
+    subtitle: 'This is normal for niche topics. We fall back to Tavily for broader web coverage. Your research will still be comprehensive.',
+    icon: '⚠️',
+    tone: 'warning',
+    stage: 'exa'
+  },
+
+  // ── Tavily AI search stage ────────────────────────────────────
+  {
+    keywords: ['connecting to tavily', 'tavily ai search'],
+    title: 'Connecting to real-time web search (Tavily)',
+    subtitle: 'Tavily searches news articles, blog posts, and current web content. It provides up-to-date information from a broader range of sources than traditional search.',
+    icon: '🔍',
+    tone: 'active',
+    stage: 'tavily'
+  },
+  {
+    keywords: ['executing tavily ai search', 'tavily research'],
+    title: 'Running real-time web search via Tavily AI',
+    subtitle: 'Tavily fetches and ranks results based on relevance, authority, and recency. Combined with Exa results, this gives you both depth and breadth of coverage.',
+    icon: '🤖',
+    tone: 'active',
+    stage: 'tavily'
+  },
+  {
+    keywords: ['tavily research failed', 'tavily api call limit'],
+    title: 'Tavily search hit a rate limit',
+    subtitle: 'We already have results from Exa. Continuing with what we have — your research will still contain valuable data.',
+    icon: '⚠️',
+    tone: 'warning',
+    stage: 'tavily'
+  },
+  {
+    keywords: ['tavily research did not return'],
+    title: 'Tavily returned minimal results for this topic',
+    subtitle: 'Combining available Exa and Tavily data to build a complete picture. Niche or emerging topics sometimes have sparse web coverage.',
+    icon: 'ℹ️',
+    tone: 'info',
+    stage: 'tavily'
+  },
+
+  // ── Analysis / Processing stage ───────────────────────────────
+  {
+    keywords: ['analyz', 'analyz', 'keywords and content angles'],
+    title: 'Analyzing keywords and content angles',
+    subtitle: 'We cross-reference your search results to identify the strongest angles, key statistics, trending subtopics, and gaps in existing coverage. This shapes the strategic direction of your blog.',
     icon: '🧠',
     tone: 'active',
     stage: 'analysis'
   },
   {
-    keywords: ['assembling', 'compiling', 'structuring', 'post-processing'],
-    title: 'Structuring the research package',
-    subtitle: 'Organising findings into ready-to-use sections.',
-    icon: '🧩',
+    keywords: ['filtering', 'cleaning research data'],
+    title: 'Filtering and ranking research data',
+    subtitle: 'Removing duplicates, low-authority sources, and irrelevant content. Every source gets a quality score so the Outline phase can prioritize the best material.',
+    icon: '🔬',
+    tone: 'active',
+    stage: 'analysis'
+  },
+  {
+    keywords: ['extracting', 'insight'],
+    title: 'Extracting key insights and statistics',
+    subtitle: 'Pulling out data points, quotes, statistics, and authoritative references. Your outline will use these to build credible, well-supported content.',
+    icon: '📊',
+    tone: 'active',
+    stage: 'analysis'
+  },
+
+  // ── Assembly / Caching stage ─────────────────────────────────
+  {
+    keywords: ['caching results', 'caching for future'],
+    title: 'Saving results to cache for next time',
+    subtitle: 'Your research is being cached so revisiting or regenerating this topic will be instant next time.',
+    icon: '💾',
     tone: 'info',
     stage: 'assembly'
   },
   {
-    keywords: ['completed successfully', 'research completed', 'ready'],
-    title: 'Research completed successfully',
-    subtitle: 'All insights are ready for the outline phase.',
+    keywords: ['post-processing', 'assembling', 'structuring'],
+    title: 'Assembling the final research brief',
+    subtitle: 'Organizing all findings into a structured brief with source mappings, competitor analysis, and suggested angles — ready for the Outline phase.',
+    icon: '🧩',
+    tone: 'info',
+    stage: 'assembly'
+  },
+
+  // ── Completion ────────────────────────────────────────────────
+  {
+    keywords: ['completed successfully', 'research completed', 'found', 'sources'],
+    title: 'Research complete! Ready for Outline phase.',
+    subtitle: 'Your research brief is ready. Next up: the Outline phase turns this research into a structured blog outline. Click the Outline chip or navigate to it to continue.',
     icon: '✅',
     tone: 'success',
     stage: 'assembly'
   },
   {
-    keywords: ['failed', 'error', 'limit exceeded'],
-    title: 'Research encountered an issue',
-    subtitle: 'Review the error message below and try again.',
+    keywords: ['subscription limit exceeded', '429'],
+    title: 'Search provider rate limit hit',
+    subtitle: 'One of our search providers is temporarily rate-limited. The system will retry automatically. If it persists, try again in a few minutes.',
+    icon: '⏳',
+    tone: 'warning'
+  },
+
+  // ── Errors ────────────────────────────────────────────────────
+  {
+    keywords: ['failed with error', 'research failed'],
+    title: 'Research encountered an error',
+    subtitle: 'Something went wrong during the research process. Review the error details below and try again. Common causes: network issues, API timeouts, or invalid keywords.',
+    icon: '❌',
+    tone: 'error'
+  },
+  {
+    keywords: ['failed', 'error', 'unknown status'],
+    title: 'Research operation reported an issue',
+    subtitle: 'The research pipeline encountered a problem. Please check the error details below and consider refining your keywords before trying again.',
     icon: '⚠️',
     tone: 'error'
   }
 ];
 
-const sanitizeTitle = (text: string) => text.replace(/^[^a-zA-Z0-9]+/, '').trim();
+const sanitizeTitle = (text: string) => {
+  // Strip leading emoji/whitespace, capitalize first letter
+  const cleaned = text.replace(/^[^\w\s]+/, '').trim();
+  if (!cleaned) return '';
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+
+// Fallback icons based on message content
+const inferFallbackIcon = (text: string): string => {
+  const lower = text.toLowerCase();
+  if (/error|fail|timeout|limit/i.test(lower)) return '⚠️';
+  if (/done|complete|success|finish|ready/i.test(lower)) return '✅';
+  if (/fetch|load|retriev|download/i.test(lower)) return '📥';
+  if (/writ|generat|creat|build/i.test(lower)) return '✍️';
+  if (/check|validat|verif/i.test(lower)) return '🔍';
+  return '📝';
+};
 
 const mapMessageToMeta = (message: { timestamp: string; message: string }): MessageMeta => {
   const raw = message.message || '';
@@ -233,13 +380,15 @@ const mapMessageToMeta = (message: { timestamp: string; message: string }): Mess
   }
 
   const stage = inferStage(raw);
+  const fallbackTitle = sanitizeTitle(raw);
 
   return {
     timestamp: message.timestamp,
     timeLabel: formatTime(message.timestamp),
     raw,
-    title: sanitizeTitle(raw) || 'Update received',
-    icon: '📝',
+    title: fallbackTitle || 'Processing research data…',
+    subtitle: 'Your research is being assembled. This may take a moment as we process multiple data sources in parallel.',
+    icon: inferFallbackIcon(raw),
     tone: 'info',
     stage
   };
@@ -416,7 +565,10 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                 {title}
               </h3>
               <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>
-                We are gathering sources, extracting insights, and assembling a research brief tailored to your topic.
+                Research takes 40–60 seconds. We search multiple engines (Exa, Tavily), extract key insights, 
+                and assemble a structured research brief. After this, you will move to the <strong>Outline phase</strong> 
+                where AI generates a blog structure, then <strong>Content</strong> writes each section, followed by 
+                <strong> SEO</strong> optimization and <strong>Publish</strong>.
               </p>
               <div
                 style={{

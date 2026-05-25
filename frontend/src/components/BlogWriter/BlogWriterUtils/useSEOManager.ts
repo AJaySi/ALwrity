@@ -482,17 +482,16 @@ export const useSEOManager = ({
   // Mark SEO phase as completed when recommendations are applied
   useEffect(() => {
     if (seoRecommendationsApplied && seoAnalysis) {
-      // SEO phase is considered complete when recommendations are applied
-      // But stay in SEO phase to show updated content
       debug.log('[BlogWriter] SEO recommendations applied, SEO phase marked as complete');
       
-      // Ensure we stay in SEO phase to show updated content (override auto-progression)
+      // Ensure we stay in SEO phase only once when recommendations are first applied
       if (currentPhase !== 'seo' && Object.keys(sections).length > 0) {
         navigateToPhase('seo');
-        debug.log('[BlogWriter] Forced stay in SEO phase to show updated content');
+        debug.log('[BlogWriter] Navigated to SEO phase to show updated content');
       }
     }
-  }, [seoRecommendationsApplied, seoAnalysis, currentPhase, sections, navigateToPhase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seoRecommendationsApplied, seoAnalysis]);
 
   const confirmBlogContent = useCallback(() => {
     debug.log('[BlogWriter] Blog content confirmed by user');
