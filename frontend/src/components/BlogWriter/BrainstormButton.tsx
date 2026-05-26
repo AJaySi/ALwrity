@@ -138,6 +138,35 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
         )}
       </button>
 
+      {gscConnected && (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: 500,
+            color: '#2e7d32',
+            background: '#e8f5e9',
+            border: '1px solid #a5d6a7',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#4caf50',
+              boxShadow: '0 0 6px #4caf50',
+            }}
+          />
+          GSC
+        </span>
+      )}
+
       <GSCBrainstormModal
         open={showModal}
         onClose={() => {

@@ -238,6 +238,7 @@ nav:
       - Getting Started: features/seo-dashboard/index.md
       - Quick Start: features/seo-dashboard/quick-start.md
       - Overview: features/seo-dashboard/overview.md
+      - Phase 2A Complete Guide: features/seo-dashboard/phase2a-complete-guide.md
       - Tools Reference: features/seo-dashboard/tools-reference.md
       - Individual Tools Guide: features/seo-dashboard/individual-tools-guide.md
       - Workflows & Automation: features/seo-dashboard/workflows-guide.md
@@ -247,6 +248,9 @@ nav:
       - GSC Integration: features/seo-dashboard/gsc-integration.md
       - Metadata Generation: features/seo-dashboard/metadata.md
       - Design Document: features/seo-dashboard/design-document.md
+      - Phase 2A - Enterprise Suite: features/seo-dashboard/phase2a-enterprise-seo.md
+      - Phase 2A - Advanced GSC: features/seo-dashboard/phase2a-advanced-gsc.md
+      - Phase 2A - LLM Insights: features/seo-dashboard/phase2a-llm-insights.md
       - Phase 2A Implementation: ../SEO/PHASE2A_IMPLEMENTATION.md
     - Content Strategy:
       - Overview: features/content-strategy/overview.md

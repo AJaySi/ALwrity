@@ -98,6 +98,29 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </Typography>
         </Stack>
 
+        <Box sx={{
+          flex: { xs: '1 1 100%', md: '0 1 auto' },
+          order: { xs: 3, md: 0 },
+          mt: { xs: 0.75, md: 0 },
+        }}>
+          <PhaseNavigation
+            phases={phases}
+            currentPhase={currentPhase}
+            onPhaseClick={onPhaseClick}
+            copilotKitAvailable={copilotKitAvailable}
+            actionHandlers={actionHandlers}
+            researchKeywords={researchKeywords}
+            hasResearch={hasResearch}
+            hasOutline={hasOutline}
+            outlineConfirmed={outlineConfirmed}
+            hasContent={hasContent}
+            contentConfirmed={contentConfirmed}
+            hasSEOAnalysis={hasSEOAnalysis}
+            seoRecommendationsApplied={seoRecommendationsApplied}
+            hasSEOMetadata={hasSEOMetadata}
+          />
+        </Box>
+
         <Stack direction="row" spacing={1} alignItems="center">
           <HeaderControls colorMode="light" showAlerts={true} showUser={true} />
 
@@ -161,25 +184,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </Menu>
         </Stack>
       </Stack>
-
-      <Box sx={{ mt: 1 }}>
-        <PhaseNavigation
-          phases={phases}
-          currentPhase={currentPhase}
-          onPhaseClick={onPhaseClick}
-          copilotKitAvailable={copilotKitAvailable}
-          actionHandlers={actionHandlers}
-          researchKeywords={researchKeywords}
-          hasResearch={hasResearch}
-          hasOutline={hasOutline}
-          outlineConfirmed={outlineConfirmed}
-          hasContent={hasContent}
-          contentConfirmed={contentConfirmed}
-          hasSEOAnalysis={hasSEOAnalysis}
-          seoRecommendationsApplied={seoRecommendationsApplied}
-          hasSEOMetadata={hasSEOMetadata}
-        />
-      </Box>
     </Box>
   );
 };

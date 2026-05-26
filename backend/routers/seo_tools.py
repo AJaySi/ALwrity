@@ -31,6 +31,7 @@ from services.seo_tools.technical_seo_service import TechnicalSEOService
 from services.seo_tools.enterprise_seo_service import EnterpriseSEOService
 from services.seo_tools.gsc_analyzer_service import GSCAnalyzerService
 from services.seo_tools.content_strategy_service import ContentStrategyService
+from services.seo_tools.llm_insights_service import LLMInsightsService
 from services.database import get_session_for_user
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
 from middleware.logging_middleware import log_api_call, save_to_file
@@ -150,6 +151,53 @@ class ContentOpportunitiesRequest(BaseModel):
     site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
     min_impressions: int = Field(default=100, ge=10, description="Minimum impressions threshold")
     date_range_days: int = Field(default=90, ge=7, le=365, description="Number of days to analyze")
+
+# ==================== LLM INSIGHTS REQUEST MODELS ====================
+
+class EnterpriseAuditInsightsRequest(BaseModel):
+    """Request model for AI insights from enterprise audit"""
+    audit_results: Dict[str, Any] = Field(..., description="Complete audit results")
+    website_url: str = Field(..., description="Website being audited")
+    target_keywords: Optional[List[str]] = Field(None, description="Target keywords")
+
+class GSCAnalysisInsightsRequest(BaseModel):
+    """Request model for AI insights from GSC analysis"""
+    gsc_analysis: Dict[str, Any] = Field(..., description="Complete GSC analysis data")
+    website_url: str = Field(..., description="Website being analyzed")
+
+class ContentStrategyRequest(BaseModel):
+    """Request model for content strategy generation"""
+    current_content: Dict[str, Any] = Field(..., description="Current content analysis")
+    content_gaps: List[str] = Field(..., description="Identified content gaps")
+    target_keywords: List[str] = Field(..., description="Target keywords")
+    competitor_content: Optional[Dict[str, Any]] = Field(None, description="Competitor content analysis")
+
+class TrafficRoadmapRequest(BaseModel):
+    """Request model for traffic improvement roadmap"""
+    current_metrics: Dict[str, Any] = Field(..., description="Current traffic metrics")
+    identified_opportunities: List[Dict[str, Any]] = Field(..., description="Improvement opportunities")
+    implementation_timeline_weeks: int = Field(default=12, ge=4, le=52, description="Implementation timeline")
+
+class CompetitiveInsightsRequest(BaseModel):
+    """Request model for competitive insights generation"""
+    primary_site_analysis: Dict[str, Any] = Field(..., description="Primary site analysis")
+    competitor_analyses: List[Dict[str, Any]] = Field(..., description="Competitor analyses")
+
+class PrioritizedRecommendationsRequest(BaseModel):
+    """Request model for prioritized recommendations"""
+    all_recommendations: List[Dict[str, Any]] = Field(..., description="All recommendations to prioritize")
+    business_context: Dict[str, Any] = Field(..., description="Business goals and constraints")
+
+class QuickWinsRequest(BaseModel):
+    """Request model for quick wins identification"""
+    audit_data: Dict[str, Any] = Field(..., description="Complete audit data")
+    max_days_to_implement: int = Field(default=7, ge=1, le=30, description="Maximum days to implement")
+
+class KeywordExpansionRequest(BaseModel):
+    """Request model for keyword expansion"""
+    current_keywords: List[str] = Field(..., description="Current target keywords")
+    content_analysis: Dict[str, Any] = Field(..., description="Content analysis data")
+    target_difficulty: Optional[str] = Field(None, description="Target difficulty (low/medium/high)")
 
 # Exception Handler
 async def handle_seo_tool_exception(func_name: str, error: Exception, request_data: Dict) -> ErrorResponse:
@@ -1079,5 +1127,468 @@ async def check_enterprise_services_health() -> BaseResponse:
         return BaseResponse(
             success=False,
             message="Enterprise health check failed",
+            data={"error": str(e)}
+        )
+
+
+# ==================== LLM INSIGHTS ENDPOINTS (Phase 2A.2) ====================
+
+@router.post("/llm/generate-audit-insights", response_model=BaseResponse)
+@log_api_call
+async def generate_audit_insights(
+    request: EnterpriseAuditInsightsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate AI-powered insights from enterprise SEO audit results.
+    
+    Analyzes audit findings and produces strategic, actionable insights with:
+    - Priority scoring (1-10 scale)
+    - Traffic impact projections
+    - Implementation difficulty assessments
+    - Step-by-step action guides
+    - Required tools and resources
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating audit insights for {request.website_url}")
+        
+        llm_service = LLMInsightsService()
+        insights = await llm_service.generate_enterprise_audit_insights(
+            audit_results=request.audit_results,
+            website_url=request.website_url,
+            target_keywords=request.target_keywords
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        # Log successful operation
+        log_data = {
+            "operation": "audit_insights_generation",
+            "website_url": request.website_url,
+            "insights_generated": len(insights.get('insights', [])),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Audit insights generated successfully",
+            execution_time=execution_time,
+            data=insights
+        )
+        
+    except Exception as e:
+        logger.error(f"Audit insights generation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("generate_audit_insights", e, {"website_url": request.website_url})
+
+
+@router.post("/llm/generate-gsc-insights", response_model=BaseResponse)
+@log_api_call
+async def generate_gsc_insights(
+    request: GSCAnalysisInsightsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate strategic insights from GSC search performance analysis.
+    
+    Produces targeted, actionable insights including:
+    - Keyword optimization opportunities
+    - Content ranking improvement strategies
+    - CTR enhancement tactics
+    - Competitive positioning analysis
+    - Quick-win identification
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating GSC insights for {request.website_url}")
+        
+        llm_service = LLMInsightsService()
+        insights = await llm_service.generate_gsc_analysis_insights(
+            gsc_analysis=request.gsc_analysis,
+            website_url=request.website_url
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "gsc_insights_generation",
+            "website_url": request.website_url,
+            "insights_generated": len(insights.get('insights', [])),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="GSC insights generated successfully",
+            execution_time=execution_time,
+            data=insights
+        )
+        
+    except Exception as e:
+        logger.error(f"GSC insights generation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("generate_gsc_insights", e, {"website_url": request.website_url})
+
+
+@router.post("/llm/generate-content-strategy", response_model=BaseResponse)
+@log_api_call
+async def generate_content_strategy(
+    request: ContentStrategyRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate comprehensive content strategy with AI recommendations.
+    
+    Creates detailed strategy including:
+    - Content gap analysis and solutions
+    - Content calendar recommendations
+    - Keyword-to-content mapping
+    - Competitive content benchmarking
+    - Topic cluster suggestions
+    - Publishing frequency recommendations
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating content strategy ({len(request.content_gaps)} gaps)")
+        
+        llm_service = LLMInsightsService()
+        strategy = await llm_service.generate_content_strategy_insights(
+            current_content=request.current_content,
+            content_gaps=request.content_gaps,
+            target_keywords=request.target_keywords,
+            competitor_content=request.competitor_content
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "content_strategy_generation",
+            "gaps_addressed": len(request.content_gaps),
+            "keywords_analyzed": len(request.target_keywords),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Content strategy generated successfully",
+            execution_time=execution_time,
+            data=strategy
+        )
+        
+    except Exception as e:
+        logger.error(f"Content strategy generation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("generate_content_strategy", e, {"gaps_count": len(request.content_gaps)})
+
+
+@router.post("/llm/generate-traffic-roadmap", response_model=BaseResponse)
+@log_api_call
+async def generate_traffic_roadmap(
+    request: TrafficRoadmapRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate phased traffic improvement roadmap with projections.
+    
+    Produces detailed roadmap with:
+    - Phased implementation plan (Week 1, 2, 3+)
+    - Traffic gain projections per phase
+    - Priority-ordered action items
+    - Resource requirements per phase
+    - Key performance indicators (KPIs)
+    - Success metrics and validation points
+    - Risk mitigation strategies
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating traffic roadmap ({request.implementation_timeline_weeks} weeks)")
+        
+        llm_service = LLMInsightsService()
+        roadmap = await llm_service.generate_traffic_improvement_roadmap(
+            current_metrics=request.current_metrics,
+            identified_opportunities=request.identified_opportunities,
+            implementation_timeline_weeks=request.implementation_timeline_weeks
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "traffic_roadmap_generation",
+            "timeline_weeks": request.implementation_timeline_weeks,
+            "opportunities_count": len(request.identified_opportunities),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Traffic roadmap generated successfully",
+            execution_time=execution_time,
+            data=roadmap
+        )
+        
+    except Exception as e:
+        logger.error(f"Traffic roadmap generation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("generate_traffic_roadmap", e, 
+                                              {"opportunities_count": len(request.identified_opportunities)})
+
+
+@router.post("/llm/generate-competitive-insights", response_model=BaseResponse)
+@log_api_call
+async def generate_competitive_insights(
+    request: CompetitiveInsightsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Generate competitive positioning and intelligence insights.
+    
+    Analyzes competitive landscape and provides:
+    - Competitive advantage identification
+    - Competitive gap analysis
+    - Market opportunity identification
+    - Threat assessment
+    - Win strategy recommendations
+    - Differentiation recommendations
+    - Market position recommendations
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Generating competitive insights ({len(request.competitor_analyses)} competitors)")
+        
+        llm_service = LLMInsightsService()
+        insights = await llm_service.generate_competitive_insights(
+            primary_site_analysis=request.primary_site_analysis,
+            competitor_analyses=request.competitor_analyses
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "competitive_insights_generation",
+            "competitors_analyzed": len(request.competitor_analyses),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Competitive insights generated successfully",
+            execution_time=execution_time,
+            data=insights
+        )
+        
+    except Exception as e:
+        logger.error(f"Competitive insights generation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("generate_competitive_insights", e,
+                                              {"competitors_count": len(request.competitor_analyses)})
+
+
+@router.post("/llm/prioritized-recommendations", response_model=BaseResponse)
+@log_api_call
+async def get_prioritized_recommendations(
+    request: PrioritizedRecommendationsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Get AI-prioritized recommendations ranked by business impact.
+    
+    Scores and prioritizes recommendations by:
+    - Traffic impact potential
+    - Implementation effort required
+    - Resource requirements
+    - Timeline to implementation
+    - Business alignment
+    - Risk level
+    - ROI potential
+    
+    Returns categorized as: Quick Wins | High Impact | Long-term
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Prioritizing {len(request.all_recommendations)} recommendations")
+        
+        llm_service = LLMInsightsService()
+        prioritized = await llm_service.generate_prioritized_recommendations(
+            all_recommendations=request.all_recommendations,
+            business_context=request.business_context
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "prioritized_recommendations_generation",
+            "total_recommendations": len(request.all_recommendations),
+            "quick_wins": len(prioritized.get('quick_wins', [])),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Recommendations prioritized successfully",
+            execution_time=execution_time,
+            data=prioritized
+        )
+        
+    except Exception as e:
+        logger.error(f"Recommendation prioritization failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("get_prioritized_recommendations", e,
+                                              {"recommendations_count": len(request.all_recommendations)})
+
+
+@router.post("/llm/quick-wins", response_model=BaseResponse)
+@log_api_call
+async def identify_quick_wins(
+    request: QuickWinsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Identify quick wins - high-impact actions implementable in short timeframe.
+    
+    Finds high-ROI quick wins including:
+    - Meta tag optimization opportunities
+    - URL structure improvements
+    - On-page optimization quick fixes
+    - Internal linking recommendations
+    - Content formatting improvements
+    - Technical SEO quick fixes
+    - Performance optimization opportunities
+    
+    Each with: estimated traffic gain, implementation time, tools needed, expected outcomes
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Identifying quick wins (max {request.max_days_to_implement} days)")
+        
+        llm_service = LLMInsightsService()
+        quick_wins = await llm_service.generate_quick_wins(
+            audit_data=request.audit_data,
+            max_days_to_implement=request.max_days_to_implement
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "quick_wins_identification",
+            "max_days": request.max_days_to_implement,
+            "quick_wins_found": len(quick_wins.get('quick_wins', [])),
+            "total_potential_traffic": quick_wins.get('total_potential_traffic', 0),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Quick wins identified successfully",
+            execution_time=execution_time,
+            data=quick_wins
+        )
+        
+    except Exception as e:
+        logger.error(f"Quick wins identification failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("identify_quick_wins", e,
+                                              {"max_days": request.max_days_to_implement})
+
+
+@router.post("/llm/keyword-expansion", response_model=BaseResponse)
+@log_api_call
+async def expand_keywords(
+    request: KeywordExpansionRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Expand keyword list with AI-generated related and long-tail keywords.
+    
+    Generates 15-20 additional keywords including:
+    - Long-tail keyword variations
+    - Question-based keywords (People Also Ask)
+    - Local keyword variations
+    - Intent-based keywords (commercial, informational, navigational)
+    - Seasonal keyword variants
+    
+    Each keyword includes: search volume estimate, difficulty score, relevance, content opportunity
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Expanding keywords from {len(request.current_keywords)} base keywords")
+        
+        llm_service = LLMInsightsService()
+        expansion = await llm_service.generate_keyword_expansion(
+            current_keywords=request.current_keywords,
+            content_analysis=request.content_analysis,
+            target_difficulty=request.target_difficulty
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        log_data = {
+            "operation": "keyword_expansion",
+            "original_keywords": len(request.current_keywords),
+            "expanded_keywords": expansion.get('expanded_keywords', 0),
+            "execution_time": execution_time,
+            "success": True
+        }
+        background_tasks.add_task(save_to_file, f"{LOG_DIR}/llm_operations.jsonl", log_data)
+        
+        return BaseResponse(
+            success=True,
+            message="Keyword expansion completed successfully",
+            execution_time=execution_time,
+            data=expansion
+        )
+        
+    except Exception as e:
+        logger.error(f"Keyword expansion failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("expand_keywords", e,
+                                              {"keywords_count": len(request.current_keywords)})
+
+
+@router.get("/llm/health", response_model=BaseResponse)
+@log_api_call
+async def check_llm_insights_health() -> BaseResponse:
+    """Health check for LLM insights service"""
+    try:
+        llm_service = LLMInsightsService()
+        health = await llm_service.health_check()
+        
+        return BaseResponse(
+            success=True,
+            message="LLM insights service is healthy",
+            data={
+                "service": health.get('service'),
+                "version": health.get('version'),
+                "llm_integration": health.get('llm_integration'),
+                "timestamp": health.get('last_check')
+            }
+        )
+    except Exception as e:
+        logger.error(f"LLM insights health check failed: {str(e)}")
+        return BaseResponse(
+            success=False,
+            message="LLM insights service health check failed",
             data={"error": str(e)}
         )

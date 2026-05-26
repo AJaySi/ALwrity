@@ -110,9 +110,13 @@ export const useGSCBrainstorm = (): UseGSCBrainstormReturn => {
         const result = await gscBrainstormAPI.brainstorm(keywords, siteUrl);
         setBrainstormResult(result);
         return result;
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Failed to brainstorm topics. Please try again.';
+      } catch (error: any) {
+        let message = 'Failed to brainstorm topics. Please try again.';
+        if (error?.response?.data?.detail) {
+          message = error.response.data.detail;
+        } else if (error instanceof Error) {
+          message = error.message;
+        }
         setBrainstormError(message);
         return null;
       } finally {

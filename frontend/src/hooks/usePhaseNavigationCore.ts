@@ -174,7 +174,6 @@ export function usePhaseValidation(
     currentPhase,
     userSelectedPhase,
     setCurrentPhase,
-    oscillationGuardRef,
     emptyPhaseId,
     research,
   ]);

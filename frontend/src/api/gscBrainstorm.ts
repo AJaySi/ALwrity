@@ -103,6 +103,7 @@ class GSCBrainstormAPI {
     }
     return apiClient.create({
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 300000, // 5 minutes — LLM calls via wavespeed can take 2+ minutes
     });
   }
 

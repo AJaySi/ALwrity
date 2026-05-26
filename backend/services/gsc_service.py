@@ -421,14 +421,15 @@ class GSCService:
             if not start_date:
                 start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             
-            # Check cache first
+            # Check cache first (only return cached data with non-empty query rows)
             cache_key = f"{user_id}_{site_url}_{start_date}_{end_date}"
             cached_data = self._get_cached_data(user_id, site_url, 'analytics', cache_key)
             if cached_data and isinstance(cached_data, dict):
                 has_pages = 'page_data' in cached_data and isinstance(cached_data.get('page_data'), dict)
                 has_queries = 'query_data' in cached_data and isinstance(cached_data.get('query_data'), dict)
-                if has_pages and has_queries:
-                    logger.info(f"Returning cached analytics data for user: {user_id} (includes page_data)")
+                has_query_rows = cached_data.get('query_data', {}).get('rows', [])
+                if has_pages and has_queries and has_query_rows:
+                    logger.info(f"Returning cached analytics data for user: {user_id} (includes page_data, {len(has_query_rows)} query rows)")
                     return cached_data
             
             try:
@@ -623,7 +624,11 @@ class GSCService:
                     'siteUrl': site_url
                 }
                 
-                self._cache_data(user_id, site_url, 'analytics', analytics_data, cache_key)
+                if analytics_data.get('query_data', {}).get('rows'):
+                    self._cache_data(user_id, site_url, 'analytics', analytics_data, cache_key)
+                    logger.info(f"Analytics data cached for user: {user_id}, site: {site_url} ({len(analytics_data.get('query_data', {}).get('rows', []))} query rows)")
+                else:
+                    logger.info(f"Skipping cache for user: {user_id} — empty query_data rows; next request will retry fresh")
                 
                 logger.info(f"Retrieved comprehensive analytics data for user: {user_id}, site: {site_url}")
                 return analytics_data
@@ -655,7 +660,7 @@ class GSCService:
                     'warning': f'Query-level data unavailable: {str(query_error)}'
                 }
                 
-                self._cache_data(user_id, site_url, 'analytics', analytics_data, cache_key)
+                logger.info(f"Query-level data unavailable for user {user_id}; fallback analytics returned (not cached)")
                 return analytics_data
             
         except Exception as e:

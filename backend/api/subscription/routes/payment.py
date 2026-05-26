@@ -170,7 +170,7 @@ async def verify_checkout_status(
         
         stripe_customer_id = subscription.stripe_customer_id if subscription else None
         
-        # If no stripe_customer_id in DB, try to find it by email
+        # If no stripe_customer_id in DB, try to find it by email or metadata
         if not stripe_customer_id:
             try:
                 import stripe
@@ -188,8 +188,22 @@ async def verify_checkout_status(
                             db.commit()
                         else:
                             logger.info(f"Verify-checkout: No local subscription record for user {user_id}, will query Stripe directly")
-            except Exception as email_err:
-                logger.warning(f"Failed to find Stripe customer by email: {email_err}")
+                
+                # Fallback: search by metadata user_id (handles email mismatches)
+                if not stripe_customer_id:
+                    customers = stripe.Customer.search(
+                        query=f"metadata['user_id']:'{user_id}'",
+                        limit=1
+                    )
+                    if customers and customers.data:
+                        stripe_customer_id = customers.data[0].id
+                        logger.info(f"Verify-checkout: Found Stripe customer by metadata user_id for user {user_id}")
+                        
+                        if subscription:
+                            subscription.stripe_customer_id = stripe_customer_id
+                            db.commit()
+            except Exception as lookup_err:
+                logger.warning(f"Failed to find Stripe customer by email or metadata: {lookup_err}")
         
         # If user has a Stripe customer ID, query Stripe directly
         if stripe_customer_id:
@@ -249,6 +263,57 @@ async def verify_checkout_status(
                         }
             except Exception as stripe_err:
                 logger.warning(f"Failed to query Stripe directly for user {user_id}: {stripe_err}")
+        
+        # Fallback: search Stripe subscriptions by metadata user_id (handles cases where
+        # customer was created without metadata or email doesn't match)
+        if not stripe_customer_id or not subscription:
+            try:
+                import stripe
+                meta_subs = stripe.Subscription.search(
+                    query=f"status:'active' AND metadata['user_id']:'{user_id}'",
+                    limit=1
+                )
+                if meta_subs and meta_subs.data:
+                    stripe_sub = meta_subs.data[0]
+                    stripe_customer_id = stripe_sub.customer
+                    price_id = stripe_sub['items']['data'][0]['price']['id']
+                    
+                    logger.info(f"Verify-checkout: Found subscription by metadata user_id for user {user_id}")
+                    
+                    stripe_service._update_user_subscription(
+                        user_id,
+                        stripe_customer_id=stripe_customer_id,
+                        stripe_subscription_id=stripe_sub.id,
+                        status="active",
+                        price_id=price_id
+                    )
+                    
+                    try:
+                        PricingService.clear_user_cache(user_id)
+                    except Exception:
+                        pass
+                    
+                    db.expire_all()
+                    
+                    subscription = db.query(UserSubscription).filter(
+                        UserSubscription.user_id == user_id,
+                        UserSubscription.is_active == True
+                    ).first()
+                    
+                    if subscription:
+                        return {
+                            "success": True,
+                            "data": {
+                                "active": True,
+                                "plan": subscription.plan.tier.value,
+                                "tier": subscription.plan.tier.value,
+                                "can_use_api": True,
+                                "limits": format_plan_limits(subscription.plan),
+                                "source": "stripe_direct_metadata"
+                            }
+                        }
+            except Exception as meta_err:
+                logger.warning(f"Failed to find subscription by metadata for user {user_id}: {meta_err}")
         
         # Fallback to local DB status
         if subscription and subscription.is_active:
