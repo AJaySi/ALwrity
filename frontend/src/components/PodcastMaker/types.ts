@@ -147,10 +147,13 @@ export type PodcastAnalysis = {
 };
 
 export type PodcastEstimate = {
+  analysisCost: number;
+  researchCost: number;
+  scriptCost: number;
   ttsCost: number;
+  voiceCloneCost: number;
   avatarCost: number;
   videoCost: number;
-  researchCost: number;
   total: number;
   voiceName?: string;
   isCustomVoice?: boolean;

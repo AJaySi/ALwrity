@@ -233,6 +233,7 @@ nav:
       - Workflow Guide: features/blog-writer/workflow-guide.md
       - Research Integration: features/blog-writer/research.md
       - SEO Analysis: features/blog-writer/seo-analysis.md
+      - GSC Brainstorm Service: features/blog-writer/gsc-brainstorm-service.md
       - Implementation Spec: features/blog-writer/implementation-spec.md
     - SEO Dashboard:
       - Getting Started: features/seo-dashboard/index.md

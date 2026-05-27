@@ -151,7 +151,7 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
 
       if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Checking subscription for user:', userId);
       const response = await apiClient.get(`/api/subscription/status/${userId}`);
-      let subscriptionData = response.data.data;
+      const subscriptionData = response.data.data;
 
       if (process.env.NODE_ENV === 'development') console.log('SubscriptionContext: Subscription data received:', { active: subscriptionData?.active, plan: subscriptionData?.plan });
 
@@ -190,21 +190,6 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       setSubscription(subscriptionData);
       // Update ref immediately so callbacks can access latest value
       subscriptionRef.current = subscriptionData;
-
-      if (subscriptionData && (subscriptionData.plan === 'free' || subscriptionData.plan === 'none')) {
-        try {
-          const verifyResponse = await apiClient.get(`/api/subscription/verify-checkout/${userId}`);
-          const verifiedData = verifyResponse.data?.data;
-          if (verifiedData && verifiedData.plan && verifiedData.plan !== 'free' && verifiedData.plan !== 'none') {
-            subscriptionData = { ...subscriptionData, ...verifiedData };
-            setSubscription(subscriptionData);
-            subscriptionRef.current = subscriptionData;
-            console.log('SubscriptionContext: Plan corrected via Stripe re-verification:', verifiedData.plan);
-          }
-        } catch {
-          // Silently ignore — Stripe may not be configured or user has no Stripe customer
-        }
-      }
 
       // Check if subscription is expired/inactive and show modal
       // Show modal if subscription is inactive on initial load (when subscription was null before)
@@ -392,6 +377,12 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       // Let the polling retry verifyCheckout on the next attempt.
     }
   }, [planSignature]);
+
+  // Ref so mount effect always calls latest verifyCheckout
+  const verifyCheckoutRef = useRef(verifyCheckout);
+  useEffect(() => {
+    verifyCheckoutRef.current = verifyCheckout;
+  }, [verifyCheckout]);
 
   const showExpiredModal = useCallback(() => {
     setIsUsageLimitModal(false);
@@ -720,6 +711,32 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       window.removeEventListener('user-authenticated', handleUserAuth);
     };
   }, []); // Remove checkSubscription dependency to prevent loop
+
+  // One-time Stripe sync after initial checkSubscription
+  // Handles: Customer Portal returns, new subscriptions with delayed webhooks
+  useEffect(() => {
+    const pendingChange = sessionStorage.getItem('pending_subscription_change');
+    if (pendingChange === 'true') {
+      sessionStorage.removeItem('pending_subscription_change');
+    }
+
+    const timer = setTimeout(async () => {
+      const current = subscriptionRef.current;
+      if (!current) return;
+      const plan = (current.plan || '').toLowerCase();
+      if (pendingChange === 'true' || plan === 'free' || plan === 'none') {
+        console.log('[StripeSync] Syncing with Stripe after mount, reason:', 
+          pendingChange ? 'Customer Portal return' : 'free plan check');
+        try {
+          await verifyCheckoutRef.current();
+        } catch {
+          // verifyCheckout already logs errors internally
+        }
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []); // Only run on mount
 
   const value: SubscriptionContextType = {
     subscription,

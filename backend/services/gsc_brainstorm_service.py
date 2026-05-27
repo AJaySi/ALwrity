@@ -102,16 +102,45 @@ class GSCBrainstormService:
                 },
             }
 
-        # 4. Rule-based analysis
-        content_opportunities = self._identify_content_opportunities(keywords_data)
-        keyword_gaps = self._identify_keyword_gaps(keywords_data)
-        quick_wins = self._identify_quick_wins(keywords_data)
-        page_opportunities = self._identify_page_opportunities(pages_data)
+        # 4. Score keywords for topic relevance and filter to topic-related subset
+        logger.info(f"Filtering {len(keywords_data)} GSC keywords for topic relevance to: '{keywords}'")
+        keywords_data, pages_data = self._filter_by_topic_relevance(
+            keywords_data, pages_data, keywords
+        )
+        logger.info(f"After topic filter: {len(keywords_data)} keywords, {len(pages_data)} pages")
 
-        # 5. Summary metrics
+        if not keywords_data:
+            return {
+                "error": "No GSC keywords matched your topic. Try a broader research topic or check your GSC data.",
+                "content_opportunities": [],
+                "keyword_gaps": [],
+                "quick_wins": [],
+                "page_opportunities": [],
+                "ai_recommendations": {},
+                "summary": {
+                    "site_url": site_url,
+                    "date_range": {"start": start_date, "end": end_date},
+                    "total_keywords_analyzed": 0,
+                },
+            }
+
+        # 5. Compute threshold multiplier based on available topic keywords
+        #    When topic filtering yields fewer keywords, lower impression thresholds
+        #    to surface more topic-relevant opportunities.
+        filtered_count = len(keywords_data)
+        threshold_multiplier = max(0.1, filtered_count / 200.0)
+        logger.info(f"Threshold multiplier: {threshold_multiplier:.2f} ({filtered_count} topic keywords)")
+
+        # 6. Rule-based analysis with adjusted thresholds
+        content_opportunities = self._identify_content_opportunities(keywords_data, threshold_multiplier)
+        keyword_gaps = self._identify_keyword_gaps(keywords_data, threshold_multiplier)
+        quick_wins = self._identify_quick_wins(keywords_data, threshold_multiplier)
+        page_opportunities = self._identify_page_opportunities(pages_data, threshold_multiplier)
+
+        # 7. Summary metrics
         summary = self._compute_summary(keywords_data, pages_data, site_url, start_date, end_date)
 
-        # 6. AI recommendations
+        # 8. AI recommendations
         ai_recommendations = self._generate_ai_recommendations(
             keywords_data, pages_data, summary, keywords,
             content_opportunities, quick_wins, keyword_gaps,
@@ -161,20 +190,188 @@ class GSCBrainstormService:
         return parsed
 
     # ------------------------------------------------------------------ #
+    #  Topic relevance scoring and filtering
+    # ------------------------------------------------------------------ #
+
+    _semantic_model = None  # class-level cache for sentence-transformers
+
+    @staticmethod
+    def _compute_semantic_scores(
+        keywords_data: List[Dict[str, Any]],
+        user_keywords: str,
+    ) -> Dict[int, float]:
+        """Compute cosine similarity between embedding of each GSC keyword and user topic.
+
+        Uses sentence-transformers (all-MiniLM-L6-v2) for lightweight semantic matching.
+        Returns dict mapping keyword index to similarity score (0-1), or empty on failure.
+        """
+        try:
+            import numpy as np
+            from sentence_transformers import SentenceTransformer
+
+            model = GSCBrainstormService._semantic_model
+            if model is None:
+                logger.info("Loading semantic embedding model (all-MiniLM-L6-v2)...")
+                model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+                GSCBrainstormService._semantic_model = model
+
+            texts, indices = [], []
+            for i, kw in enumerate(keywords_data):
+                text = kw.get("keyword", "")
+                if text.strip():
+                    texts.append(text)
+                    indices.append(i)
+
+            if not texts:
+                return {}
+
+            all_texts = [user_keywords] + texts
+            embeddings = model.encode(all_texts, show_progress_bar=False, convert_to_numpy=True)
+
+            user_emb = embeddings[0]
+            kw_embs = embeddings[1:]
+
+            norms = np.linalg.norm(kw_embs, axis=1)
+            user_norm = np.linalg.norm(user_emb)
+            similarities = np.dot(kw_embs, user_emb) / (norms * user_norm + 1e-8)
+
+            return dict(zip(indices, [float(s) for s in similarities]))
+        except Exception as e:
+            logger.warning(f"Semantic similarity scoring unavailable, falling back to term-only: {e}")
+            return {}
+
+    @staticmethod
+    def _tokenize(text: str) -> set:
+        """Lowercase and split into individual meaningful tokens."""
+        import re
+        tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
+        return {t for t in tokens if len(t) >= 3}
+
+    @staticmethod
+    def _score_keyword_relevance(gsc_keyword: str, user_tokens: set, user_phrase: str) -> float:
+        """Score a single GSC keyword for relevance to the user's topic tokens."""
+        kw_lower = gsc_keyword.lower()
+        # Exact phrase match → highest score
+        if user_phrase.lower() in kw_lower:
+            return 1.0
+        score = 0.0
+        kw_tokens = GSCBrainstormService._tokenize(gsc_keyword)
+        if not kw_tokens:
+            return 0.0
+        # Count overlapping tokens
+        matches = user_tokens & kw_tokens
+        score += len(matches) * 0.5
+        # Partial/substring matches for remaining user tokens
+        for ut in user_tokens:
+            if ut not in matches:
+                if ut in kw_lower:
+                    score += 0.2
+        # Normalize by max possible score (capped at 1.0)
+        return min(score, 1.0)
+
+    def _filter_by_topic_relevance(
+        self,
+        keywords_data: List[Dict[str, Any]],
+        pages_data: List[Dict[str, Any]],
+        user_keywords: str,
+    ) -> tuple:
+        """Score GSC keywords for topic overlap and keep the most relevant subset.
+
+        Returns (filtered_keywords, filtered_pages) where filtered_keywords
+        includes topic-relevant keywords + top-performer fallbacks.
+        """
+        if not user_keywords or not user_keywords.strip():
+            return keywords_data, pages_data
+
+        user_tokens = self._tokenize(user_keywords)
+        if not user_tokens:
+            return keywords_data, pages_data
+
+        # Compute semantic similarity scores (catches synonyms, e.g. "plant-based protein" for "vegan")
+        semantic_scores = GSCBrainstormService._compute_semantic_scores(keywords_data, user_keywords)
+        semantic_available = bool(semantic_scores)
+
+        # Score every keyword: blend term overlap (50%) + semantic similarity (50%)
+        scored = []
+        for i, kw in enumerate(keywords_data):
+            term_score = self._score_keyword_relevance(
+                kw.get("keyword", ""), user_tokens, user_keywords
+            )
+            if semantic_available:
+                sem_score = semantic_scores.get(i, 0.0)
+                blended = 0.5 * term_score + 0.5 * sem_score
+            else:
+                blended = term_score  # fallback to term-only
+            kw["_relevance"] = blended
+            scored.append(kw)
+
+        # Sort by blended relevance desc, then impressions desc
+        scored.sort(key=lambda x: (-x["_relevance"], -x.get("impressions", 0)))
+
+        # Take top 150 by relevance
+        top_relevant = [k for k in scored if k["_relevance"] > 0][:150]
+
+        # Also keep top 50 by impressions as fallback (ensures general site context)
+        by_impressions = sorted(
+            scored, key=lambda x: -x.get("impressions", 0)
+        )[:50]
+
+        # Merge and deduplicate by keyword
+        seen = set()
+        merged = []
+        for kw in top_relevant + by_impressions:
+            key = kw.get("keyword", "")
+            if key not in seen:
+                seen.add(key)
+                merged.append(kw)
+
+        # Remove internal score key from results
+        for kw in merged:
+            kw.pop("_relevance", None)
+
+        logger.info(
+            f"Topic relevance: {len(scored)} scored, "
+            f"{len(top_relevant)} topic-relevant, "
+            f"{len(merged)} after merge with top-by-impressions"
+        )
+
+        # Filter pages: keep pages whose URL contains any topic-relevant keyword
+        relevant_keywords_lower = {kw.get("keyword", "").lower() for kw in merged if kw.get("keyword")}
+        filtered_pages = []
+        for pg in pages_data:
+            page_url = pg.get("page", "").lower()
+            # Keep page if any filtered keyword appears in the URL
+            if any(kw in page_url for kw in relevant_keywords_lower):
+                filtered_pages.append(pg)
+
+        # Always keep at least top 20 pages by impressions for context
+        pages_by_imp = sorted(pages_data, key=lambda x: -x.get("impressions", 0))[:20]
+        seen_page_urls = {p.get("page", "") for p in filtered_pages}
+        for pg in pages_by_imp:
+            if pg.get("page", "") not in seen_page_urls:
+                filtered_pages.append(pg)
+
+        return merged, filtered_pages
+
+    # ------------------------------------------------------------------ #
     #  Rule-based opportunity identification
     # ------------------------------------------------------------------ #
 
     @staticmethod
     def _identify_content_opportunities(
         keywords_data: List[Dict[str, Any]],
+        threshold_multiplier: float = 1.0,
     ) -> List[Dict[str, Any]]:
         opportunities: List[Dict[str, Any]] = []
 
+        _imp_high = int(500 * threshold_multiplier)
+        _imp_impact_high = int(1000 * threshold_multiplier)
+        _imp_enhance = int(100 * threshold_multiplier)
+        _imp_enhance_high = int(500 * threshold_multiplier)
+
         # Rule 1: Content Optimization — high impressions, low CTR
-        # Meaning: Google is SHOWING your page for this query but people aren't clicking.
-        #          The content probably ranks but title/meta/snippet isn't compelling enough.
         for kw in keywords_data:
-            if kw["impressions"] > 500 and kw["ctr"] < 3:
+            if kw["impressions"] > _imp_high and kw["ctr"] < 3:
                 estimated_gain = int(kw["impressions"] * 0.05) - kw["clicks"]
                 opportunities.append({
                     "type": "Content Optimization",
@@ -184,21 +381,19 @@ class GSCBrainstormService:
                         f"but only {kw['ctr']:.1f}% click. Improving your title and meta description "
                         f"could bring ~{max(estimated_gain, 5)} more clicks/month."
                     ),
-                    "potential_impact": "High" if kw["impressions"] > 1000 else "Medium",
+                    "potential_impact": "High" if kw["impressions"] > _imp_impact_high else "Medium",
                     "current_position": kw["position"],
                     "current_ctr": kw["ctr"],
                     "impressions": kw["impressions"],
                     "clicks": kw["clicks"],
                     "estimated_traffic_gain": max(estimated_gain, 5),
-                    "priority": "High" if kw["impressions"] > 1000 else "Medium",
+                    "priority": "High" if kw["impressions"] > _imp_impact_high else "Medium",
                     "suggested_format": GSCBrainstormService._suggest_format(kw["keyword"]),
                 })
 
         # Rule 2: Content Enhancement — positions 11-20 with decent impressions
-        # Meaning: You're on page 2 of Google. A small content boost could push you to page 1,
-        #          where CTR increases dramatically (page 1 gets ~95% of all clicks).
         for kw in keywords_data:
-            if 10 < kw["position"] <= 20 and kw["impressions"] > 100:
+            if 10 < kw["position"] <= 20 and kw["impressions"] > _imp_enhance:
                 estimated_gain = int(kw["impressions"] * 0.08)
                 opportunities.append({
                     "type": "Content Enhancement",
@@ -208,13 +403,13 @@ class GSCBrainstormService:
                         f"Moving to page 1 could capture ~{estimated_gain} more clicks/month "
                         f"from {kw['impressions']:,} impressions."
                     ),
-                    "potential_impact": "High" if kw["impressions"] > 500 else "Medium",
+                    "potential_impact": "High" if kw["impressions"] > _imp_enhance_high else "Medium",
                     "current_position": kw["position"],
                     "current_ctr": kw["ctr"],
                     "impressions": kw["impressions"],
                     "clicks": kw["clicks"],
                     "estimated_traffic_gain": estimated_gain,
-                    "priority": "High" if kw["impressions"] > 500 else "Medium",
+                    "priority": "High" if kw["impressions"] > _imp_enhance_high else "Medium",
                     "suggested_format": GSCBrainstormService._suggest_format(kw["keyword"]),
                 })
 
@@ -224,11 +419,13 @@ class GSCBrainstormService:
     @staticmethod
     def _identify_keyword_gaps(
         keywords_data: List[Dict[str, Any]],
+        threshold_multiplier: float = 1.0,
     ) -> List[Dict[str, Any]]:
         gaps: List[Dict[str, Any]] = []
+        _imp_min = int(50 * threshold_multiplier)
 
         for kw in keywords_data:
-            if 4 <= kw["position"] <= 20 and kw["impressions"] >= 50:
+            if 4 <= kw["position"] <= 20 and kw["impressions"] >= _imp_min:
                 # Estimate traffic gain if this keyword moved to position 1-3
                 # Position 1 avg CTR ~31%, position 3 ~11%, current position CTR estimate
                 position_1_ctr = 31.0
@@ -251,13 +448,13 @@ class GSCBrainstormService:
     @staticmethod
     def _identify_quick_wins(
         keywords_data: List[Dict[str, Any]],
+        threshold_multiplier: float = 1.0,
     ) -> List[Dict[str, Any]]:
-        """Keywords already on page 1 (positions 4-10) that could reach top 3
-        with minor improvements — the highest-ROI opportunities."""
         quick_wins: List[Dict[str, Any]] = []
+        _imp_min = int(100 * threshold_multiplier)
 
         for kw in keywords_data:
-            if 4 <= kw["position"] <= 10 and kw["impressions"] >= 100:
+            if 4 <= kw["position"] <= 10 and kw["impressions"] >= _imp_min:
                 # Position 3 CTR ≈ 11%, position 5 CTR ≈ 6%
                 # Small improvements can yield big traffic gains
                 target_ctr = 11.0  # approximate CTR for position 3
@@ -283,12 +480,13 @@ class GSCBrainstormService:
     @staticmethod
     def _identify_page_opportunities(
         pages_data: List[Dict[str, Any]],
+        threshold_multiplier: float = 1.0,
     ) -> List[Dict[str, Any]]:
-        """Pages with high impressions but low CTR — the content or meta needs work."""
         opportunities: List[Dict[str, Any]] = []
+        _imp_min = int(300 * threshold_multiplier)
 
         for pg in pages_data:
-            if pg["impressions"] > 300 and pg["ctr"] < 2.0:
+            if pg["impressions"] > _imp_min and pg["ctr"] < 2.0:
                 short_page = pg["page"].rstrip("/").rsplit("/", 1)[-1].replace("-", " ").title()
                 if len(short_page) > 60:
                     short_page = short_page[:57] + "..."
@@ -423,10 +621,15 @@ class GSCBrainstormService:
         keyword_gaps: List[Dict],
     ) -> Dict[str, Any]:
         try:
-            top_kw_list = summary.get("top_keywords", [])
-            top_kw_str = "\n".join(
+            # Build topic-relevant keyword list from filtered keywords_data
+            topic_keywords = sorted(
+                keywords_data,
+                key=lambda x: (x.get("impressions", 0) * max(1, 11 - min(x.get("position", 10), 10))),
+                reverse=True
+            )[:25]
+            topic_kw_str = "\n".join(
                 f"  • {kw['keyword']}: {kw['impressions']:,} impressions, position {kw['position']}, {kw['ctr']:.1f}% CTR"
-                for kw in top_kw_list[:10]
+                for kw in topic_keywords
             )
             dist = summary.get("keyword_distribution", {})
 
@@ -450,18 +653,18 @@ class GSCBrainstormService:
 
 The user wants to write about: "{user_keywords}"
 
-Here is their GSC data for the last 30 days:
+Here is their GSC data for the last 30 days, already filtered to keywords related to their topic:
 
 PERFORMANCE OVERVIEW:
-- Total Keywords: {summary.get('total_keywords_analyzed', 0)}
-- Total Impressions: {summary.get('total_impressions', 0):,}
-- Total Clicks: {summary.get('total_clicks', 0):,}
+- Total Topic-Relevant Keywords: {summary.get('total_keywords_analyzed', 0)}
+- Total Impressions (topic): {summary.get('total_impressions', 0):,}
+- Total Clicks (topic): {summary.get('total_clicks', 0):,}
 - Average CTR: {summary.get('avg_ctr', 0):.2f}% (industry avg for positions 1-10 is ~3.1%)
 - Average Position: {summary.get('avg_position', 0):.1f}
 - SEO Health Score: {summary.get('health_score', 0)}/100
 
-TOP KEYWORDS BY IMPRESSIONS:
-{top_kw_str}
+TOPIC-RELEVANT KEYWORDS (sorted by potential impact):
+{topic_kw_str}
 
 KEYWORD POSITION DISTRIBUTION:
 - Position 1-3 (top results): {dist.get('positions_1_3', 0)} keywords
@@ -514,7 +717,7 @@ IMPORTANT:
 - Provide 3-5 items in each category
 - Every suggestion MUST relate to the user's interest in "{user_keywords}"
 - Titles should be specific and compelling, like real blog post headlines
-- Use the data above to justify each recommendation
+- Use the KEYWORD DATA above to justify each recommendation — reference specific keywords, their impressions, positions, and CTR
 - Prioritize keywords with high impressions but low CTR or low position"""
 
             system_prompt = (

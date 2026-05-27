@@ -1,4 +1,5 @@
 import React from 'react';
+import { PieChart, Pie, Cell, Tooltip as ReTooltip, ResponsiveContainer } from 'recharts';
 import {
   ContentOpportunity,
   KeywordGap,
@@ -22,6 +23,8 @@ interface GSCBrainstormModalProps {
   isBrainstorming: boolean;
   progressMessage?: string;
   onSelectSuggestion: (keyword: string) => void;
+  initialKeywords: string;
+  onReRun: (keywords: string) => void;
 }
 
 const tabLabels = [
@@ -46,8 +49,13 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
   isBrainstorming,
   progressMessage,
   onSelectSuggestion,
+  initialKeywords,
+  onReRun,
 }) => {
   const [activeTab, setActiveTab] = React.useState<TabKey>('Quick Wins');
+  const [topicInput, setTopicInput] = React.useState(initialKeywords);
+
+  React.useEffect(() => setTopicInput(initialKeywords), [initialKeywords]);
 
   if (!open) return null;
 
@@ -87,10 +95,10 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
         style={{
           backgroundColor: '#fff',
           borderRadius: '16px',
-          width: '85vw',
-          height: '85vh',
-          maxWidth: '1200px',
-          maxHeight: '900px',
+          width: '90vw',
+          height: '90vh',
+          maxWidth: '1400px',
+          maxHeight: '96vh',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 16px 48px rgba(0,0,0,0.25)',
@@ -100,26 +108,56 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
       >
         {/* Header */}
         <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '20px 28px', borderBottom: '1px solid #e8e8e8', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '12px 28px', borderBottom: '1px solid #e8e8e8', flexShrink: 0,
         }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 600, color: '#1a1a1a' }}>
-              Brainstorm Topics with GSC Data
-            </h3>
-            {summary?.site_url && (
-              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#888' }}>
-                {summary.site_url} &middot; {summary.date_range?.start} to {summary.date_range?.end} &middot;{' '}
-                {summary.total_keywords_analyzed} keywords
-              </p>
-            )}
-          </div>
+          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            Brainstorm Topics
+          </h3>
+          <input
+            value={topicInput}
+            onChange={(e) => setTopicInput(e.target.value)}
+            disabled={isBrainstorming}
+            placeholder="Enter research topic or keywords..."
+            style={{
+              flex: 1, padding: '6px 10px', border: '1px solid #ddd',
+              borderRadius: '6px', fontSize: '13px', color: '#333',
+              backgroundColor: isBrainstorming ? '#f5f5f5' : '#fff',
+              outline: 'none', minWidth: 0,
+            }}
+          />
+          <button
+            onClick={() => {
+              const trimmed = topicInput.trim();
+              if (trimmed && trimmed.split(/\s+/).length >= 3 && !isBrainstorming) {
+                onReRun(trimmed);
+              }
+            }}
+            disabled={isBrainstorming || topicInput.trim().split(/\s+/).length < 3}
+            title={
+              topicInput.trim().split(/\s+/).length < 3
+                ? 'Enter at least 3 words'
+                : 'Re-run brainstorm with these keywords (bypasses cache)'
+            }
+            style={{
+              padding: '6px 14px', border: 'none', borderRadius: '6px',
+              backgroundColor: isBrainstorming ? '#ccc' : '#1976d2',
+              color: '#fff', fontSize: '12px', fontWeight: 600,
+              cursor: isBrainstorming || topicInput.trim().split(/\s+/).length < 3 ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap', transition: 'background-color 0.15s', flexShrink: 0,
+            }}
+          >{isBrainstorming ? 'Running...' : 'Re-Run'}</button>
+          {summary?.site_url && (
+            <span style={{ fontSize: '11px', color: '#999', flexShrink: 0, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {summary.site_url.replace(/^https?:\/\//, '').slice(0, 30)}
+            </span>
+          )}
           <button
             onClick={onClose}
             style={{
-              background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer',
-              color: '#999', padding: '4px 10px', borderRadius: '6px',
-              transition: 'background-color 0.15s', lineHeight: 1,
+              background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer',
+              color: '#999', padding: '2px 8px', borderRadius: '4px',
+              transition: 'background-color 0.15s', lineHeight: 1, flexShrink: 0,
             }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -300,71 +338,146 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
 /*  Summary Dashboard                                                   */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  Metric tooltips                                                    */
+/* ------------------------------------------------------------------ */
+
+const METRIC_HELP: Record<string, string> = {
+  Impressions: "How many times your site appeared in Google search results over the last 30 days. More impressions means more visibility — but you also want clicks.",
+  Clicks: "How many times people actually clicked on your site in search results. Low clicks with high impressions means your titles or descriptions need improvement.",
+  'Avg CTR': "Click-Through Rate — the percentage of people who saw your result and clicked it. Higher is better. The industry average is around 2-3%.",
+  'Avg Position': "Your average ranking across all keywords. Position 1 is the top result. Positions 1-3 get most clicks; anything below page 1 (position 10+) gets very few.",
+  'SEO Health': "A composite score from 0-100 based on your rankings, CTR, and keyword distribution. 70+ is good, 40-70 needs work, below 40 needs attention.",
+  'Top 3': "Keywords ranking in the top 3 positions. These are your strongest pages — already visible to most searchers. Small improvements here can bring big gains.",
+  '4-10': "Keywords on page 1 of Google (positions 4-10). These have good visibility but room to climb higher. Optimizing these can push you into the top 3.",
+  '11-20': "Keywords on page 2 of Google. Searchers rarely go past page 1, so writing targeted content for these keywords could dramatically increase traffic.",
+  '21+': "Keywords deep in search results. Low visibility, but often easier to rank for with focused content. These represent untapped traffic potential.",
+  'Rank Distribution': "Shows where your keywords fall in Google's search results. A healthy profile has keywords spread across all ranges, with a focus on page 1.",
+};
+
+const HelpIcon: React.FC<{ text: string }> = ({ text }) => {
+  const [show, setShow] = React.useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: '3px' }}>
+      <span
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '14px', height: '14px', borderRadius: '50%',
+          backgroundColor: '#bbb', color: '#fff', fontSize: '10px',
+          fontWeight: 700, cursor: 'help', lineHeight: '14px', userSelect: 'none',
+        }}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow(!show)}
+      >?</span>
+      {show && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+          backgroundColor: '#333', color: '#fff', padding: '8px 12px',
+          borderRadius: '8px', fontSize: '12px', lineHeight: 1.5,
+          maxWidth: '280px', width: 'max-content', textAlign: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 100,
+        }}>
+          {text}
+          <div style={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            border: '6px solid transparent', borderTopColor: '#333',
+          }} />
+        </div>
+      )}
+    </span>
+  );
+};
+
+const PIE_COLORS = ['#2e7d32', '#1565c0', '#f57c00', '#999'];
+
 const SummaryDashboard: React.FC<{ summary: BrainstormSummary }> = ({ summary }) => {
   const dist = summary.keyword_distribution || {};
   const total = dist.positions_1_3 + dist.positions_4_10 + dist.positions_11_20 + dist.positions_21_plus || 1;
   const healthColor = summary.health_score >= 70 ? '#2e7d32' : summary.health_score >= 40 ? '#f57c00' : '#d32f2f';
   const ctrColor = summary.ctr_vs_benchmark >= 0 ? '#2e7d32' : '#d32f2f';
 
+  const pieData = [
+    { name: 'Top 3', value: dist.positions_1_3, pct: Math.round(dist.positions_1_3 / total * 100) },
+    { name: '4-10', value: dist.positions_4_10, pct: Math.round(dist.positions_4_10 / total * 100) },
+    { name: '11-20', value: dist.positions_11_20, pct: Math.round(dist.positions_11_20 / total * 100) },
+    { name: '21+', value: dist.positions_21_plus, pct: Math.round(dist.positions_21_plus / total * 100) },
+  ];
+
   return (
     <div style={{ borderBottom: '1px solid #e8e8e8', flexShrink: 0 }}>
       <div style={{
-        display: 'flex', gap: '28px', padding: '14px 28px',
-        backgroundColor: '#f8fbff', flexWrap: 'wrap',
+        display: 'flex', alignItems: 'center', gap: '20px',
+        padding: '10px 28px', backgroundColor: '#f8fbff',
       }}>
-        <MetricBox label="Impressions" value={summary.total_impressions?.toLocaleString()} />
-        <MetricBox label="Clicks" value={summary.total_clicks?.toLocaleString()} />
-        <MetricBox
-          label="Avg CTR"
-          value={`${summary.avg_ctr}%`}
-          sublabel={`vs 3.1% avg`}
-          sublabelColor={ctrColor}
-          driving
-        />
-        <MetricBox label="Avg Position" value={`${summary.avg_position}`} />
-        <MetricBox label="SEO Health" value={`${summary.health_score}/100`} valueColor={healthColor} driving />
-      </div>
-      {total > 1 && (
-        <div style={{
-          padding: '0 28px 12px', display: 'flex', gap: '16px',
-          fontSize: '12px', color: '#666', flexWrap: 'wrap', alignItems: 'center',
-        }}>
-          <span style={{ fontSize: '11px', fontWeight: 500, color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Rank Distribution
-          </span>
-          <DistBadge label="Top 3" count={dist.positions_1_3} total={total} color="#2e7d32" />
-          <DistBadge label="4-10" count={dist.positions_4_10} total={total} color="#1565c0" />
-          <DistBadge label="11-20" count={dist.positions_11_20} total={total} color="#f57c00" />
-          <DistBadge label="21+" count={dist.positions_21_plus} total={total} color="#999" />
+        {/* Metric boxes */}
+        <div style={{ display: 'flex', gap: '16px', flex: 1, flexWrap: 'wrap' }}>
+          <MetricBox label="Impressions" value={summary.total_impressions?.toLocaleString()} tooltip={METRIC_HELP.Impressions} />
+          <MetricBox label="Clicks" value={summary.total_clicks?.toLocaleString()} tooltip={METRIC_HELP.Clicks} />
+          <MetricBox driving label="Avg CTR" value={`${summary.avg_ctr}%`} sublabel={`vs 3.1% avg`} sublabelColor={ctrColor} tooltip={METRIC_HELP['Avg CTR']} />
+          <MetricBox label="Avg Position" value={`${summary.avg_position}`} tooltip={METRIC_HELP['Avg Position']} />
+          <MetricBox driving label="SEO Health" value={`${summary.health_score}/100`} valueColor={healthColor} tooltip={METRIC_HELP['SEO Health']} />
         </div>
-      )}
+
+        {/* Rank distribution pie chart */}
+        {total > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <div style={{ width: '80px', height: '80px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={22} outerRadius={36} dataKey="value" paddingAngle={2} stroke="none">
+                    {pieData.map((entry, idx) => (
+                      <Cell key={idx} fill={PIE_COLORS[idx]} />
+                    ))}
+                  </Pie>
+                  <ReTooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div style={{ backgroundColor: '#333', color: '#fff', padding: '6px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                          {d.name}: {d.value} keywords ({d.pct}%)
+                        </div>
+                      );
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px' }}>
+              {pieData.map((d, idx) => (
+                <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#666' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: PIE_COLORS[idx], display: 'inline-block', flexShrink: 0 }} />
+                  {d.name}: <strong>{d.value}</strong>
+                  <HelpIcon text={METRIC_HELP[d.name as keyof typeof METRIC_HELP] || ''} />
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
 const MetricBox: React.FC<{
   label: string; value: string; valueColor?: string;
-  sublabel?: string; sublabelColor?: string; driving?: boolean;
-}> = ({ label, value, valueColor, sublabel, sublabelColor, driving }) => (
+  sublabel?: string; sublabelColor?: string; driving?: boolean; tooltip?: string;
+}> = ({ label, value, valueColor, sublabel, sublabelColor, driving, tooltip }) => (
   <div style={{
-    textAlign: 'center', padding: driving ? '0 20px 0 0' : 0,
+    textAlign: 'center', padding: driving ? '0 14px 0 0' : 0,
     borderRight: driving ? '1px solid #e0e0e0' : 'none',
   }}>
-    <div style={{ fontSize: '20px', fontWeight: 700, color: valueColor || '#1a1a1a' }}>{value}</div>
-    <div style={{ fontSize: '12px', color: '#888' }}>{label}</div>
+    <div style={{ fontSize: '18px', fontWeight: 700, color: valueColor || '#1a1a1a', lineHeight: 1.2 }}>{value}</div>
+    <div style={{ fontSize: '11px', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {label}
+      {tooltip && <HelpIcon text={tooltip} />}
+    </div>
     {sublabel && <div style={{ fontSize: '10px', color: sublabelColor || '#999', fontWeight: 500 }}>{sublabel}</div>}
   </div>
 );
 
-const DistBadge: React.FC<{ label: string; count: number; total: number; color: string }> = ({ label, count, total, color }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-    <span style={{
-      width: '10px', height: '10px', borderRadius: '50%',
-      backgroundColor: color, display: 'inline-block', flexShrink: 0,
-    }} />
-    <span>{label}: <strong>{count}</strong> <span style={{ color: '#999' }}>({Math.round(count / total * 100)}%)</span></span>
-  </span>
-);
+
 
 /* ------------------------------------------------------------------ */
 /*  Quick Wins Tab                                                      */
@@ -379,6 +492,7 @@ const QuickWinsTab: React.FC<{ wins: QuickWin[]; onSelect: (kw: string) => void 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <p style={{ margin: '0 0 4px', fontSize: '14px', color: '#555' }}>
         These keywords are already on page 1. A small optimization push could land them in the top 3 — the highest-ROI opportunities available.
+        <HelpIcon text="'Page 1' means Google's first search results page (positions 1-10). Being on page 1 is critical — over 90% of clicks go to page 1 results. Top 3 positions get the lion's share of those clicks." />
       </p>
       {wins.map((win, i) => (
         <div
@@ -401,7 +515,7 @@ const QuickWinsTab: React.FC<{ wins: QuickWin[]; onSelect: (kw: string) => void 
           </div>
           <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#444', lineHeight: 1.5 }}>{win.reason}</p>
           <div style={{ fontSize: '12px', color: '#888' }}>
-            {win.impressions.toLocaleString()} impressions &middot; {win.current_ctr}% current CTR
+            <InlineHelp text="Times your site appeared in Google search results">{(win.impressions.toLocaleString())} impressions</InlineHelp> &middot; <InlineHelp text="Percentage of people who saw and clicked your result">{win.current_ctr}% CTR</InlineHelp>
           </div>
         </div>
       ))}
@@ -445,9 +559,9 @@ const OpportunitiesTab: React.FC<{ opportunities: ContentOpportunity[]; onSelect
           </div>
           <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', lineHeight: 1.5 }}>{opp.opportunity}</p>
           <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#888', flexWrap: 'wrap' }}>
-            <span>{opp.impressions.toLocaleString()} impressions</span>
-            <span>Position {opp.current_position}</span>
-            <span>{opp.current_ctr}% CTR</span>
+            <InlineHelp text="How many times this keyword appeared in search results">{opp.impressions.toLocaleString()} impressions</InlineHelp>
+            <InlineHelp text="Your average ranking for this keyword. Position 1 = top of Google.">Position {opp.current_position}</InlineHelp>
+            <InlineHelp text="Click-Through Rate — the % of viewers who clicked on your result">{opp.current_ctr}% CTR</InlineHelp>
             <span style={{ color: '#2e7d32', fontWeight: 600 }}>+{opp.estimated_traffic_gain} clicks/mo potential</span>
           </div>
         </div>
@@ -469,6 +583,7 @@ const GapsTab: React.FC<{ gaps: KeywordGap[]; onSelect: (kw: string) => void }> 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <p style={{ margin: '0 0 6px', fontSize: '14px', color: '#555' }}>
         These keywords rank between positions 4-20. Writing targeted content could push them to page 1 where CTR increases dramatically.
+        <HelpIcon text="CTR (Click-Through Rate) jumps significantly on page 1 — the #1 result gets ~28% of clicks, while page 2 results get less than 1%. Moving from page 2 to page 1 can 10x your traffic." />
       </p>
       {gaps.map((gap, i) => (
         <div
@@ -485,11 +600,11 @@ const GapsTab: React.FC<{ gaps: KeywordGap[]; onSelect: (kw: string) => void }> 
           <div>
             <span style={{ fontWeight: 600, fontSize: '15px', color: '#1a1a1a' }}>{gap.keyword}</span>
             <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-              {gap.current_ctr}% CTR &middot; {gap.clicks} clicks
+              <InlineHelp text="Click-Through Rate — how often searchers click your result">{gap.current_ctr}% CTR</InlineHelp> &middot; {gap.clicks} clicks
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: '12px' }}>
-            <div style={{ color: gap.position <= 10 ? '#1565c0' : '#f57c00', fontWeight: 600 }}>Position #{gap.position.toFixed(0)}</div>
+            <InlineHelp text="Position 1-10 is page 1 of Google, 11-20 is page 2">Position #{gap.position.toFixed(0)}</InlineHelp>
             <div style={{ color: '#2e7d32', fontWeight: 500 }}>+{gap.estimated_traffic_if_page1} clicks/mo if page 1</div>
           </div>
         </div>
@@ -511,6 +626,7 @@ const PagesTab: React.FC<{ pages: PageOpportunity[] }> = ({ pages }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <p style={{ margin: '0 0 4px', fontSize: '14px', color: '#555' }}>
         These pages get significant impressions but low click-through rates. Improving their titles and meta descriptions can boost clicks.
+        <HelpIcon text="Meta descriptions are the short preview text under your page title in search results. A compelling meta description can double your CTR. Titles should include your target keyword and a value proposition." />
       </p>
       {pages.map((pg, i) => (
         <div key={i} style={{
@@ -523,7 +639,7 @@ const PagesTab: React.FC<{ pages: PageOpportunity[] }> = ({ pages }) => {
           </div>
           <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#555', lineHeight: 1.5 }}>{pg.reason}</p>
           <div style={{ fontSize: '12px', color: '#888' }}>
-            {pg.impressions.toLocaleString()} impressions &middot; {pg.clicks} clicks &middot; Position {pg.current_position}
+            <InlineHelp text="How many times this page appeared in search results">{pg.impressions.toLocaleString()} impressions</InlineHelp> &middot; {pg.clicks} clicks &middot; <InlineHelp text="Average search ranking for this page. Lower is better.">Position {pg.current_position}</InlineHelp>
           </div>
           <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', wordBreak: 'break-all' }}>{pg.page}</div>
         </div>
@@ -605,6 +721,35 @@ const RecommendationSection: React.FC<{ title: string; items: AIRecommendation[]
 /* ------------------------------------------------------------------ */
 /*  Shared                                                              */
 /* ------------------------------------------------------------------ */
+
+const InlineHelp: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+  const [show, setShow] = React.useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow(!show)}
+        style={{ cursor: 'help', borderBottom: '1px dashed #bbb' }}
+      >{children}</span>
+      {show && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+          backgroundColor: '#333', color: '#fff', padding: '8px 12px',
+          borderRadius: '8px', fontSize: '12px', lineHeight: 1.5,
+          maxWidth: '260px', width: 'max-content', textAlign: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 100, whiteSpace: 'normal',
+        }}>
+          {text}
+          <span style={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            border: '6px solid transparent', borderTopColor: '#333',
+          }} />
+        </span>
+      )}
+    </span>
+  );
+};
 
 const Badge: React.FC<{ label: string; color: string }> = ({ label, color }) => (
   <span style={{

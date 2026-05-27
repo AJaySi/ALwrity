@@ -129,7 +129,7 @@ const deriveSegments = (option?: OptionLike): string[] => {
 
 const toPodcastEstimate = (raw: any, voiceId?: string): PodcastEstimate | null => {
   if (!raw || typeof raw !== "object") return null;
-  const numeric = ["ttsCost", "avatarCost", "videoCost", "researchCost", "total"] as const;
+  const numeric = ["analysisCost", "researchCost", "scriptCost", "ttsCost", "voiceCloneCost", "avatarCost", "videoCost", "total"] as const;
   if (numeric.some((key) => typeof raw[key] !== "number" || Number.isNaN(raw[key]))) {
     return null;
   }
@@ -156,10 +156,13 @@ const toPodcastEstimate = (raw: any, voiceId?: string): PodcastEstimate | null =
       ].includes(voiceId)
   );
   return {
+    analysisCost: raw.analysisCost,
+    researchCost: raw.researchCost,
+    scriptCost: raw.scriptCost,
     ttsCost: raw.ttsCost,
+    voiceCloneCost: raw.voiceCloneCost,
     avatarCost: raw.avatarCost,
     videoCost: raw.videoCost,
-    researchCost: raw.researchCost,
     total: raw.total,
     voiceName: isCustomVoice ? "My Voice Clone" : (!voiceId ? "Wise Woman" : voiceId.replace(/_/g, " ")),
     isCustomVoice,

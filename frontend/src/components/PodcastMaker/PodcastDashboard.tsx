@@ -90,13 +90,21 @@ const PodcastDashboard: React.FC = () => {
     }
 
     if (estimate) {
+      const analyzeCost = breakdownMap.get("Analyze") || 0;
       const gatherCost = breakdownMap.get("Gather") || 0;
+      const writeCost = breakdownMap.get("Write") || 0;
       const produceCost = breakdownMap.get("Produce") || 0;
+      if (analyzeCost === 0 && estimate.analysisCost > 0) {
+        breakdownMap.set("Analyze", estimate.analysisCost);
+      }
       if (gatherCost === 0 && estimate.researchCost > 0) {
         breakdownMap.set("Gather", estimate.researchCost);
       }
+      if (writeCost === 0 && estimate.scriptCost > 0) {
+        breakdownMap.set("Write", estimate.scriptCost);
+      }
       if (produceCost === 0) {
-        breakdownMap.set("Produce", estimate.ttsCost + estimate.avatarCost + estimate.videoCost);
+        breakdownMap.set("Produce", estimate.ttsCost + estimate.voiceCloneCost + estimate.avatarCost + estimate.videoCost);
       }
     }
 

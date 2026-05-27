@@ -162,7 +162,7 @@ useEffect(() => {
 }, [topicInput]);
 
 // Cost estimate state - compatible with TopicUrlInput props
-type EstimateType = number | { ttsCost: number; avatarCost: number; videoCost: number; researchCost: number; total: number; } | null;
+type EstimateType = number | { analysisCost: number; researchCost: number; scriptCost: number; ttsCost: number; voiceCloneCost: number; avatarCost: number; videoCost: number; total: number; } | null;
 const [estimatedCost, setEstimatedCost] = useState<EstimateType>(null);
 const [costEstimateLoading, setCostEstimateLoading] = useState(false);
 

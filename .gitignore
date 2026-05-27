@@ -236,6 +236,9 @@ gsc_credentials_template.json
 .dmypy.json
 dmypy.json
 
+docs
+
+
 # Pyre type checker
 .pyre/
 

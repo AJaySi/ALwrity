@@ -16,6 +16,13 @@ The ALwrity Blog Writer is a powerful AI-driven content creation tool that helps
 - **Content Optimization**: AI-powered content improvement suggestions
 - **SEO Integration**: Built-in SEO analysis and recommendations
 
+### 🧠 Smart Topic Brainstorming
+- **[GSC Brainstorm](gsc-brainstorm-service.md)** *(NEW)*: AI-powered topic suggestions from your Google Search Console data
+- **Quick Wins Detection**: Identify easy-to-rank content opportunities
+- **Keyword Gap Analysis**: Find content gaps that could boost rankings
+- **AI Recommendations**: Get LLM-generated blog post strategies
+- **Health Score**: Track your SEO performance with a 0-100 composite score
+
 ### 🎯 User-Friendly Features
 - **Visual Editor**: Easy-to-use WYSIWYG editor with markdown support
 - **Progress Tracking**: Real-time progress monitoring for long tasks

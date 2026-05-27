@@ -20,7 +20,7 @@ interface UserBadgeProps {
 const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
   const { user, isSignedIn } = useUser();
   const { signOut } = useClerk();
-  const { subscription, refreshSubscription } = useSubscription();
+  const { subscription, refreshSubscription, loading } = useSubscription();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [systemStatus, setSystemStatus] = useState<'healthy' | 'warning' | 'critical' | 'unknown'>('unknown');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -131,12 +131,18 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         label={getPlanLabel()}
         size="small"
         sx={{
-          bgcolor: `${getPlanColor()}20`,
-          border: `1px solid ${getPlanColor()}`,
-          color: getPlanColor(),
+          bgcolor: loading ? '#e5e7eb' : `${getPlanColor()}20`,
+          border: loading ? '1px solid #d1d5db' : `1px solid ${getPlanColor()}`,
+          color: loading ? '#9ca3af' : getPlanColor(),
           fontWeight: 700,
           fontSize: '0.75rem',
           height: 24,
+          minWidth: loading ? 60 : 'auto',
+          animation: loading ? 'plan-pulse 1.5s ease-in-out infinite' : 'none',
+          '@keyframes plan-pulse': {
+            '0%, 100%': { opacity: 1 },
+            '50%': { opacity: 0.4 },
+          },
         }}
       />
       
@@ -236,13 +242,13 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
             <IconButton 
               onClick={handleRefreshPlan} 
               size="small"
-              disabled={isRefreshing}
+              disabled={isRefreshing || loading}
               sx={{ 
                 color: '#6b7280',
                 '&:hover': { bgcolor: '#e5e7eb' },
               }}
             >
-              {isRefreshing ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
+              {(isRefreshing || loading) ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
         </Box>
@@ -289,10 +295,10 @@ const UserBadge: React.FC<UserBadgeProps> = ({ colorMode = 'light' }) => {
         
         <Divider sx={{ mx: 2 }} />
         
-        <MenuItem onClick={() => { handleClose(); saveNavigationState(window.location.pathname); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
+        <MenuItem onClick={() => { handleClose(); saveNavigationState(window.location.pathname); sessionStorage.setItem('pending_subscription_change', 'true'); window.location.href = '/pricing'; }} sx={{ mx: 1, borderRadius: 1, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: '#ffffff', fontWeight: 600, mb: 0.5, '&:hover': { background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', boxShadow: '0 2px 8px rgba(99,102,241,0.4)' } }}>
           Manage Subscription
         </MenuItem>
-        <MenuItem onClick={() => { handleClose(); window.location.href = '/billing'; }} sx={{ mx: 1, borderRadius: 1, color: '#374151', '&:hover': { bgcolor: '#f3f4f6' } }}>
+        <MenuItem onClick={() => { handleClose(); window.location.href = '/billing'; }} sx={{ mx: 1, borderRadius: 1, background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)', color: '#ffffff', fontWeight: 600, '&:hover': { background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 100%)', boxShadow: '0 2px 8px rgba(6,182,212,0.4)' } }}>
           View Costing Details
         </MenuItem>
         <MenuItem onClick={handleSignOut} sx={{ mx: 1, borderRadius: 1, color: '#6b7280', '&:hover': { bgcolor: '#fef2f2', color: '#ef4444' } }}>

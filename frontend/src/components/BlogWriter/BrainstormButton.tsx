@@ -88,6 +88,16 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
     pendingBrainstormRef.current = false;
   };
 
+  const handleReRun = async (newKeywords: string) => {
+    if (newKeywords !== keywords) {
+      onKeywordsChange(newKeywords);
+    }
+    const result = await brainstorm(newKeywords, undefined, true);
+    if (result && onBrainstormResult) {
+      onBrainstormResult(result);
+    }
+  };
+
   if (!isVisible) return null;
 
   return (
@@ -183,6 +193,8 @@ export const BrainstormButton: React.FC<BrainstormButtonProps> = ({
         isBrainstorming={isBrainstorming}
         progressMessage={progressMessage}
         onSelectSuggestion={handleSelectSuggestion}
+        initialKeywords={keywords}
+        onReRun={handleReRun}
       />
 
       {showConnectOverlay && (

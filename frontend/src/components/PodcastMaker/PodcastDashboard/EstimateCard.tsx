@@ -31,21 +31,33 @@ export const EstimateCard: React.FC<EstimateCardProps> = ({ estimate }) => {
         <Divider sx={{ borderColor: "rgba(0,0,0,0.08)" }} />
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           <Chip
-            label={`Voice: $${estimate.ttsCost.toFixed(2)}`}
+            label={`Analysis: $${estimate.analysisCost.toFixed(2)}`}
             size="small"
-            title="Voice narration cost"
-            sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
-          />
-          <Chip
-            label={`Visuals: $${estimate.avatarCost.toFixed(2)}`}
-            size="small"
-            title="Avatar/video cost"
+            title="Topic analysis cost"
             sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
           />
           <Chip
             label={`Research: $${estimate.researchCost.toFixed(2)}`}
             size="small"
             title="Research and fact-checking cost"
+            sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+          />
+          <Chip
+            label={`Script: $${estimate.scriptCost.toFixed(2)}`}
+            size="small"
+            title="Script generation cost"
+            sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+          />
+          <Chip
+            label={`Voice: $${(estimate.ttsCost + estimate.voiceCloneCost).toFixed(2)}`}
+            size="small"
+            title={`Voice narration ($${estimate.ttsCost.toFixed(2)}) + cloning ($${estimate.voiceCloneCost.toFixed(2)})`}
+            sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
+          />
+          <Chip
+            label={`Visuals: $${(estimate.avatarCost + estimate.videoCost).toFixed(2)}`}
+            size="small"
+            title="Avatar and video cost"
             sx={{ background: "#eef2ff", color: "#0f172a", border: "1px solid rgba(0,0,0,0.06)" }}
           />
         </Stack>

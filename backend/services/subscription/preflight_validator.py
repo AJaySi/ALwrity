@@ -241,7 +241,8 @@ def validate_exa_research_operations(
 def validate_image_generation_operations(
     pricing_service: PricingService,
     user_id: str,
-    num_images: int = 1
+    num_images: int = 1,
+    provider_name: Optional[str] = None,
 ) -> None:
     """
     Validate image generation operation(s) before making API calls.
@@ -250,25 +251,36 @@ def validate_image_generation_operations(
         pricing_service: PricingService instance
         user_id: User ID for subscription checking
         num_images: Number of images to generate (for multiple variations)
+        provider_name: Actual image provider (e.g., 'stability', 'gemini', 'huggingface', 'wavespeed')
         
     Returns:
         None
         If validation fails, raises HTTPException with 429 status
     """
     try:
+        # Map actual provider name to the APIProvider used for limit enforcement
+        provider_map = {
+            'stability': APIProvider.STABILITY,
+            'gemini': APIProvider.GEMINI,
+            'huggingface': APIProvider.MISTRAL,  # HF images track to total_calls, enforce via MISTRAL
+            'wavespeed': APIProvider.WAVESPEED,
+        }
+        api_provider = provider_map.get(provider_name or '', APIProvider.STABILITY)
+        display_name = provider_name or 'stability'
+
         # Create validation operations for each image
         operations_to_validate = [
             {
-                'provider': APIProvider.STABILITY,
+                'provider': api_provider,
                 'tokens_requested': 0,
-                'actual_provider_name': 'stability',
+                'actual_provider_name': display_name,
                 'operation_type': 'image_generation'
             }
             for _ in range(num_images)
         ]
         
-        logger.info(f"[Pre-flight Validator] 🚀 Validating {num_images} image generation(s) for user {user_id}")
-        
+        logger.info(f"[Pre-flight Validator] 🚀 Validating {num_images} image generation(s) for user {user_id}, provider={display_name}")
+
         can_proceed, message, error_details = pricing_service.check_comprehensive_limits(
             user_id=user_id,
             operations=operations_to_validate
@@ -278,7 +290,7 @@ def validate_image_generation_operations(
             logger.error(f"[Pre-flight Validator] Image generation blocked for user {user_id}: {message}")
             
             usage_info = error_details.get('usage_info', {}) if error_details else {}
-            provider = usage_info.get('provider', 'stability') if usage_info else 'stability'
+            provider = usage_info.get('provider', display_name) if usage_info else display_name
             
             raise HTTPException(
                 status_code=429,

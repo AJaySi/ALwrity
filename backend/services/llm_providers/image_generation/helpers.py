@@ -13,7 +13,8 @@ def _validate_image_operation(
     user_id: Optional[str],
     operation_type: str = "image-generation",
     num_operations: int = 1,
-    log_prefix: str = "[Image Generation]"
+    log_prefix: str = "[Image Generation]",
+    provider_name: Optional[str] = None,
 ) -> None:
     """Reusable pre-flight validation helper for all image operations."""
     if not user_id:
@@ -32,7 +33,8 @@ def _validate_image_operation(
         validate_image_generation_operations(
             pricing_service=pricing_service,
             user_id=user_id,
-            num_images=num_operations
+            num_images=num_operations,
+            provider_name=provider_name,
         )
         logger.info(f"{log_prefix} ✅ Pre-flight validation passed for user_id={user_id}")
     except HTTPException:

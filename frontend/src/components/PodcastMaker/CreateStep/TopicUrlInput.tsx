@@ -39,10 +39,13 @@ interface TopicUrlInputProps {
   categoryResearchLoading?: boolean;
   // Estimated cost - can be a number (from pre-estimate) or object (from analyze response)
   estimatedCost?: number | {
+    analysisCost: number;
+    researchCost: number;
+    scriptCost: number;
     ttsCost: number;
+    voiceCloneCost: number;
     avatarCost: number;
     videoCost: number;
-    researchCost: number;
     total: number;
   } | null;
   duration?: number;

@@ -564,11 +564,11 @@ class PricingService:
                 "serper_calls_limit": 10,
                 "metaphor_calls_limit": 0,  # DISABLED: Metaphor not in Free tier
                 "firecrawl_calls_limit": 0,  # DISABLED: Firecrawl not in Free tier
-                "stability_calls_limit": 3,  # 3 images - enough to try the product
+                "stability_calls_limit": 10,  # 10 images - enough for 2 podcasts (5 images each)
                 "exa_calls_limit": 10,  # 10 research queries - enough to try the product
                 "video_calls_limit": 2,  # 2 video renders - try podcast video on Free
                 "image_edit_calls_limit": 5,  # 5 image edits - enough to try the product
-                "audio_calls_limit": 5,  # 5 audio clips - enough to try the product
+                "audio_calls_limit": 10,  # 10 audio clips - enough for 2 podcasts (5 clips each)
                 "wavespeed_calls_limit": 0,  # 0 = unlimited for Free; video controlled via video_calls_limit
                 "gemini_tokens_limit": 50000,
                 "openai_tokens_limit": 0,  # DISABLED

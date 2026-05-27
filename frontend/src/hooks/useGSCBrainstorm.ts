@@ -28,7 +28,7 @@ interface UseGSCBrainstormReturn {
   aiRecommendations: AIRecommendations | null;
   summary: BrainstormSummary | null;
   connectGSC: () => Promise<void>;
-  brainstorm: (keywords: string, siteUrl?: string) => Promise<BrainstormResult | null>;
+  brainstorm: (keywords: string, siteUrl?: string, forceRefresh?: boolean) => Promise<BrainstormResult | null>;
   reset: () => void;
   progressMessage: string;
 }
@@ -92,11 +92,33 @@ export const useGSCBrainstorm = (): UseGSCBrainstormReturn => {
     setProgressMessage('');
   };
 
+  const makeCacheKey = (keywords: string, siteUrl?: string) => {
+    const norm = keywords.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+    return `gsc_brainstorm_${norm}_${siteUrl || ''}`;
+  };
+
   const brainstorm = useCallback(
-    async (keywords: string, siteUrl?: string): Promise<BrainstormResult | null> => {
+    async (keywords: string, siteUrl?: string, forceRefresh?: boolean): Promise<BrainstormResult | null> => {
       setIsBrainstorming(true);
       setBrainstormError(null);
       startProgressMessages();
+
+      const cacheKey = makeCacheKey(keywords, siteUrl);
+
+      if (!forceRefresh) {
+        try {
+          const cached = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+          if (cached) {
+            const parsed: BrainstormResult = JSON.parse(cached);
+            if (parsed && !parsed.error && parsed.content_opportunities?.length) {
+              setBrainstormResult(parsed);
+              stopProgressMessages();
+              setIsBrainstorming(false);
+              return parsed;
+            }
+          }
+        } catch { /* cache read failed — proceed with API call */ }
+      }
 
       try {
         gscBrainstormAPI.setAuthTokenGetter(async () => {
@@ -109,6 +131,9 @@ export const useGSCBrainstorm = (): UseGSCBrainstormReturn => {
 
         const result = await gscBrainstormAPI.brainstorm(keywords, siteUrl);
         setBrainstormResult(result);
+        if (result && !result.error) {
+          try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch { /* quota exceeded */ }
+        }
         return result;
       } catch (error: any) {
         let message = 'Failed to brainstorm topics. Please try again.';

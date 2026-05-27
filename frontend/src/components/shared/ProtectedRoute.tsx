@@ -39,7 +39,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const isFeatureLimited = shouldSkipOnboarding();
   const defaultRoute = getDefaultLandingRoute();
   const isOnDefaultRoute = typeof location?.pathname === 'string' && location.pathname.startsWith(defaultRoute);
-  const allowAccess = isOnboardingComplete || localComplete || (isFeatureLimited && isOnDefaultRoute);
+
+  // Allow access to utility pages regardless of onboarding status
+  const bypassRoutes = ['/billing', '/pricing', '/onboarding'];
+  const isBypassRoute = typeof location?.pathname === 'string' && bypassRoutes.some(route => location.pathname.startsWith(route));
+
+  const allowAccess = isOnboardingComplete || localComplete || (isFeatureLimited && isOnDefaultRoute) || isBypassRoute;
 
   // Wait for Clerk to load before any redirect decisions
   if (!isLoaded) {

@@ -142,19 +142,32 @@ export const AnalysisPanelLayout: React.FC<{ children: React.ReactNode }> = ({ c
                 )}
                 <Stack direction="row" spacing={1} sx={{ display: { xs: 'none', lg: 'flex' } }}>
                   <Chip 
-                    label={`Voice: $${estimate.ttsCost.toFixed(2)}`} 
-                    size="small" 
-                    variant="outlined" 
-                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
-                  />
-                  <Chip 
-                    label={`Visuals: $${estimate.avatarCost.toFixed(2)}`} 
+                    label={`Analysis: $${estimate.analysisCost.toFixed(2)}`} 
                     size="small" 
                     variant="outlined" 
                     sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
                   />
                   <Chip 
                     label={`Research: $${estimate.researchCost.toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                  <Chip 
+                    label={`Script: $${estimate.scriptCost.toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                  <Chip 
+                    label={`Voice: $${(estimate.ttsCost + estimate.voiceCloneCost).toFixed(2)}`} 
+                    size="small" 
+                    variant="outlined" 
+                    title={`Voice narration ($${estimate.ttsCost.toFixed(2)}) + cloning ($${estimate.voiceCloneCost.toFixed(2)})`}
+                    sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 
+                  />
+                  <Chip 
+                    label={`Visuals: $${(estimate.avatarCost + estimate.videoCost).toFixed(2)}`} 
                     size="small" 
                     variant="outlined" 
                     sx={{ height: 20, fontSize: '0.7rem', color: "#64748b", borderColor: "rgba(0,0,0,0.15)", bgcolor: "rgba(0,0,0,0.02)" }} 

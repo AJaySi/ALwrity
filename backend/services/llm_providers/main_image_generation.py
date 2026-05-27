@@ -61,15 +61,17 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
         options: Image generation options (provider, model, width, height, etc.)
         user_id: User ID for subscription checking (optional, but required for validation)
     """
-    # PRE-FLIGHT VALIDATION: Reuse extracted helper
+    opts = options or {}
+    provider_name = _select_provider(opts.get("provider"), user_id=user_id)
+
+    # PRE-FLIGHT VALIDATION: Run after provider selection so enforcement checks correct limit
     _validate_image_operation(
         user_id=user_id,
         operation_type="image-generation",
         num_operations=1,
-        log_prefix="[Image Generation]"
+        log_prefix="[Image Generation]",
+        provider_name=provider_name,
     )
-    opts = options or {}
-    provider_name = _select_provider(opts.get("provider"), user_id=user_id)
 
     image_options = ImageGenerationOptions(
         prompt=prompt,
