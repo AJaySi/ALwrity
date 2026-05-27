@@ -107,6 +107,7 @@ class ContentAssetService:
         user_id: str,
         asset_type: Optional[AssetType] = None,
         source_module: Optional[AssetSource] = None,
+        source_modules: Optional[List[AssetSource]] = None,
         search_query: Optional[str] = None,
         tags: Optional[List[str]] = None,
         favorites_only: bool = False,
@@ -125,6 +126,7 @@ class ContentAssetService:
             user_id: Clerk user ID
             asset_type: Filter by asset type (optional)
             source_module: Filter by source module (optional)
+            source_modules: Filter by multiple source modules (optional)
             search_query: Search in title, description, prompt (optional)
             tags: Filter by tags (optional)
             favorites_only: Only return favorites (optional)
@@ -142,7 +144,9 @@ class ContentAssetService:
             if asset_type:
                 query = query.filter(ContentAsset.asset_type == asset_type)
             
-            if source_module:
+            if source_modules:
+                query = query.filter(ContentAsset.source_module.in_(source_modules))
+            elif source_module:
                 query = query.filter(ContentAsset.source_module == source_module)
             
             if favorites_only:
