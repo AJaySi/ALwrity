@@ -193,61 +193,87 @@ async def stream_strategic_intelligence(
             
             # Send progress update
             yield {"type": "progress", "message": "Processing intelligence data...", "progress": 60}
-            
+
+            def _ensure_list(value: Any) -> list:
+                if isinstance(value, list):
+                    return [item for item in value if item is not None]
+                return []
+
+            competitors = _ensure_list(strategy.get("top_competitors"))[:3]
+            market_gaps = _ensure_list(strategy.get("market_gaps"))
+
+            raw_insights = ai_recommendations.get("strategic_insights")
+            if isinstance(raw_insights, dict):
+                ai_insights = [raw_insights]
+            elif isinstance(raw_insights, list):
+                ai_insights = [item for item in raw_insights if item is not None]
+            else:
+                ai_insights = []
+
+            opportunity_candidates = [
+                ai_recommendations.get("opportunity_analysis"),
+                ai_recommendations.get("opportunities"),
+                ai_recommendations.get("strategic_opportunities"),
+            ]
+            opportunities = []
+            for candidate in opportunity_candidates:
+                if isinstance(candidate, list) and candidate:
+                    opportunities = [item for item in candidate if item is not None]
+                    break
+
+            persisted_current_position = strategy.get("competitive_position")
+            ai_positioning = ai_recommendations.get("market_positioning") if isinstance(ai_recommendations.get("market_positioning"), dict) else {}
+            current_position = persisted_current_position or ai_positioning.get("current_position")
+            target_position = ai_positioning.get("target_position")
+            differentiation_factors = _ensure_list(ai_positioning.get("differentiation_factors"))
+
+            has_required_signals = bool(current_position and competitors and market_gaps and ai_insights and opportunities)
+            status = "success" if has_required_signals else "partial_incomplete"
+
+            source_flags = {
+                "current_position": "user_or_database" if persisted_current_position else ("model" if ai_positioning.get("current_position") else "insufficient_data"),
+                "target_position": "model" if target_position else "insufficient_data",
+                "differentiation_factors": "model" if differentiation_factors else "insufficient_data",
+                "top_competitors": "user_or_database" if competitors else "insufficient_data",
+                "market_gaps": "user_or_database" if market_gaps else "insufficient_data",
+                "ai_insights": "model" if ai_insights else "insufficient_data",
+                "opportunities": "model" if opportunities else "insufficient_data"
+            }
+
+            missing_signals = [key for key, value in {
+                "market_positioning.current_position": bool(current_position),
+                "competitive_analysis.top_competitors": bool(competitors),
+                "competitive_analysis.market_gaps": bool(market_gaps),
+                "ai_insights": bool(ai_insights),
+                "opportunities": bool(opportunities),
+            }.items() if not value]
+
             strategic_intelligence = {
+                "status": status,
+                "is_model_derived": any(source == "model" for source in source_flags.values()),
+                "data_source_flags": source_flags,
+                "missing_signals": missing_signals,
                 "market_positioning": {
-                    "current_position": strategy.get("competitive_position", "Challenger"),
-                    "target_position": "Market Leader",
-                    "differentiation_factors": [
-                        "AI-powered content optimization",
-                        "Data-driven strategy development",
-                        "Personalized user experience"
-                    ]
+                    "current_position": current_position,
+                    "target_position": target_position,
+                    "differentiation_factors": differentiation_factors,
                 },
                 "competitive_analysis": {
-                    "top_competitors": strategy.get("top_competitors", [])[:3] or [
-                        "Competitor A", "Competitor B", "Competitor C"
-                    ],
-                    "competitive_advantages": [
-                        "Advanced AI capabilities",
-                        "Comprehensive data integration",
-                        "User-centric design"
-                    ],
-                    "market_gaps": strategy.get("market_gaps", []) or [
-                        "AI-driven content personalization",
-                        "Real-time performance optimization",
-                        "Predictive analytics"
-                    ]
+                    "top_competitors": competitors,
+                    "market_gaps": market_gaps,
                 },
-                "ai_insights": ai_recommendations.get("strategic_insights", []) or [
-                    "Focus on pillar content strategy",
-                    "Implement topic clustering",
-                    "Optimize for voice search"
-                ],
-                "opportunities": [
-                    {
-                        "area": "Content Personalization",
-                        "potential_impact": "High",
-                        "implementation_timeline": "3-6 months",
-                        "estimated_roi": "25-40%"
-                    },
-                    {
-                        "area": "AI-Powered Optimization",
-                        "potential_impact": "Medium",
-                        "implementation_timeline": "6-12 months",
-                        "estimated_roi": "15-30%"
-                    }
-                ]
+                "ai_insights": ai_insights,
+                "opportunities": opportunities,
             }
-            
+
             # Cache the strategic intelligence data
             set_cached_data(cache_key, strategic_intelligence)
-            
+
             # Send progress update
             yield {"type": "progress", "message": "Finalizing strategic intelligence...", "progress": 80}
-            
+
             # Send final result
-            yield {"type": "result", "status": "success", "data": strategic_intelligence, "progress": 100}
+            yield {"type": "result", "status": status, "data": strategic_intelligence, "progress": 100}
             
             logger.info(f"✅ Strategic intelligence stream completed for user: {authenticated_user_id}")
             
