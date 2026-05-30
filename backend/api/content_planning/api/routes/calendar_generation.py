@@ -114,25 +114,23 @@ async def generate_comprehensive_calendar(
         )
 
 @router.post("/optimize-content", response_model=ContentOptimizationResponse)
-async def optimize_content_for_platform(request: ContentOptimizationRequest, db: Session = Depends(get_db)):
+async def optimize_content_for_platform(
+    request: ContentOptimizationRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Optimize content for specific platforms using database insights.
-    
-    This endpoint optimizes content based on:
-    - Historical performance data for the platform
-    - Audience preferences from onboarding data
-    - Gap analysis insights for content improvement
-    - Competitor analysis for differentiation
-    - Active strategy data for optimal alignment
+    Optimize content for specific platforms using database insights with user isolation.
     """
     try:
-        logger.info(f"🔧 Starting content optimization for user {request.user_id}")
+        clerk_user_id = str(current_user.get('id'))
+        logger.info(f"🔧 Starting content optimization for authenticated user {clerk_user_id}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         result = await calendar_service.optimize_content_for_platform(
-            user_id=request.user_id,
+            user_id=clerk_user_id,
             title=request.title,
             description=request.description,
             content_type=request.content_type,
@@ -152,24 +150,23 @@ async def optimize_content_for_platform(request: ContentOptimizationRequest, db:
         )
 
 @router.post("/performance-predictions", response_model=PerformancePredictionResponse)
-async def predict_content_performance(request: PerformancePredictionRequest, db: Session = Depends(get_db)):
+async def predict_content_performance(
+    request: PerformancePredictionRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Predict content performance using database insights.
-    
-    This endpoint predicts performance based on:
-    - Historical performance data
-    - Audience demographics and preferences
-    - Content type and platform patterns
-    - Gap analysis opportunities
+    Predict content performance using database insights with user isolation.
     """
     try:
-        logger.info(f"📊 Starting performance prediction for user {request.user_id}")
+        clerk_user_id = str(current_user.get('id'))
+        logger.info(f"📊 Starting performance prediction for authenticated user {clerk_user_id}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         result = await calendar_service.predict_content_performance(
-            user_id=request.user_id,
+            user_id=clerk_user_id,
             content_type=request.content_type,
             platform=request.platform,
             content_data=request.content_data,
@@ -186,24 +183,23 @@ async def predict_content_performance(request: PerformancePredictionRequest, db:
         )
 
 @router.post("/repurpose-content", response_model=ContentRepurposingResponse)
-async def repurpose_content_across_platforms(request: ContentRepurposingRequest, db: Session = Depends(get_db)):
+async def repurpose_content_across_platforms(
+    request: ContentRepurposingRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Repurpose content across different platforms using database insights.
-    
-    This endpoint suggests content repurposing based on:
-    - Existing content and strategy data
-    - Gap analysis opportunities
-    - Platform-specific requirements
-    - Audience preferences
+    Repurpose content across different platforms using database insights with user isolation.
     """
     try:
-        logger.info(f"🔄 Starting content repurposing for user {request.user_id}")
+        clerk_user_id = str(current_user.get('id'))
+        logger.info(f"🔄 Starting content repurposing for authenticated user {clerk_user_id}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         result = await calendar_service.repurpose_content_across_platforms(
-            user_id=request.user_id,
+            user_id=clerk_user_id,
             original_content=request.original_content,
             target_platforms=request.target_platforms,
             strategy_id=request.strategy_id
@@ -312,12 +308,16 @@ async def get_comprehensive_user_data(
         )
 
 @router.get("/health")
-async def calendar_generation_health_check(db: Session = Depends(get_db)):
+async def calendar_generation_health_check(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Health check for calendar generation services.
     """
     try:
-        logger.info("🏥 Performing calendar generation health check")
+        clerk_user_id = str(current_user.get('id'))
+        logger.info(f"🏥 Performing calendar generation health check for user {clerk_user_id}")
         
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
@@ -337,12 +337,17 @@ async def calendar_generation_health_check(db: Session = Depends(get_db)):
         }
 
 @router.get("/progress/{session_id}")
-async def get_calendar_generation_progress(session_id: str, db: Session = Depends(get_db)):
+async def get_calendar_generation_progress(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get real-time progress of calendar generation for a specific session.
     This endpoint is polled by the frontend modal to show progress updates.
     """
     try:
+        clerk_user_id = str(current_user.get('id'))
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
@@ -433,11 +438,16 @@ async def start_calendar_generation(
         raise HTTPException(status_code=500, detail="Failed to start calendar generation")
 
 @router.delete("/cancel/{session_id}")
-async def cancel_calendar_generation(session_id: str, db: Session = Depends(get_db)):
+async def cancel_calendar_generation(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Cancel an ongoing calendar generation session.
     """
     try:
+        clerk_user_id = str(current_user.get('id'))
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
@@ -463,9 +473,13 @@ async def cancel_calendar_generation(session_id: str, db: Session = Depends(get_
 
 # Cache Management Endpoints
 @router.get("/cache/stats")
-async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def get_cache_stats(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Get comprehensive user data cache statistics."""
     try:
+        clerk_user_id = str(current_user.get('id'))
         from services.comprehensive_user_data_cache_service import ComprehensiveUserDataCacheService
         cache_service = ComprehensiveUserDataCacheService(db)
         stats = cache_service.get_cache_stats()
@@ -478,19 +492,21 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
 async def invalidate_user_cache(
     user_id: str,
     strategy_id: Optional[int] = Query(None, description="Strategy ID to invalidate (optional)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Invalidate cache for a specific user/strategy."""
+    """Invalidate cache for the authenticated user."""
     try:
+        clerk_user_id = str(current_user.get('id'))
         from services.comprehensive_user_data_cache_service import ComprehensiveUserDataCacheService
         cache_service = ComprehensiveUserDataCacheService(db)
-        success = cache_service.invalidate_cache(user_id, strategy_id)
+        success = cache_service.invalidate_cache(clerk_user_id, strategy_id)
         
         if success:
             return {
                 "status": "success",
-                "message": f"Cache invalidated for user {user_id}" + (f" and strategy {strategy_id}" if strategy_id else ""),
-                "user_id": user_id,
+                "message": f"Cache invalidated for user {clerk_user_id}" + (f" and strategy {strategy_id}" if strategy_id else ""),
+                "user_id": clerk_user_id,
                 "strategy_id": strategy_id
             }
         else:
@@ -501,9 +517,13 @@ async def invalidate_user_cache(
         raise HTTPException(status_code=500, detail="Failed to invalidate cache")
 
 @router.post("/cache/cleanup")
-async def cleanup_expired_cache(db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def cleanup_expired_cache(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
     """Clean up expired cache entries."""
     try:
+        clerk_user_id = str(current_user.get('id'))
         from services.comprehensive_user_data_cache_service import ComprehensiveUserDataCacheService
         cache_service = ComprehensiveUserDataCacheService(db)
         deleted_count = cache_service.cleanup_expired_cache()
@@ -519,16 +539,22 @@ async def cleanup_expired_cache(db: Session = Depends(get_db)) -> Dict[str, Any]
         raise HTTPException(status_code=500, detail="Failed to clean up cache")
 
 @router.get("/sessions")
-async def list_active_sessions(db: Session = Depends(get_db)):
+async def list_active_sessions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    List all active calendar generation sessions.
+    List active calendar generation sessions for the authenticated user.
     """
     try:
+        clerk_user_id = str(current_user.get('id'))
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         
         sessions = []
         for session_id, session_data in calendar_service.orchestrator_sessions.items():
+            if str(session_data.get("user_id", "")) != clerk_user_id:
+                continue
             sessions.append({
                 "session_id": session_id,
                 "user_id": session_data.get("user_id"),
@@ -548,11 +574,15 @@ async def list_active_sessions(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to list sessions")
 
 @router.delete("/sessions/cleanup")
-async def cleanup_old_sessions(db: Session = Depends(get_db)):
+async def cleanup_old_sessions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Clean up old sessions.
+    Clean up old sessions for the authenticated user.
     """
     try:
+        clerk_user_id = str(current_user.get('id'))
         # Initialize service with database session for active strategy access
         calendar_service = CalendarGenerationService(db)
         

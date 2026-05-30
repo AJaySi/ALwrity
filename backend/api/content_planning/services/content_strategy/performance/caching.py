@@ -44,6 +44,11 @@ class CachingService:
                 'ttl': 900,  # 15 minutes
                 'max_size': 1000,
                 'priority': 'low'
+            },
+            'streaming_intelligence': {
+                'ttl': 300,  # 5 minutes
+                'max_size': 500,
+                'priority': 'medium'
             }
         }
 

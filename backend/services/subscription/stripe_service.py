@@ -438,7 +438,7 @@ class StripeService:
                 except Exception as cache_err:
                     logger.warning(f"Failed to clear user cache after checkout for user {user_id}: {cache_err}")
                 try:
-                    from api.subscription.cache import clear_dashboard_cache
+                    from services.subscription.cache import clear_dashboard_cache
                     clear_dashboard_cache(user_id)
                     logger.info(f"Cleared dashboard cache for user {user_id} after checkout")
                 except Exception as cache_err:
@@ -488,7 +488,7 @@ class StripeService:
             except Exception as cache_err:
                 logger.warning(f"Failed to clear user cache after payment success for user {subscription.user_id}: {cache_err}")
             try:
-                from api.subscription.cache import clear_dashboard_cache
+                from services.subscription.cache import clear_dashboard_cache
                 clear_dashboard_cache(subscription.user_id)
             except Exception as dash_cache_err:
                 logger.warning(f"Failed to clear dashboard cache after payment success for user {subscription.user_id}: {dash_cache_err}")
@@ -552,7 +552,7 @@ class StripeService:
             except Exception as cache_err:
                 logger.warning(f"Failed to clear user cache after subscription update for user {subscription.user_id}: {cache_err}")
             try:
-                from api.subscription.cache import clear_dashboard_cache
+                from services.subscription.cache import clear_dashboard_cache
                 clear_dashboard_cache(subscription.user_id)
             except Exception as dash_cache_err:
                 logger.warning(f"Failed to clear dashboard cache after subscription update for user {subscription.user_id}: {dash_cache_err}")

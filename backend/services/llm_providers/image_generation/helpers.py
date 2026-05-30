@@ -166,6 +166,8 @@ def _track_image_operation_usage(
             video_limit = limits['limits'].get("video_calls", 0) if limits else 0
 
             db_track.commit()
+            from services.subscription.cache import clear_dashboard_cache
+            clear_dashboard_cache(user_id)
             logger.info(f"{log_prefix} ✅ Tracked usage: user {user_id} -> {operation_type} -> {new_calls} calls, ${cost:.4f}")
 
             operation_name = operation_type.replace("-", " ").title()

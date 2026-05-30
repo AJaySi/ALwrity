@@ -13,6 +13,7 @@ interface BlogWriterLandingSectionProps {
   blogLengthRef?: React.MutableRefObject<string>;
   startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
   restoreAttempted?: boolean;
+  onBrainstormResult?: (result: import('../../../api/gscBrainstorm').BrainstormResult) => void;
 }
 
 const VALID_PHASES = ['research', 'outline', 'content', 'seo', 'publish'];
@@ -27,6 +28,7 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
   blogLengthRef,
   startResearchRef,
   restoreAttempted = false,
+  onBrainstormResult,
 }) => {
   if (!research) {
     if (currentPhase === 'research') {
@@ -36,6 +38,7 @@ export const BlogWriterLandingSection: React.FC<BlogWriterLandingSectionProps> =
           onKeywordsChange={onKeywordsChange}
           blogLengthRef={blogLengthRef}
           researchRef={startResearchRef}
+          onBrainstormResult={onBrainstormResult}
         />
       );
     }

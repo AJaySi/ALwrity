@@ -65,12 +65,16 @@ async def analyze_content_evolution(
         )
 
 @router.post("/performance-trends", response_model=AIAnalyticsResponse)
-async def analyze_performance_trends(request: PerformanceTrendsRequest):
+async def analyze_performance_trends(
+    request: PerformanceTrendsRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Analyze performance trends for content strategy.
     """
     try:
-        logger.info(f"Starting performance trends analysis for strategy {request.strategy_id}")
+        user_id = current_user.get("user_id")
+        logger.info(f"Starting performance trends analysis for strategy {request.strategy_id} (user {user_id})")
         
         result = await ai_analytics_service.analyze_performance_trends(
             strategy_id=request.strategy_id,
@@ -87,12 +91,16 @@ async def analyze_performance_trends(request: PerformanceTrendsRequest):
         )
 
 @router.post("/predict-performance", response_model=AIAnalyticsResponse)
-async def predict_content_performance(request: ContentPerformancePredictionRequest):
+async def predict_content_performance(
+    request: ContentPerformancePredictionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Predict content performance using AI models.
     """
     try:
-        logger.info(f"Starting content performance prediction for strategy {request.strategy_id}")
+        user_id = current_user.get("user_id")
+        logger.info(f"Starting content performance prediction for strategy {request.strategy_id} (user {user_id})")
         
         result = await ai_analytics_service.predict_content_performance(
             strategy_id=request.strategy_id,
@@ -137,12 +145,13 @@ async def generate_strategic_intelligence(
 
 @router.get("/", response_model=Dict[str, Any])
 async def get_ai_analytics(
-    user_id: Optional[int] = Query(None, description="User ID"),
     strategy_id: Optional[int] = Query(None, description="Strategy ID"),
-    force_refresh: bool = Query(False, description="Force refresh AI analysis")
+    force_refresh: bool = Query(False, description="Force refresh AI analysis"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get AI analytics with real personalized insights - Database first approach."""
     try:
+        user_id = current_user.get("user_id") or current_user.get("id")
         logger.info(f"🚀 Starting AI analytics for user: {user_id}, strategy: {strategy_id}, force_refresh: {force_refresh}")
         
         result = await ai_analytics_service.get_ai_analytics(user_id, strategy_id, force_refresh)
@@ -153,11 +162,14 @@ async def get_ai_analytics(
         raise HTTPException(status_code=500, detail=f"Error generating AI analytics: {str(e)}")
 
 @router.get("/health")
-async def ai_analytics_health_check():
+async def ai_analytics_health_check(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Health check for AI analytics services.
     """
     try:
+        logger.debug(f"AI analytics health check by user: {current_user.get('id')}")
         # Check AI analytics service
         service_status = {}
         
@@ -197,14 +209,16 @@ async def ai_analytics_health_check():
 async def get_user_ai_analysis_results(
     user_id: int,
     analysis_type: Optional[str] = Query(None, description="Filter by analysis type"),
-    limit: int = Query(10, description="Number of results to return")
+    limit: int = Query(10, description="Number of results to return"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get AI analysis results for a specific user."""
+    """Get AI analysis results for the authenticated user."""
     try:
-        logger.info(f"Fetching AI analysis results for user {user_id}")
+        authenticated_user_id = current_user.get("user_id") or current_user.get("id")
+        logger.info(f"Fetching AI analysis results for authenticated user {authenticated_user_id}")
         
         result = await ai_analytics_service.get_user_ai_analysis_results(
-            user_id=user_id,
+            user_id=authenticated_user_id,
             analysis_type=analysis_type,
             limit=limit
         )
@@ -219,14 +233,16 @@ async def get_user_ai_analysis_results(
 async def refresh_ai_analysis(
     user_id: int,
     analysis_type: str = Query(..., description="Type of analysis to refresh"),
-    strategy_id: Optional[int] = Query(None, description="Strategy ID")
+    strategy_id: Optional[int] = Query(None, description="Strategy ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Force refresh of AI analysis for a user."""
+    """Force refresh of AI analysis for the authenticated user."""
     try:
-        logger.info(f"Force refreshing AI analysis for user {user_id}, type: {analysis_type}")
+        authenticated_user_id = current_user.get("user_id") or current_user.get("id")
+        logger.info(f"Force refreshing AI analysis for authenticated user {authenticated_user_id}, type: {analysis_type}")
         
         result = await ai_analytics_service.refresh_ai_analysis(
-            user_id=user_id,
+            user_id=authenticated_user_id,
             analysis_type=analysis_type,
             strategy_id=strategy_id
         )
@@ -240,14 +256,16 @@ async def refresh_ai_analysis(
 @router.delete("/cache/{user_id}")
 async def clear_ai_analysis_cache(
     user_id: int,
-    analysis_type: Optional[str] = Query(None, description="Specific analysis type to clear")
+    analysis_type: Optional[str] = Query(None, description="Specific analysis type to clear"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Clear AI analysis cache for a user."""
+    """Clear AI analysis cache for the authenticated user."""
     try:
-        logger.info(f"Clearing AI analysis cache for user {user_id}")
+        authenticated_user_id = current_user.get("user_id") or current_user.get("id")
+        logger.info(f"Clearing AI analysis cache for authenticated user {authenticated_user_id}")
         
         result = await ai_analytics_service.clear_ai_analysis_cache(
-            user_id=user_id,
+            user_id=authenticated_user_id,
             analysis_type=analysis_type
         )
         
@@ -259,13 +277,15 @@ async def clear_ai_analysis_cache(
 
 @router.get("/statistics")
 async def get_ai_analysis_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user),
     user_id: Optional[int] = Query(None, description="User ID for user-specific stats")
 ):
     """Get AI analysis statistics."""
     try:
-        logger.info(f"📊 Getting AI analysis statistics for user: {user_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"📊 Getting AI analysis statistics for authenticated user: {clerk_user_id}")
         
-        result = await ai_analytics_service.get_ai_analysis_statistics(user_id)
+        result = await ai_analytics_service.get_ai_analysis_statistics(user_id or clerk_user_id)
         return result
         
     except Exception as e:

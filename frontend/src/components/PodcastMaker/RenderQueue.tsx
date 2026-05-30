@@ -14,6 +14,7 @@ import { SummaryStats } from "./RenderQueue/SummaryStats";
 import { GuidancePanel } from "./RenderQueue/GuidancePanel";
 import { useRenderQueue } from "./RenderQueue/useRenderQueue";
 import { fetchMediaBlobUrl } from "../../utils/fetchMediaBlobUrl";
+import { useYouTubePublish } from "../../hooks/useYouTubePublish";
 
 interface RenderQueueProps {
   projectId: string;
@@ -73,6 +74,8 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
       onError(msg);
     },
   });
+
+  const youtube = useYouTubePublish();
 
   const handleDownloadAudio = useCallback((audioUrl: string, title: string) => {
     const link = document.createElement("a");
@@ -431,7 +434,7 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
                   </video>
                 </Box>
 
-                {/* Download Button */}
+                {/* Download & Publish Buttons */}
                 <Stack direction="row" spacing={2} justifyContent="center" sx={{ pt: 2 }}>
                   <Button
                     variant="contained"
@@ -460,7 +463,87 @@ export const RenderQueue: React.FC<RenderQueueProps> = ({
                   >
                     Download Final Podcast
                   </Button>
+
+                  {youtube.connected && youtube.activeChannel ? (
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={
+                        youtube.publishState.publishing
+                          ? <CircularProgress size={20} sx={{ color: "#fff" }} />
+                          : <span style={{ fontSize: 20 }}>▶</span>
+                      }
+                      onClick={() => {
+                        if (finalVideoUrl) {
+                          const scene = script.scenes[0];
+                          const title = scene?.title || `Podcast - ${scene?.lines?.[0]?.text?.slice(0, 50) || 'Untitled'}`;
+                          youtube.publishToYouTube(
+                            finalVideoUrl,
+                            title,
+                            { description: scene?.title || '', tags: ['podcast', 'ai', 'alwrity'] }
+                          );
+                        }
+                      }}
+                      disabled={youtube.publishState.publishing || !finalVideoUrl}
+                      sx={{
+                        px: 4,
+                        py: 1.5,
+                        background: youtube.publishState.publishing
+                          ? "rgba(255,0,0,0.5)"
+                          : youtube.publishState.videoUrl
+                            ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
+                            : "linear-gradient(135deg, #ff0000 0%, #cc0000 100%)",
+                        boxShadow: !youtube.publishState.publishing ? "0 4px 12px rgba(255,0,0,0.3)" : "none",
+                        "&:hover": {
+                          background: youtube.publishState.publishing
+                            ? "rgba(255,0,0,0.5)"
+                            : "linear-gradient(135deg, #cc0000 0%, #aa0000 100%)",
+                        },
+                      }}
+                    >
+                      {youtube.publishState.publishing
+                        ? youtube.publishState.progress || 'Uploading...'
+                        : youtube.publishState.videoUrl
+                          ? 'Published!'
+                          : 'Publish to YouTube'
+                      }
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      onClick={() => youtube.connect()}
+                      disabled={youtube.publishState.publishing}
+                      sx={{
+                        px: 4,
+                        py: 1.5,
+                        borderColor: "#ff0000",
+                        color: "#ff0000",
+                        "&:hover": {
+                          borderColor: "#cc0000",
+                          background: "rgba(255,0,0,0.04)",
+                        },
+                      }}
+                    >
+                      Connect YouTube to Publish
+                    </Button>
+                  )}
                 </Stack>
+
+                {/* Publish result */}
+                {youtube.publishState.videoUrl && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    Published to YouTube:{" "}
+                    <a href={youtube.publishState.videoUrl} target="_blank" rel="noopener noreferrer">
+                      {youtube.publishState.videoUrl}
+                    </a>
+                  </Alert>
+                )}
+                {youtube.publishState.error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    Publish failed: {youtube.publishState.error}
+                  </Alert>
+                )}
               </Stack>
             ) : (
               <Stack spacing={3}>

@@ -29,6 +29,7 @@ interface CopilotKitComponentsProps {
   setContinuityRefresh: (refresh: number | ((prev: number) => number)) => void;
   researchPolling: any;
   navigateToPhase?: (phase: string) => void;
+  onBrainstormResult?: (result: import('../../../api/gscBrainstorm').BrainstormResult) => void;
 }
 
 export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
@@ -53,6 +54,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
   setContinuityRefresh,
   researchPolling,
   navigateToPhase,
+  onBrainstormResult,
 }) => {
   return (
     <>
@@ -61,7 +63,7 @@ export const CopilotKitComponents: React.FC<CopilotKitComponentsProps> = ({
         onTaskStart={(taskId) => researchPolling.startPolling(taskId)}
       />
       <CustomOutlineForm onOutlineCreated={onOutlineCreated} />
-      <ResearchAction onResearchComplete={onResearchComplete} researchRef={startResearchRef} navigateToPhase={navigateToPhase} />
+      <ResearchAction onResearchComplete={onResearchComplete} researchRef={startResearchRef} navigateToPhase={navigateToPhase} onBrainstormResult={onBrainstormResult} />
       
       <ResearchDataActions 
         research={research} 

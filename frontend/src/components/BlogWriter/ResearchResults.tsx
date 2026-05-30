@@ -6,12 +6,24 @@ interface ResearchResultsProps {
   research: BlogResearchResponse;
   showSourcesOnly?: boolean;
   showAnalysisOnly?: boolean;
+  brainstormResult?: import('../../api/gscBrainstorm').BrainstormResult;
+  onResearchWithKeywords?: (keywords: string) => void;
+  selectedContentAngle?: string;
+  onAngleSelect?: (angle: string) => void;
+  selectedCompetitiveAdvantage?: string;
+  onCompetitiveAdvantageSelect?: (advantage: string) => void;
 }
 
 export const ResearchResults: React.FC<ResearchResultsProps> = ({ 
   research, 
   showSourcesOnly = false,
   showAnalysisOnly = false,
+  brainstormResult,
+  onResearchWithKeywords,
+  selectedContentAngle,
+  onAngleSelect,
+  selectedCompetitiveAdvantage,
+  onCompetitiveAdvantageSelect,
 }) => {
   const [showAnglesModal, setShowAnglesModal] = useState(false);
   const [showCompetitorModal, setShowCompetitorModal] = useState(false);
@@ -142,7 +154,6 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
     const top_competitors: string[] = Array.isArray(ca.top_competitors) ? ca.top_competitors : [];
     const opportunities: string[] = Array.isArray(ca.opportunities) ? ca.opportunities : [];
     const competitive_advantages: string[] = Array.isArray(ca.competitive_advantages) ? ca.competitive_advantages : [];
-    const market_positioning: string | undefined = typeof ca.market_positioning === 'string' ? ca.market_positioning : undefined;
 
     return (
       <div style={{
@@ -238,46 +249,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
               </div>
             </div>
 
-            {/* Market positioning */}
-            {market_positioning && (
-              <div style={{ 
-                border: '1px solid #e5e7eb', 
-                borderRadius: '12px', 
-                padding: '24px', 
-                background: '#ffffff',
-                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-              }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#1f2937', fontWeight: '600' }}>🎯 Market Positioning</h4>
-                <p style={{ margin: 0, color: '#4b5563', lineHeight: '1.7', fontSize: '15px' }}>{market_positioning}</p>
-              </div>
-            )}
-
             {/* Lists */}
-            {top_competitors.length > 0 && (
-              <div style={{ 
-                border: '1px solid #e5e7eb', 
-                borderRadius: '12px', 
-                padding: '24px', 
-                background: '#ffffff',
-                boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-              }}>
-                <h4 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#1f2937', fontWeight: '600' }}>🏁 Top Competitors ({top_competitors.length})</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {top_competitors.map((c, i) => (
-                    <span key={i} style={{ 
-                      background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', 
-                      color: '#1e40af', 
-                      padding: '8px 16px', 
-                      borderRadius: '20px', 
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      border: '1px solid #93c5fd'
-                    }}>{c}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {opportunities.length > 0 && (
               <div style={{ 
                 border: '1px solid #e5e7eb', 
@@ -413,7 +385,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
         <h2 style={{ margin: 0, color: '#333', fontSize: '18px' }}>
-            📊 Research Results for {research.keywords?.join(', ') || 'Your Topic'}
+            📊 Research Topic For Blog Outline
         </h2>
         </div>
           
@@ -479,36 +451,6 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
               🔗 Grounding Analysis
             </div>
 
-            {/* Use Research Blog Topics Chip */}
-            <div 
-              onClick={() => setShowAnglesModal(true)}
-              style={{
-                backgroundColor: '#e8f5e8',
-                color: '#2e7d32',
-                border: '1px solid #4caf50',
-                borderRadius: '20px',
-                padding: '6px 16px',
-                fontSize: '13px',
-                fontWeight: '500',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#c8e6c9';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#e8f5e8';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
-              📝 Use Research Blog Topics
-            </div>
-
             {/* Google Search Suggestions Chip - Only show when we have search data */}
             {(research.search_widget || (research.search_queries && research.search_queries.length > 0)) && (
               <div 
@@ -572,7 +514,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
 
 
       {/* Content */}
-      <ResearchSources research={research} />
+      <ResearchSources research={research} brainstormResult={brainstormResult} onResearchWithKeywords={onResearchWithKeywords} selectedContentAngle={selectedContentAngle} onAngleSelect={onAngleSelect} selectedCompetitiveAdvantage={selectedCompetitiveAdvantage} onCompetitiveAdvantageSelect={onCompetitiveAdvantageSelect} />
       
       {/* Modals */}
       {renderAnglesModal()}

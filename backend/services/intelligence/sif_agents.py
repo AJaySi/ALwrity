@@ -61,32 +61,32 @@ LOCAL_LLM_FALLBACKS = [
 
 class LocalLLMWrapper:
     """
-    Lazily loads a local LLM via txtai and caches it globally.
-    This prevents blocking server startup and redundant model loads.
+    Wraps a local LLM with async lifecycle support.
+    Model loading runs off the event loop so it never blocks the server.
+    Loaded models are cached globally (shared across all instances).
     """
+
     def __init__(self, model_path: str, task: str = None):
         self.model_path = model_path
         self.task = task
-        # No self._llm here, we use the global cache
-        
-    @property
-    def llm(self):
-        # Create a cache key based on model path and task
+        self._initialized = False
+        self._init_task = None
+
+    def _load_model_sync(self) -> Any:
+        """Load model (blocking — call via thread executor from async code)."""
         cache_key = f"{self.model_path}:{self.task}"
-        
         if cache_key in _local_llm_cache:
             return _local_llm_cache[cache_key]
-            
+
         if LLM is None:
             raise ImportError("txtai.pipeline.LLM is not available")
-            
+
         task_to_use = (self.task or "language-generation").strip()
-        # Explicitly force language-generation for known models if auto-detect fails
         if any(x in self.model_path for x in ["Qwen", "Instruct", "GPT", "Llama"]):
             task_to_use = "language-generation"
         if task_to_use == "text-generation":
             task_to_use = "language-generation"
-            
+
         candidate_models = []
         for candidate in [self.model_path, *LOCAL_LLM_FALLBACKS]:
             if candidate not in candidate_models:
@@ -137,12 +137,49 @@ class LocalLLMWrapper:
             pass
         logger.error(f"Failed to initialize LocalLLMWrapper after fallback attempts: {last_error}")
         raise last_error
-            
-        return _local_llm_cache[cache_key]
-        
+
+    @property
+    def llm(self):
+        """Sync accessor — lazy loads via global cache. Blocks on first call."""
+        cache_key = f"{self.model_path}:{self.task}"
+        if cache_key in _local_llm_cache:
+            return _local_llm_cache[cache_key]
+        result = self._load_model_sync()
+        self._initialized = True
+        return result
+
+    async def initialize(self) -> bool:
+        """Pre-load model asynchronously. Call at server startup to avoid first-request delay."""
+        if self._initialized:
+            return True
+        cache_key = f"{self.model_path}:{self.task}"
+        if cache_key in _local_llm_cache:
+            self._initialized = True
+            return True
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._load_model_sync)
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.error(f"[LocalLLMWrapper] Async init failed for {self.model_path}: {e}")
+            return False
+
+    async def ensure_initialized_async(self) -> bool:
+        """Public async hook — ensures model is loaded without blocking the event loop."""
+        if self._initialized:
+            return True
+        return await self.initialize()
+
+    async def shutdown(self):
+        """Release model resources."""
+        cache_key = f"{self.model_path}:{self.task}"
+        _local_llm_cache.pop(cache_key, None)
+        self._initialized = False
+
     def __call__(self, prompt: str, **kwargs) -> str:
         return self.llm(prompt, **kwargs)
-        
+
     def generate(self, prompt: str, **kwargs) -> str:
         return self.llm(prompt, **kwargs)
 
@@ -176,6 +213,21 @@ class SIFBaseAgent(BaseALwrityAgent):
             return False
 
         return bool(getattr(self.intelligence, "_initialized", False) and self.intelligence.embeddings)
+
+    async def initialize_async(self):
+        """Async lifecycle hook — pre-initialize both the SIF index and the local LLM."""
+        await self._ensure_intelligence_ready()
+        llm = getattr(self, "llm", None)
+        if hasattr(llm, "ensure_initialized_async"):
+            await llm.ensure_initialized_async()
+        logger.info(f"[{self.__class__.__name__}] Async initialization complete")
+
+    async def shutdown(self):
+        """Async lifecycle hook — release model resources."""
+        llm = getattr(self, "llm", None)
+        if hasattr(llm, "shutdown"):
+            await llm.shutdown()
+        logger.info(f"[{self.__class__.__name__}] Shutdown complete")
 
     def _create_txtai_agent(self):
         """
@@ -545,6 +597,84 @@ class ContentGuardianAgent(SIFBaseAgent):
         super().__init__(intelligence_service, user_id, agent_type="content_guardian")
         self.sif_service = sif_service
 
+    async def perform_site_audit(self, website_url: str) -> Dict[str, Any]:
+        """
+        Perform a comprehensive content audit on the indexed website content.
+        Called by the SIF indexing executor after content sync completes.
+        Returns a structured audit report with quality, brand voice, and safety assessments.
+        """
+        self._log_agent_operation("Performing site audit", website_url=website_url)
+        try:
+            # Search the user's SIF index for website content
+            results = await self.intelligence.search(
+                f"website content analysis {website_url}", limit=10
+            )
+
+            audit: Dict[str, Any] = {
+                "website_url": website_url,
+                "audit_timestamp": datetime.utcnow().isoformat(),
+                "total_pages_crawled": len(results),
+                "content_quality": None,
+                "brand_voice_consistency": None,
+                "safety_issues": None,
+                "cannibalization_issues": None,
+            }
+
+            if not results:
+                logger.warning(f"[{self.__class__.__name__}] No indexed content found for {website_url}")
+                return audit
+
+            # Run assessments on each indexed page
+            quality_scores = []
+            style_scores = []
+            safety_flags = []
+
+            for result in results:
+                text = result.get("text", "") or result.get("id", "")
+                if len(text) < 50:
+                    continue
+
+                quality = await self.assess_content_quality({"description": text, "title": website_url})
+                quality_scores.append(quality.get("score", 0.0))
+
+                style = await self.style_enforcer(text)
+                style_scores.append(style.get("compliance_score", 0.0))
+
+                safety = await self.safety_filter(text)
+                if not safety.get("is_safe", True):
+                    safety_flags.append(safety.get("flags", []))
+
+            audit["content_quality"] = {
+                "score": round(sum(quality_scores) / max(len(quality_scores), 1), 4),
+                "pages_analyzed": len(quality_scores),
+            }
+            audit["brand_voice_consistency"] = {
+                "compliance_score": round(sum(style_scores) / max(len(style_scores), 1), 4),
+                "pages_checked": len(style_scores),
+            }
+            audit["safety_issues"] = {
+                "has_issues": len(safety_flags) > 0,
+                "flagged_pages": len(safety_flags),
+            }
+
+            cannibalization = await self.check_cannibalization(website_url)
+            audit["cannibalization_issues"] = cannibalization
+
+            logger.info(
+                f"[{self.__class__.__name__}] Site audit complete for {website_url}: "
+                f"quality={audit['content_quality']['score']}, "
+                f"brand_voice={audit['brand_voice_consistency']['compliance_score']}"
+            )
+            return audit
+
+        except Exception as e:
+            logger.error(f"[{self.__class__.__name__}] Site audit failed for {website_url}: {e}")
+            return {
+                "website_url": website_url,
+                "error": str(e),
+                "audit_timestamp": datetime.utcnow().isoformat(),
+            }
+
     async def assess_content_quality(self, website_data: Dict[str, Any]) -> Dict[str, Any]:
         """Assess overall content quality based on website data."""
         self._log_agent_operation("Assessing content quality")
@@ -826,51 +956,21 @@ class LinkGraphAgent(SIFBaseAgent):
                 logger.info(f"[{self.__class__.__name__}] No relevant internal pages found")
                 return []
             
-            # 2. Get Authority Data (if available)
-            authority_map = {}
-            if self.sif_service:
-                try:
-                    # Fetch dashboard context to get top performing content
-                    # Note: This relies on what's available in the SIF index/dashboard summary
-                    dashboard_context = await self.sif_service.get_seo_dashboard_context()
-                    
-                    if "error" not in dashboard_context:
-                         # Extract top queries/pages if available in summary
-                         # Ideally, we'd have a map of URL -> Authority Score
-                         # For now, we'll try to extract what we can
-                         data = dashboard_context.get("dashboard_data", {})
-                         summary = data.get("summary", {})
-                         
-                         # Example: Boost if site health is good (general confidence)
-                         site_health = data.get("health_score", {}).get("score", 0)
-                         
-                         # If we had top pages in the summary, we'd use them.
-                         # For now, we'll use a placeholder authority map or just the site health
-                         pass
-                except Exception as e:
-                    logger.warning(f"Failed to fetch authority data: {e}")
-
             suggestions = []
             for result in results:
                 relevance_score = result.get('score', 0.0)
                 url = result.get('id', 'unknown')
                 
-                # Apply authority boost (placeholder logic)
-                # In a full implementation, we'd look up 'url' in authority_map
-                authority_boost = 1.0
-                
-                final_score = relevance_score * authority_boost
-                
-                if final_score >= self.RELEVANCE_THRESHOLD:
+                if relevance_score >= self.RELEVANCE_THRESHOLD:
                     suggestion = {
                         "url": url,
                         "relevance": relevance_score,
-                        "final_score": final_score,
-                        "confidence": self._calculate_link_confidence(final_score),
+                        "final_score": relevance_score,
+                        "confidence": self._calculate_link_confidence(relevance_score),
                         "reason": f"Semantic similarity: {relevance_score:.3f}"
                     }
                     suggestions.append(suggestion)
-                    logger.debug(f"[{self.__class__.__name__}] Added link suggestion: {url} (score: {final_score:.3f})")
+                    logger.debug(f"[{self.__class__.__name__}] Added link suggestion: {url} (score: {relevance_score:.3f})")
             
             # Sort by final score
             suggestions.sort(key=lambda x: x['final_score'], reverse=True)
@@ -974,23 +1074,39 @@ class LinkGraphAgent(SIFBaseAgent):
         return min(1.0, relevance_score * 1.5)
 
     async def optimize_anchor_text(self, target_url: str, context: str) -> str:
-        """Suggest the best anchor text for a given link based on target page context."""
+        """Suggest anchor text for a link by searching the SIF index for the target page."""
         self._log_agent_operation("Optimizing anchor text", target_url=target_url, context_length=len(context))
-        
+
         try:
-            # In a real implementation, we would fetch the target page content via SIF
-            # and use an LLM to generate the anchor text.
-            
-            # Placeholder for LLM call
-            # if self.llm: ...
-            
-            logger.info(f"[{self.__class__.__name__}] Anchor text optimization stub completed")
-            return "relevant anchor text"  # Placeholder
-            
+            if not await self._ensure_intelligence_ready():
+                return self._extract_anchor_from_context(target_url, context)
+
+            results = await self.intelligence.search(f"{target_url} {context}", limit=3)
+            if results:
+                text = results[0].get("text", "") or results[0].get("id", "")
+                words = [w for w in text.split() if len(w) > 4][:5]
+                if words:
+                    return " ".join(words)
+            return self._extract_anchor_from_context(target_url, context)
+
         except Exception as e:
-            logger.error(f"[{self.__class__.__name__}] Failed to optimize anchor text: {e}")
-            logger.error(f"[{self.__class__.__name__}] Full traceback: {traceback.format_exc()}")
-            return "click here"  # Fallback anchor text
+            logger.error(f"[{self.__class__.__name__}] optimize_anchor_text failed: {e}")
+            return self._extract_anchor_from_context(target_url, context)
+
+    def _extract_anchor_from_context(self, target_url: str, context: str) -> str:
+        """Extract a usable anchor text from the URL or context when SIF is unavailable."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(target_url)
+            path = parsed.path.strip("/").replace("-", " ").replace("/", " ")
+            if path:
+                words = [w for w in path.split() if len(w) > 3]
+                if words:
+                    return " ".join(words[:4]).title()
+        except Exception:
+            pass
+        words = [w for w in context.split() if len(w) > 4]
+        return " ".join(words[:4]).title() if words else "learn more"
 
 class CitationExpert(SIFBaseAgent):
     """

@@ -192,10 +192,6 @@ class EnhancedStrategyService:
         """Get detailed input data points - delegates to core service."""
         return self.core_service.data_processor_service.get_detailed_input_data_points(processed_data)
 
-    def _get_fallback_onboarding_data(self) -> Dict[str, Any]:
-        """Get fallback onboarding data - delegates to core service."""
-        return self.core_service.data_processor_service.get_fallback_onboarding_data()
-
     async def _get_website_analysis_data(self, user_id: int) -> Dict[str, Any]:
         """Get website analysis data - delegates to core service."""
         return await self.core_service.data_processor_service.get_website_analysis_data(user_id)
@@ -219,22 +215,6 @@ class EnhancedStrategyService:
     async def _process_api_keys_data(self, api_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process API keys data - delegates to core service."""
         return await self.core_service.data_processor_service.process_api_keys_data(api_data)
-
-    def _transform_onboarding_data_to_fields(self, processed_data: Dict[str, Any]) -> Dict[str, Any]:
-        # deprecated; not used
-        raise RuntimeError("Deprecated: use AutoFillService.transformer")
-
-    def _get_data_sources(self, processed_data: Dict[str, Any]) -> Dict[str, str]:
-        # deprecated; not used
-        raise RuntimeError("Deprecated: use AutoFillService.transparency")
-
-    def _get_detailed_input_data_points(self, processed_data: Dict[str, Any]) -> Dict[str, Any]:
-        # deprecated; not used
-        raise RuntimeError("Deprecated: use AutoFillService.transparency")
-
-    def _get_fallback_onboarding_data(self) -> Dict[str, Any]:
-        """Deprecated: fallbacks are no longer permitted. Kept for compatibility; always raises."""
-        raise RuntimeError("Fallback onboarding data is disabled. Real data required.")
 
     def _initialize_caches(self) -> None:
         """Initialize caches - delegates to core service."""

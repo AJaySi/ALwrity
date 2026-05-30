@@ -21,6 +21,9 @@ from ....services.enhanced_strategy_service import EnhancedStrategyService
 from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
 from ....services.content_strategy.autofill.ai_refresh import AutoFillRefreshService
 
+# Import authentication
+from middleware.auth_middleware import get_current_user
+
 # Import utilities
 from ....utils.error_handlers import ContentPlanningErrorHandler
 from ....utils.response_builders import ResponseBuilder
@@ -49,12 +52,13 @@ async def stream_data(data_generator):
 async def accept_autofill_inputs(
     strategy_id: int,
     payload: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Persist end-user accepted auto-fill inputs and associate with the strategy."""
     try:
         logger.info(f"🚀 Accepting autofill inputs for strategy: {strategy_id}")
-        user_id = str(payload.get('user_id') or "")
+        user_id = str(current_user.get('id'))
         accepted_fields = payload.get('accepted_fields') or {}
         # Optional transparency bundles
         sources = payload.get('sources') or {}
@@ -99,7 +103,7 @@ async def accept_autofill_inputs(
 
 @router.get("/autofill/refresh/stream")
 async def stream_autofill_refresh(
-    user_id: Optional[int] = Query(None, description="User ID to build auto-fill for"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     use_ai: bool = Query(True, description="Use AI augmentation during refresh"),
     ai_only: bool = Query(False, description="AI-first refresh: return AI overrides when available"),
     db: Session = Depends(get_db)
@@ -107,7 +111,7 @@ async def stream_autofill_refresh(
     """SSE endpoint to stream steps while generating a fresh auto-fill payload (no DB writes)."""
     async def refresh_generator():
         try:
-            actual_user_id = user_id or 1
+            actual_user_id = current_user.get('id', 1)
             start_time = datetime.utcnow()
             logger.info(f"🚀 Starting auto-fill refresh stream for user: {actual_user_id}")
             yield {"type": "status", "phase": "init", "message": "Starting…", "progress": 5}
@@ -203,14 +207,14 @@ async def stream_autofill_refresh(
 
 @router.post("/autofill/refresh")
 async def refresh_autofill(
-    user_id: Optional[int] = Query(None, description="User ID to build auto-fill for"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     use_ai: bool = Query(True, description="Use AI augmentation during refresh"),
     ai_only: bool = Query(False, description="AI-first refresh: return AI overrides when available"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Non-stream endpoint to return a fresh auto-fill payload (no DB writes)."""
     try:
-        actual_user_id = user_id or 1
+        actual_user_id = current_user.get('id', 1)
         started = datetime.utcnow()
         refresh_service = AutoFillRefreshService(db)
         payload = await refresh_service.build_fresh_payload_with_transparency(actual_user_id, use_ai=use_ai, ai_only=ai_only)

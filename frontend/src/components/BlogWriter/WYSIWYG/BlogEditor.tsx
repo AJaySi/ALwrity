@@ -319,12 +319,12 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                         }}
                         InputProps={{
                           disableUnderline: true,
-                          className: 'text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight truncate min-w-0',
+                          className: 'text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight min-w-0',
                         }}
                       />
                     ) : (
                       <h1
-                        className="flex-1 min-w-0 text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight cursor-text hover:bg-gray-50/50 px-2 -ml-2 py-1 rounded transition-colors duration-150 truncate"
+                        className="flex-1 min-w-0 text-2xl md:text-4xl font-bold font-serif text-gray-900 leading-tight cursor-text hover:bg-gray-50/50 px-2 -ml-2 py-1 rounded transition-colors duration-150"
                         onClick={() => setEditingTitle(true)}
                       >
                         {blogTitle}

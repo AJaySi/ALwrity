@@ -132,14 +132,11 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
         return;
       }
 
-      // Use ref to get latest filters
       const currentFilters = filtersRef.current;
       const params = new URLSearchParams();
       if (currentFilters.asset_type) params.append('asset_type', currentFilters.asset_type);
       if (currentFilters.source_module) {
-        // Handle both string and array cases
         if (Array.isArray(currentFilters.source_module)) {
-          // For arrays, use the first value (backend doesn't support multiple yet)
           params.append('source_module', currentFilters.source_module[0]);
         } else {
           params.append('source_module', currentFilters.source_module);
@@ -205,7 +202,10 @@ export const useContentAssets = (filters: AssetFilters = {}) => {
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
+      // Reset fetching flag so the next mount/effect can fetch fresh
+      isFetchingRef.current = false;
     };
   }, [filterKey, fetchAssets]); // Include fetchAssets but it's stable due to ref usage
 

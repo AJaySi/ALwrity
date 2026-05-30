@@ -99,49 +99,56 @@ class TxtaiIntelligenceService:
             logger.error("3. Missing dependencies - try: pip install txtai[pipeline,similarity]")
             self._initialized = False
 
-    async def index_content(self, items: List[Tuple[str, str, Dict[str, Any]]]):
+    async def index_content(self, items: List[Tuple[str, str, Dict[str, Any]]]) -> int:
         """
-        Index content for semantic search and clustering.
+        Index content using incremental upsert — only processes new/changed documents.
         
         Args:
             items: List of (id, text, metadata) tuples.
+            
+        Returns:
+            Number of items actually upserted.
         """
         if not self._initialized or not self.embeddings:
             logger.error(f"Cannot index content - service not initialized for user {self.user_id}")
-            return
+            return 0
 
         try:
-            logger.info(f"Starting content indexing for user {self.user_id}")
-            logger.debug(f"Indexing {len(items)} items")
-            
-            # Validate input items
             if not items:
                 logger.warning("No items provided for indexing")
-                return
+                return 0
                 
-            # Index items: [(id, text, metadata)] - metadata needs to be JSON string for txtai
             import json
             processed_items = []
             for item in items:
                 id_val, text, metadata = item
-                # Convert metadata dict to JSON string
                 metadata_json = json.dumps(metadata) if metadata else "{}"
                 processed_items.append((id_val, text, metadata_json))
             
-            self.embeddings.index(processed_items)
-            
-            # Save the index
+            self.embeddings.upsert(processed_items)
             self.embeddings.save(self.index_path)
-            logger.info(f"Successfully indexed {len(items)} items for user {self.user_id}")
-            logger.debug(f"Index saved to: {self.index_path}")
+            count = len(processed_items)
+            logger.info(f"Upserted {count} items for user {self.user_id}")
+            return count
             
         except Exception as e:
             logger.error(f"Error indexing content for user {self.user_id}: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             logger.error(f"Items count: {len(items) if items else 0}")
-            if items and len(items) > 0:
-                logger.error(f"Sample item structure: {type(items[0])}")
             raise
+
+    async def delete_content(self, doc_ids: List[str]) -> int:
+        """Delete specific documents from the index by ID."""
+        if not self._initialized or not self.embeddings:
+            return 0
+        try:
+            self.embeddings.delete(doc_ids)
+            self.embeddings.save(self.index_path)
+            logger.info(f"Deleted {len(doc_ids)} documents for user {self.user_id}")
+            return len(doc_ids)
+        except Exception as e:
+            logger.error(f"Error deleting documents: {e}")
+            return 0
 
     async def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Perform semantic search with intelligent caching."""
@@ -154,7 +161,8 @@ class TxtaiIntelligenceService:
             if self.enable_caching and self.cache_manager:
                 cached_results = self.cache_manager.get_cached_query_results(
                     query=query,
-                    relevance_threshold=0.5  # Lower threshold for search results
+                    relevance_threshold=0.5,  # Lower threshold for search results
+                    user_id=self.user_id
                 )
                 if cached_results:
                     logger.info(f"Cache hit for search query: '{query}'")
@@ -171,7 +179,8 @@ class TxtaiIntelligenceService:
                 self.cache_manager.cache_query_results(
                     query=query,
                     results=results,
-                    relevance_threshold=0.5
+                    relevance_threshold=0.5,
+                    user_id=self.user_id
                 )
                 logger.debug(f"Cached search results for query: '{query}'")
             
@@ -300,8 +309,7 @@ class TxtaiIntelligenceService:
         """Fallback clustering method when graph clustering is not available."""
         logger.info(f"Using fallback clustering for user {self.user_id}")
         
-        # Simple clustering based on semantic similarity
-        # This is a placeholder - in production, you'd implement a proper clustering algorithm
+        # Simple clustering based on semantic similarity against sample queries
         try:
             # Get a sample of indexed items to analyze
             sample_queries = ["marketing", "SEO", "content", "social media", "email marketing"]

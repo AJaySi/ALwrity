@@ -38,7 +38,7 @@ from services.subscription.usage_tracking_helpers import (
 )
 # Import clear_dashboard_cache lazily to avoid circular import
 def _clear_dashboard_cache_for_user(user_id: str):
-    from api.subscription.cache import clear_dashboard_cache as _clear
+    from services.subscription.cache import clear_dashboard_cache as _clear
     return _clear(user_id)
 
 from .usage_tracking_modules import (

@@ -651,15 +651,37 @@ class RealTimeSemanticMonitor:
 
 class SemanticDashboardAPI:
     """API interface for the semantic monitoring dashboard."""
-    
+
+    STALE_AFTER_SECONDS = 3600  # 1 hour without access = stale
+
     def __init__(self):
         self.monitors: Dict[str, RealTimeSemanticMonitor] = {}
-    
+        self._last_access: Dict[str, datetime] = {}
+
     def get_monitor(self, user_id: str) -> RealTimeSemanticMonitor:
         """Get or create a semantic monitor for a user."""
         if user_id not in self.monitors:
             self.monitors[user_id] = RealTimeSemanticMonitor(user_id)
+        self._last_access[user_id] = datetime.utcnow()
         return self.monitors[user_id]
+
+    def evict_stale_monitors(self, max_age_seconds: Optional[int] = None) -> int:
+        """
+        Remove monitors that haven't been accessed in max_age_seconds.
+        Returns the number of evicted monitors.
+        """
+        max_age = max_age_seconds or self.STALE_AFTER_SECONDS
+        now = datetime.utcnow()
+        stale = [
+            uid for uid, last in self._last_access.items()
+            if (now - last).total_seconds() > max_age
+        ]
+        for uid in stale:
+            self.monitors.pop(uid, None)
+            self._last_access.pop(uid, None)
+        if stale:
+            logger.info(f"Evicted {len(stale)} stale semantic monitor(s)")
+        return len(stale)
     
     async def start_dashboard_monitoring(self, user_id: str, competitors: List[str] = None) -> Dict[str, Any]:
         """Start semantic monitoring for a user."""

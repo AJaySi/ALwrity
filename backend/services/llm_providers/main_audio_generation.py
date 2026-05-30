@@ -307,6 +307,8 @@ def generate_audio(
                     video_limit = limits['limits'].get("video_calls", 0) if limits else 0
                     
                     db_track.commit()
+                    from services.subscription.cache import clear_dashboard_cache
+                    clear_dashboard_cache(user_id)
                     logger.info(f"[audio_gen] ✅ Successfully tracked usage: user {user_id} -> audio -> {new_calls} calls, ${estimated_cost:.4f}")
                     
                     # UNIFIED SUBSCRIPTION LOG - Shows before/after state in one message
@@ -519,6 +521,8 @@ def clone_voice(
                     )
                     db_track.add(usage_log)
                     db_track.commit()
+                    from services.subscription.cache import clear_dashboard_cache
+                    clear_dashboard_cache(user_id)
 
                     print(f"""
 [SUBSCRIPTION] Voice Clone
@@ -708,6 +712,8 @@ def qwen3_voice_clone(
                     )
                     db_track.add(usage_log)
                     db_track.commit()
+                    from services.subscription.cache import clear_dashboard_cache
+                    clear_dashboard_cache(user_id)
 
                     print(f"""
 [SUBSCRIPTION] Qwen3 Voice Clone
@@ -891,6 +897,8 @@ def qwen3_voice_design(
                 )
                 db_track.add(usage_log)
                 db_track.commit()
+                from services.subscription.cache import clear_dashboard_cache
+                clear_dashboard_cache(user_id)
 
                 print(f"""
 [SUBSCRIPTION] Qwen3 Voice Design
@@ -1079,6 +1087,8 @@ def cosyvoice_voice_clone(
                     )
                     db_track.add(usage_log)
                     db_track.commit()
+                    from services.subscription.cache import clear_dashboard_cache
+                    clear_dashboard_cache(user_id)
 
                     print(f"""
 [SUBSCRIPTION] CosyVoice Voice Clone

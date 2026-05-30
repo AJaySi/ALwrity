@@ -93,7 +93,10 @@ async def get_lightweight_statistics(current_user: Dict[str, Any] = Depends(get_
         }
 
 @router.get("/cache-stats")
-async def get_cache_statistics(db = None) -> Dict[str, Any]:
+async def get_cache_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db = None
+) -> Dict[str, Any]:
     """Get comprehensive user data cache statistics."""
     try:
         if not db:

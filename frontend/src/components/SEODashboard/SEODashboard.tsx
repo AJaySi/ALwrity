@@ -68,6 +68,7 @@ import { AdvertoolsInsights } from './components/AdvertoolsInsights';
 // Phase 2B: Semantic Dashboard components
 import SemanticHealthCard from './components/SemanticHealthCard';
 import SemanticInsights from './components/SemanticInsights';
+import KeywordGapAnalysis from './components/KeywordGapAnalysis';
 
 // Phase 2A: Enterprise SEO Analysis
 import SEOAnalysisController from './SEOAnalysisController';
@@ -928,6 +929,9 @@ const SEODashboard: React.FC = () => {
                   </Grid>
                 </Box>
               </Box>
+
+              {/* Keyword Gap Analysis */}
+              <KeywordGapAnalysis />
 
               {/* Full Site Technical SEO Audit (from onboarding background job) */}
               {data.technical_seo_audit && (

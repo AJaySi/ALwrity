@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from services.llm_providers.main_image_generation import generate_image
 from services.llm_providers.main_image_editing import edit_image
 from services.llm_providers.main_text_generation import llm_text_gen
+from services.llm_providers.tenant_provider_config import tenant_provider_config_resolver
 from services.image_generation import (
     extract_visual_data as _extract_visual_data,
     get_model_recommendation,
@@ -45,6 +46,7 @@ class ImageGenerateRequest(BaseModel):
     guidance_scale: Optional[float] = None
     steps: Optional[int] = None
     seed: Optional[int] = None
+    overlay_text: Optional[str] = None
 
 
 class ImageGenerateResponse(BaseModel):
@@ -56,6 +58,16 @@ class ImageGenerateResponse(BaseModel):
     provider: str
     model: Optional[str] = None
     seed: Optional[int] = None
+
+
+@router.get("/config")
+def get_image_config(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> dict:
+    user_id = str(current_user.get('id', ''))
+    cfg = tenant_provider_config_resolver.resolve(modality="image", user_id=user_id)
+    provider = (cfg.selected_providers or [""])[0]
+    return {"provider": provider}
 
 
 @router.post("/generate", response_model=ImageGenerateResponse)
@@ -90,6 +102,7 @@ def generate(
                         "guidance_scale": req.guidance_scale,
                         "steps": req.steps,
                         "seed": req.seed,
+                        "overlay_text": req.overlay_text,
                     },
                     user_id=user_id,  # Pass user_id for validation inside generate_image
                 )
@@ -167,74 +180,7 @@ def generate(
                     logger.error(f"[images.generate] Unexpected error saving image: {save_error}", exc_info=True)
                     # Continue without failing the request
                 
-                # TRACK USAGE after successful image generation
-                if result:
-                    logger.info(f"[images.generate] ✅ Image generation successful, tracking usage for user {user_id}")
-                    try:
-                        db_track = next(get_db())
-                        try:
-                            # Get or create usage summary
-                            pricing = PricingService(db_track)
-                            current_period = pricing.get_current_billing_period(user_id) or datetime.now().strftime("%Y-%m")
-                            
-                            logger.debug(f"[images.generate] Looking for usage summary: user_id={user_id}, period={current_period}")
-                            
-                            summary = db_track.query(UsageSummary).filter(
-                                UsageSummary.user_id == user_id,
-                                UsageSummary.billing_period == current_period
-                            ).first()
-                            
-                            if not summary:
-                                logger.info(f"[images.generate] Creating new usage summary for user {user_id}, period {current_period}")
-                                summary = UsageSummary(
-                                    user_id=user_id,
-                                    billing_period=current_period
-                                )
-                                db_track.add(summary)
-                                db_track.flush()
-                            
-                            current_calls_before = getattr(summary, "stability_calls", 0) or 0
-                            new_calls = current_calls_before + 1
-                            
-                            limits = pricing.get_user_limits(user_id)
-                            plan_name = limits.get('plan_name', 'unknown') if limits else 'unknown'
-                            tier = limits.get('tier', 'unknown') if limits else 'unknown'
-                            call_limit = limits['limits'].get("stability_calls", 0) if limits else 0
-                            
-                            current_image_edit_calls = getattr(summary, "image_edit_calls", 0) or 0
-                            image_edit_limit = limits['limits'].get("image_edit_calls", 0) if limits else 0
-                            
-                            current_video_calls = getattr(summary, "video_calls", 0) or 0
-                            video_limit = limits['limits'].get("video_calls", 0) if limits else 0
-                            
-                            current_audio_calls = getattr(summary, "audio_calls", 0) or 0
-                            audio_limit = limits['limits'].get("audio_calls", 0) if limits else 0
-                            audio_limit_display = audio_limit if (audio_limit > 0 or tier != 'enterprise') else '∞'
-                            
-                            logger.debug(f"[images.generate] Usage snapshot for logging: stability_calls={current_calls_before}, total_calls={summary.total_calls or 0}")
-                            
-                            # UNIFIED SUBSCRIPTION LOG - Shows before/after state in one message
-                            print(f"""
-[SUBSCRIPTION] Image Generation
-├─ User: {user_id}
-├─ Plan: {plan_name} ({tier})
-├─ Provider: stability
-├─ Actual Provider: {result.provider}
-├─ Model: {result.model or 'default'}
-├─ Calls: {current_calls_before} → {new_calls} / {call_limit if call_limit > 0 else '∞'}
-├─ Image Editing: {current_image_edit_calls} / {image_edit_limit if image_edit_limit > 0 else '∞'}
-├─ Videos: {current_video_calls} / {video_limit if video_limit > 0 else '∞'}
-├─ Audio: {current_audio_calls} / {audio_limit_display}
-└─ Status: ✅ Allowed & Tracked
-""")
-                        except Exception as track_error:
-                            logger.error(f"[images.generate] ❌ Error tracking usage (non-blocking): {track_error}", exc_info=True)
-                            db_track.rollback()
-                        finally:
-                            db_track.close()
-                    except Exception as usage_error:
-                        # Non-blocking: log error but don't fail the request
-                        logger.error(f"[images.generate] ❌ Failed to track usage: {usage_error}", exc_info=True)
+                # Usage tracking is handled inside generate_image() facade
                 
                 # Create response with explicit success field
                 # Note: Asset saving and usage tracking are non-blocking and won't affect this response
@@ -597,12 +543,13 @@ MODEL_SPECIFIC_GUIDANCE = {
 }
 
 
+# Models that can render readable text directly in generated images
+_TEXT_CAPABLE = {"flux-kontext-pro", "flux-2-flex", "glm-image"}
+
+
 def get_model_specific_guidance(model: Optional[str], image_type: Optional[str]) -> Dict[str, Any]:
     """Get model-specific guidance based on model and image type."""
-    if not model:
-        return {}
-    
-    model_lower = model.lower()
+    model_lower = (model or "_default").lower()
     image_type_lower = (image_type or "conceptual").lower()
     
     # Get model guidance (use _default for unknown models)
@@ -619,8 +566,13 @@ def suggest_prompts(
     req: ImagePromptSuggestRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> ImagePromptSuggestResponse:
+    user_id = str(current_user.get('id', ''))
     try:
-        provider = (req.provider or ("gemini" if (os.getenv("GPT_PROVIDER") or "").lower().startswith("gemini") else "huggingface")).lower()
+        if req.provider:
+            provider = req.provider.lower()
+        else:
+            cfg = tenant_provider_config_resolver.resolve(modality="image", user_id=user_id)
+            provider = (cfg.selected_providers or ["huggingface"])[0]
         model = req.model or None
         image_type = req.image_type or "conceptual"
         
@@ -677,10 +629,20 @@ def suggest_prompts(
             "required": ["suggestions"]
         }
 
+        can_render_text = model and model.lower() in _TEXT_CAPABLE
+
         system = (
-            "You are an expert image prompt engineer for text-to-image models. "
-            "Given blog section context, craft 3-5 hyper-personalized prompts optimized for the specified provider. "
-            "Return STRICT JSON matching the provided schema, no extra text."
+            "You are an expert image prompt engineer. "
+            "Given blog section context, craft 3-5 concise prompts optimized for the specified provider/model. "
+            "Return STRICT JSON matching the provided schema, no extra text.\n\n"
+            + (
+                "TEXT RENDERING: The current model CAN render readable text. "
+                "Include the section title or a key phrase (1-8 words) as part of the generated image. "
+                "Integrate text naturally as a headline, label, or typographic element."
+                if can_render_text
+                else "TEXT RENDERING: The image model CANNOT render readable text. "
+                     "Never ask it to generate text. Design clean, high-contrast overlay-safe zones instead."
+            )
         )
 
         # Get model-specific guidance
@@ -698,40 +660,57 @@ def suggest_prompts(
             "wavespeed": "Blog-optimized imagery: focus on data visualization, infographics, clean layouts with text overlay areas, professional diagrams, charts, or conceptual illustrations. Avoid random people or poster-style images. Prefer clean backgrounds suitable for text overlays, data representations, or abstract concepts that support the blog content."
         }.get(provider, "")
         
-        # Combine provider and model-specific guidance
+        # Combine provider and model-specific guidance (model guidance is primary)
         provider_guidance = provider_guidance_base
         if model_guidance_text:
-            provider_guidance = f"{provider_guidance_base}\n\nMODEL-SPECIFIC GUIDANCE ({model}): {model_guidance_text}"
+            parts = [
+                f"PROVIDER: {provider} / Model: {model or 'auto-selected'}",
+                f"MODEL GUIDANCE: {model_guidance_text}"
+            ]
             if model_best_practices:
-                provider_guidance += f"\nBest Practices:\n" + "\n".join([f"- {bp}" for bp in model_best_practices])
+                parts.append("Best Practices:\n" + "\n".join([f"- {bp}" for bp in model_best_practices]))
             if model_warnings:
-                provider_guidance += f"\n⚠️ WARNINGS:\n" + "\n".join([f"- {w}" for w in model_warnings])
+                parts.append("WARNINGS:\n" + "\n".join([f"- {w}" for w in model_warnings]))
+            if provider_guidance_base:
+                parts.append(f"Provider context ({provider}): {provider_guidance_base}")
+            provider_guidance = "\n\n".join(parts)
 
         best_practices = (
-            "BLOG IMAGE BEST PRACTICES: Create images optimized for blog content, not social media posters. "
-            "Focus on: data visualization elements (charts, graphs, infographics), clean layouts with designated text overlay areas, "
-            "professional diagrams, conceptual illustrations, or abstract representations of the topic. "
-            "Avoid: random people posing, poster-style compositions, busy social media graphics, or trying to recreate text/words as images. "
-            "Instead: use clean backgrounds, simple compositions, areas reserved for text overlays, data-driven visuals, or conceptual imagery. "
-            "Technical: one clear focal subject; clean, uncluttered background; text-safe margins (20% padding on all sides for overlays); "
-            "neutral or professional lighting; avoid busy patterns; no brand logos or watermarks; no copyrighted characters; "
-            "avoid low-res, blur, noise, banding, oversaturation, over-sharpening; prefer 1024px+ on shortest side for quality."
+            "BLOG IMAGE BEST PRACTICES: "
+            + (
+                "Create professional blog images with clear typography. "
+                "Include text elements (headlines, labels) naturally in the design. "
+                "Use clean compositions with strong visual hierarchy. "
+                "Avoid: busy patterns, brand logos, watermarks, low resolution."
+                if can_render_text
+                else (
+                    "Design for text overlay — use clean backgrounds with designated text zones (20% padding). "
+                    "Focus on abstract representations, data metaphors, or conceptual imagery. "
+                    "NEVER include text, words, letters, numbers, or labels in the generated image. "
+                    "Avoid: busy patterns, brand logos, watermarks, low resolution."
+                )
+            )
         )
 
         overlay_hint = (
-            "IMPORTANT FOR BLOG IMAGES: Design images with text overlay areas in mind. "
-            "Include space for headlines, captions, or data labels. "
-            "Suggest overlay_text (short title or key statistic, <= 8 words) that would work well as a text overlay. "
-            "Ensure clean, high-contrast safe areas (top 20% or bottom 20% of image) for text placement. "
-            "The image should complement text, not replace it - think data visualization, infographics, or clean conceptual imagery."
-            if (req.include_overlay is None or req.include_overlay) 
-            else "Do not include on-image text, but still design with text overlay areas in mind for blog use."
+            (
+                "Include the section title or key phrase IN the generated image as a typographic element (headline, label, etc.). "
+                "Keep text minimal: 1-8 words."
+                if can_render_text
+                else (
+                    "ABSOLUTELY FORBIDDEN: The image model CANNOT render text. "
+                    "Design with clean, high-contrast safe zones (top 20% or bottom 20%) for HTML overlay text. "
+                    "Suggest overlay_text (short title or key statistic, <= 8 words) that works as a text overlay."
+                    if (req.include_overlay is None or req.include_overlay)
+                    else "Do not include on-image text, but still design with text overlay areas in mind."
+                )
+            )
         )
         
         # Image type specific guidance (enhanced with infographic type)
         image_type_guidance = {
             "realistic": "Photorealistic style with professional photography quality. Include camera settings and lighting details.",
-            "chart": "⚠️ IMPORTANT: Complex infographics are too difficult for current AI models. Create simple visual representations with designated text overlay areas instead. Use abstract data visualization elements, not actual charts with embedded text.",
+            "chart": "⚠️ FORBIDDEN: Do NOT create actual charts, graphs, or data visualizations with embedded text. The image model cannot render readable labels or data points. Instead, create abstract visual metaphors for data — flowing shapes, color gradients, connected nodes, layered elements, or geometric patterns that evoke the data concept. Design with text overlay zones for data labels that will be added as HTML overlay.",
             "conceptual": "Abstract or conceptual imagery that represents the topic visually. Clean compositions with text overlay zones.",
             "diagram": "Technical diagrams with simple, clear visual elements. Design for text overlay areas, not embedded labels.",
             "illustration": "Stylized illustrations that support the content. Professional, clean aesthetic suitable for blog use.",
@@ -780,31 +759,31 @@ def suggest_prompts(
         8. Are optimized for blog article use (not social media)
         
         PROMPT QUALITY REQUIREMENTS:
-        - Each prompt should be specific and detailed (50-100 words)
-        - Use the visual data intelligently - prioritize statistics and data points for charts, concepts for conceptual images
-        - Include visual composition guidance (layout, colors, style)
+        - Each prompt should be concise (20-40 words)
+        - Focus on visual composition, style, and key visual elements
         - Specify lighting and quality descriptors when appropriate
-        - Make prompts actionable and clear for the AI model
         
         NEGATIVE PROMPT:
         Include a suitable negative_prompt that excludes: people posing, social media graphics, posters, text rendered as images, busy compositions, watermarks, logos{f", {negative_prompt_additions}" if negative_prompt_additions else ""}.
         
         DIMENSIONS:
-        Suggest width/height when relevant (e.g., 1024x1024 for square, 1920x1080 for landscape blog headers).
+        Default to 1024x1024 for consistent blog image format. Do NOT reference specific pixel dimensions in the prompt text.
         
         OVERLAY TEXT:
-        If including overlay text suggestion, return it in overlay_text (short: <= 8 words, typically a key statistic or section title). Use statistics from the visual data when available.
+        {("Include the overlay_text IN the generated image as a typographic element (headline, label, etc.) — "
+          "it will be rendered as part of the image. Keep it minimal: 1-8 words (key statistic or section title). "
+          "Use statistics from the visual data when available.")
+         if can_render_text else
+         ("Suggest overlay_text (short: <= 8 words, typically a key statistic or section title) as metadata only — "
+          "it will be rendered as HTML overlay. Do NOT include text in the image. "
+          "Use statistics from the visual data when available.")}
         """
 
         # Get user_id for llm_text_gen subscription check (required)
-        if not current_user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        
-        user_id_for_llm = str(current_user.get('id', ''))
-        if not user_id_for_llm:
+        if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
         
-        raw = llm_text_gen(prompt=prompt, system_prompt=system, json_struct=schema, user_id=user_id_for_llm)
+        raw = llm_text_gen(prompt=prompt, system_prompt=system, json_struct=schema, user_id=user_id)
         data = raw if isinstance(raw, dict) else {}
         suggestions = data.get("suggestions") or []
         # basic fallback if provider returns string

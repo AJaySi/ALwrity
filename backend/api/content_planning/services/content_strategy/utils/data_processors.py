@@ -179,17 +179,13 @@ class DataProcessorService:
         }
         
         fields['seasonal_trends'] = {
-            'value': ['Q1: Planning', 'Q2: Execution', 'Q3: Optimization', 'Q4: Review'],
+            'value': research_data.get('seasonal_trends', []),
             'source': 'research_preferences',
             'confidence': research_data.get('confidence_level', 0.7)
         }
         
         fields['engagement_metrics'] = {
-            'value': {
-                'avg_session_duration': website_data.get('performance_metrics', {}).get('avg_session_duration', 180),
-                'bounce_rate': website_data.get('performance_metrics', {}).get('bounce_rate', 45.5),
-                'pages_per_session': 2.5
-            },
+            'value': website_data.get('performance_metrics', {}),
             'source': 'website_analysis',
             'confidence': website_data.get('confidence_level', 0.8)
         }
@@ -411,15 +407,6 @@ class DataProcessorService:
             }
         }
     
-    def get_fallback_onboarding_data(self) -> Dict[str, Any]:
-        """
-        Get fallback onboarding data for compatibility.
-        
-        Returns:
-            Dictionary with fallback data (raises error as fallbacks are disabled)
-        """
-        raise RuntimeError("Fallback onboarding data is disabled. Real data required.")
-    
     async def get_website_analysis_data(self, user_id: int) -> Dict[str, Any]:
         """
         Get website analysis data from onboarding.
@@ -532,12 +519,6 @@ def get_detailed_input_data_points(processed_data: Dict[str, Any]) -> Dict[str, 
     """Get detailed input data points for transparency."""
     processor = DataProcessorService()
     return processor.get_detailed_input_data_points(processed_data)
-
-
-def get_fallback_onboarding_data() -> Dict[str, Any]:
-    """Get fallback onboarding data for compatibility."""
-    processor = DataProcessorService()
-    return processor.get_fallback_onboarding_data()
 
 
 async def get_website_analysis_data(user_id: int) -> Dict[str, Any]:

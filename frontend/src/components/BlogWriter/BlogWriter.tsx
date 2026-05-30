@@ -66,13 +66,10 @@ const BlogWriter: React.FC = () => {
     selectedTitle,
     sections,
     seoAnalysis,
-    genMode,
     seoMetadata,
     continuityRefresh,
-    outlineTaskId,
     sourceMappingStats,
     groundingInsights,
-    optimizationResults,
     researchCoverage,
     researchTitles,
     aiGeneratedTitles,
@@ -88,7 +85,6 @@ const BlogWriter: React.FC = () => {
     setSelectedTitle,
     setSections,
     setSeoAnalysis,
-    setGenMode,
     setSeoMetadata,
     setContinuityRefresh,
     setOutlineTaskId,
@@ -112,10 +108,8 @@ const BlogWriter: React.FC = () => {
   // Initialize phase navigation with temporary false value for seoRecommendationsApplied
   const [tempSeoRecommendationsApplied] = React.useState(false);
   const {
-    phases: tempPhases,
     currentPhase: tempCurrentPhase,
     navigateToPhase: tempNavigateToPhase,
-    setCurrentPhase: tempSetCurrentPhase,
     resetUserSelection
   } = usePhaseNavigation(
     research,
@@ -134,7 +128,6 @@ const BlogWriter: React.FC = () => {
     isSEOMetadataModalOpen,
     setIsSEOMetadataModalOpen,
     seoRecommendationsApplied,
-    setSeoRecommendationsApplied,
     lastSEOModalOpenRef,
     runSEOAnalysisDirect,
     handleApplySeoRecommendations,
@@ -210,6 +203,40 @@ const BlogWriter: React.FC = () => {
   const navigateToPhaseRef = React.useRef<((phase: string) => void) | null>(null);
   // When true (Re-Content), polling callback skips auto-confirm and SEO navigation
   const skipContentAutoConfirmRef = React.useRef<boolean>(false);
+
+  // Brainstorm result from GSC — passed conditionally to ResearchSources sidebar
+  const [brainstormResult, setBrainstormResult] = useState<any>(null);
+  const handleBrainstormResult = useCallback((result: any) => {
+    setBrainstormResult(result);
+  }, []);
+
+  // Selected content angle for outline generation — defaults to first angle
+  const [selectedContentAngle, setSelectedContentAngle] = useState<string>('');
+  const handleAngleSelect = useCallback((angle: string) => {
+    setSelectedContentAngle(angle);
+  }, []);
+
+  // Auto-select first content angle when research loads
+  React.useEffect(() => {
+    const angles = research?.suggested_angles;
+    if (angles && angles.length > 0) {
+      setSelectedContentAngle(prev => prev || angles[0]);
+    }
+  }, [research]);
+
+  // Selected competitive advantage for outline generation — defaults to first
+  const [selectedCompetitiveAdvantage, setSelectedCompetitiveAdvantage] = useState<string>('');
+  const handleCompetitiveAdvantageSelect = useCallback((advantage: string) => {
+    setSelectedCompetitiveAdvantage(advantage);
+  }, []);
+
+  // Auto-select first competitive advantage when research loads
+  React.useEffect(() => {
+    const advantages = research?.competitor_analysis?.competitive_advantages;
+    if (advantages && advantages.length > 0) {
+      setSelectedCompetitiveAdvantage(prev => prev || advantages[0]);
+    }
+  }, [research]);
 
   // Lifted keywords from ManualResearchForm (for header chip "Click To Research" label)
   const [researchKeywords, setResearchKeywords] = useState<string>('');
@@ -302,7 +329,6 @@ const BlogWriter: React.FC = () => {
 
   // Handler for header chip "Click To Research" / "Re-Research"
   const handleResearchStartAction = useCallback(async () => {
-    // Navigate first so ManualResearchForm mounts and sets the ref (for non-CopilotKit path)
     navigateToPhase('research');
     let kw = researchKeywords;
     if (!kw && research) {
@@ -312,12 +338,23 @@ const BlogWriter: React.FC = () => {
     }
     const bl = researchBlogLengthRef.current || (research as any)?.word_count_target?.toString() || '1000';
     if (!kw) return;
-    // Yield to React so the navigation renders and the form sets startResearchRef
     await new Promise(resolve => setTimeout(resolve, 0));
     if (startResearchRef.current) {
       await startResearchRef.current(kw, bl);
     }
   }, [navigateToPhase, researchKeywords, research]);
+
+  // Handler for "Run Research" button on Content Angles in ResearchSources
+  const handleResearchWithKeywords = useCallback(async (keywords: string) => {
+    navigateToPhase('research');
+    setResearchKeywords(keywords);
+    setResearch(null);
+    const bl = researchBlogLengthRef.current || '1000';
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (startResearchRef.current) {
+      await startResearchRef.current(keywords, bl);
+    }
+  }, [navigateToPhase, setResearchKeywords, setResearch, researchBlogLengthRef, startResearchRef]);
 
   const wrappedHandleSEOAnalysisComplete = useCallback((analysis: any) => {
     handleSEOAnalysisComplete(analysis);
@@ -377,7 +414,6 @@ const BlogWriter: React.FC = () => {
     showModal,
     showOutlineModal,
     setShowOutlineModal,
-    isMediumGenerationStarting,
     setIsMediumGenerationStarting,
   } = useModalVisibility({
     mediumPolling,
@@ -394,10 +430,7 @@ const BlogWriter: React.FC = () => {
     const sectionsWithContent = Object.values(sections).filter(c => c && c.trim().length > 0);
     return sectionsWithContent.length > 0;
   }, [sections]);
-  const {
-    suggestions,
-    setSuggestionsRef,
-  } = useCopilotSuggestions({
+  const { suggestions } = useCopilotSuggestions({
     research,
     outline,
     outlineConfirmed,
@@ -443,7 +476,7 @@ const BlogWriter: React.FC = () => {
         runSEOAnalysisDirect();
       }
     }
-  }, [navigateToPhase, currentPhase, seoAnalysis, research, setResearch, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
+  }, [navigateToPhase, currentPhase, seoAnalysis, setResearch, runSEOAnalysisDirect, setIsSEOAnalysisModalOpen]);
 
   const handleNewBlog = useCallback(() => {
     setResearch(null);
@@ -615,6 +648,7 @@ const BlogWriter: React.FC = () => {
           setContinuityRefresh={setContinuityRefresh}
           researchPolling={researchPolling}
           navigateToPhase={navigateToPhase}
+          onBrainstormResult={handleBrainstormResult}
         />
       )}
       
@@ -633,6 +667,8 @@ const BlogWriter: React.FC = () => {
             setTitleOptions(titleOptions);
           }
         }}
+        selectedContentAngle={selectedContentAngle}
+        selectedCompetitiveAdvantage={selectedCompetitiveAdvantage}
       />
       <OutlineRefiner
         outline={outline}
@@ -709,6 +745,7 @@ const BlogWriter: React.FC = () => {
         blogLengthRef={researchBlogLengthRef}
         startResearchRef={startResearchRef}
         restoreAttempted={restoreAttempted}
+        onBrainstormResult={handleBrainstormResult}
       />
 
       {research && (
@@ -724,7 +761,6 @@ const BlogWriter: React.FC = () => {
         aiGeneratedTitles={aiGeneratedTitles}
         sourceMappingStats={sourceMappingStats}
         groundingInsights={groundingInsights}
-        optimizationResults={optimizationResults}
         researchCoverage={researchCoverage}
         setOutline={setOutline}
         sections={sections}
@@ -754,6 +790,13 @@ const BlogWriter: React.FC = () => {
         onContentGenerationStart={handleMediumGenerationStarted}
         buildFullMarkdown={buildFullMarkdown}
         convertMarkdownToHTML={convertMarkdownToHTML}
+        brainstormResult={brainstormResult}
+        onBrainstormResult={handleBrainstormResult}
+        onResearchWithKeywords={handleResearchWithKeywords}
+        selectedContentAngle={selectedContentAngle}
+        onAngleSelect={handleAngleSelect}
+        selectedCompetitiveAdvantage={selectedCompetitiveAdvantage}
+        onCompetitiveAdvantageSelect={handleCompetitiveAdvantageSelect}
       />
         </>
       )}

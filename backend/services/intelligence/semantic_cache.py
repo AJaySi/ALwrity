@@ -298,7 +298,8 @@ class SemanticCacheManager:
         query: str,
         results: List[Dict[str, Any]],
         relevance_threshold: float = 0.7,
-        ttl: Optional[int] = None
+        ttl: Optional[int] = None,
+        user_id: str = None
     ) -> bool:
         """
         Cache semantic search query results with relevance-based invalidation
@@ -308,6 +309,7 @@ class SemanticCacheManager:
             results: Query results
             relevance_threshold: Minimum relevance score for caching
             ttl: Time to live in seconds
+            user_id: User identifier for scoped caching
             
         Returns:
             True if caching was successful
@@ -319,7 +321,7 @@ class SemanticCacheManager:
             
             cache_key = self._generate_cache_key(
                 "semantic_query",
-                "global",  # Global query cache
+                user_id,  # User-scoped cache key
                 {"query": query, "threshold": relevance_threshold}
             )
             
@@ -348,13 +350,14 @@ class SemanticCacheManager:
     def get_cached_query_results(
         self,
         query: str,
-        relevance_threshold: float = 0.7
+        relevance_threshold: float = 0.7,
+        user_id: str = None
     ) -> Optional[List[Dict[str, Any]]]:
-        """Retrieve cached semantic query results"""
+        """Retrieve cached semantic query results scoped to a user"""
         try:
             cache_key = self._generate_cache_key(
                 "semantic_query",
-                "global",
+                user_id,
                 {"query": query, "threshold": relevance_threshold}
             )
             
@@ -478,29 +481,7 @@ class SemanticCacheManager:
             logger.error(f"Failed to get cache stats: {e}")
             return self.stats
     
-    def warm_cache_for_user(self, user_id: str, common_queries: List[str]):
-        """
-        Pre-populate cache with common semantic queries for a user
-        
-        Args:
-            user_id: User identifier
-            common_queries: List of common semantic queries to pre-cache
-        """
-        try:
-            logger.info(f"Warming cache for user {user_id} with {len(common_queries)} queries")
-            
-            # This would typically involve running the actual semantic analysis
-            # For now, we log the intent and can be extended with actual warming logic
-            
-            # Example warming scenarios:
-            # 1. Pre-analyze user's top content pillars
-            # 2. Cache common competitor comparisons
-            # 3. Pre-compute semantic similarity scores
-            
-            logger.info(f"Cache warming initiated for user {user_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to warm cache for user: {e}")
+
 
 
 def semantic_cache_decorator(ttl: int = 3600, operation_type: str = "generic"):

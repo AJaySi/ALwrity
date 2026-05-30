@@ -11,9 +11,10 @@ interface ResearchActionProps {
   onResearchComplete?: (research: BlogResearchResponse) => void;
   navigateToPhase?: (phase: string) => void;
   researchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
+  onBrainstormResult?: (result: import('../../api/gscBrainstorm').BrainstormResult) => void;
 }
 
-export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase, researchRef }) => {
+export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComplete, navigateToPhase, researchRef, onBrainstormResult }) => {
   const [copilotKeywords, setCopilotKeywords] = useState('');
   const [copilotBlogLength, setCopilotBlogLength] = useState('1000');
   const hasNavigatedRef = useRef<boolean>(false);
@@ -146,6 +147,7 @@ export const ResearchAction: React.FC<ResearchActionProps> = ({ onResearchComple
             <BrainstormButton
               keywords={copilotKeywords}
               onKeywordsChange={setCopilotKeywords}
+              onBrainstormResult={onBrainstormResult}
               disabled={isSubmitting}
             />
 <button

@@ -248,6 +248,7 @@ nav:
       - Content Strategy Guide: features/seo-dashboard/content-strategy-guide.md
       - GSC Integration: features/seo-dashboard/gsc-integration.md
       - Metadata Generation: features/seo-dashboard/metadata.md
+      - AI Overview Insights: features/seo-dashboard/ai-overview-insights.md
       - Design Document: features/seo-dashboard/design-document.md
       - Phase 2A - Enterprise Suite: features/seo-dashboard/phase2a-enterprise-seo.md
       - Phase 2A - Advanced GSC: features/seo-dashboard/phase2a-advanced-gsc.md
@@ -274,6 +275,7 @@ nav:
       - Persona Journey (Producer): features/podcast-maker/persona-journey-producer.md
       - Implementation Overview: features/podcast-maker/implementation-overview.md
       - API Reference: features/podcast-maker/api-reference.md
+      - YouTube Publishing: features/podcast-maker/youtube-publishing.md
     - Integrations:
       - Wix:
         - Overview: features/integrations/wix/overview.md

@@ -9,6 +9,9 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from loguru import logger
 
+# Import authentication
+from middleware.auth_middleware import get_current_user
+
 # Import database service
 from services.database import get_db_session, get_db
 from services.content_planning_db import ContentPlanningDBService
@@ -28,7 +31,9 @@ ai_analysis_db_service = AIAnalysisDBService()
 router = APIRouter(prefix="/health", tags=["health-monitoring"])
 
 @router.get("/backend", response_model=Dict[str, Any])
-async def check_backend_health():
+async def check_backend_health(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Check core backend health (independent of AI services)
     """
@@ -77,7 +82,9 @@ async def check_backend_health():
         }
 
 @router.get("/ai", response_model=Dict[str, Any])
-async def check_ai_services_health():
+async def check_ai_services_health(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Check AI services health separately
     """
@@ -136,7 +143,10 @@ async def check_ai_services_health():
         }
 
 @router.get("/database", response_model=Dict[str, Any])
-async def database_health_check(db: Session = Depends(get_db)):
+async def database_health_check(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Health check for database operations.
     """
@@ -157,7 +167,10 @@ async def database_health_check(db: Session = Depends(get_db)):
         )
 
 @router.get("/debug/strategies/{user_id}")
-async def debug_content_strategies(user_id: int):
+async def debug_content_strategies(
+    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Debug endpoint to print content strategy data directly.
     """
@@ -203,7 +216,9 @@ async def debug_content_strategies(user_id: int):
         )
 
 @router.get("/comprehensive", response_model=Dict[str, Any])
-async def comprehensive_health_check():
+async def comprehensive_health_check(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
     Comprehensive health check for all content planning services.
     """

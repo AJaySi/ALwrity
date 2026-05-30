@@ -3,25 +3,67 @@ Check Cycle Handler
 Handles the main scheduler check cycle that finds and executes due tasks.
 """
 
+import json
+import os
 from typing import TYPE_CHECKING, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 
 from services.database import get_all_user_ids, get_session_for_user
 from utils.logger_utils import get_service_logger
-from .interval_manager import adjust_check_interval_if_needed
-
-# Import semantic monitoring for Phase 2B integration
-from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor
 
 if TYPE_CHECKING:
     from .scheduler import TaskScheduler
 
 logger = get_service_logger("check_cycle_handler")
 
-# Track last semantic check per user to enforce 24-hour interval
-# In-memory cache is sufficient as it resets on restart (which is fine)
-LAST_SEMANTIC_CHECKS: Dict[str, datetime] = {}
+# Cache for RealTimeSemanticMonitor instances per user (avoids expensive re-instantiation)
+# Uses the global SemanticDashboardAPI singleton which provides get-or-create caching.
+from services.intelligence.monitoring.semantic_dashboard import semantic_dashboard_api
+
+# Persisted last-check timestamps for semantic health monitoring (24-hour cadence).
+# Survives scheduler restarts via a JSON file in the app state directory.
+_SEMANTIC_STATE_DIR = os.path.join(
+    os.path.expanduser("~"), ".alwrity", "scheduler_state"
+)
+_SEMANTIC_STATE_FILE = os.path.join(_SEMANTIC_STATE_DIR, "semantic_last_checks.json")
+
+
+def _load_semantic_check_timestamps() -> Dict[str, datetime]:
+    """Load persisted check timestamps from disk. Returns empty dict on any failure."""
+    try:
+        if not os.path.exists(_SEMANTIC_STATE_FILE):
+            return {}
+        with open(_SEMANTIC_STATE_FILE, "r") as f:
+            raw = json.load(f)
+        return {
+            uid: datetime.fromisoformat(ts)
+            for uid, ts in raw.items() if ts
+        }
+    except Exception as e:
+        logger.warning(f"Failed to load semantic check timestamps: {e}")
+        return {}
+
+
+def _save_semantic_check_timestamps(checks: Dict[str, datetime]):
+    """Persist check timestamps to disk."""
+    try:
+        os.makedirs(_SEMANTIC_STATE_DIR, exist_ok=True)
+        serializable = {
+            uid: ts.isoformat() if isinstance(ts, datetime) else ts
+            for uid, ts in checks.items()
+        }
+        with open(_SEMANTIC_STATE_FILE, "w") as f:
+            json.dump(serializable, f)
+    except Exception as e:
+        logger.warning(f"Failed to save semantic check timestamps: {e}")
+
+
+# Load persisted timestamps on startup so the 24-hour cadence survives restarts.
+# If the file is missing (first start), all users will get an immediate check —
+# that is acceptable because monitor instances are now cached via SemanticDashboardAPI,
+# meaning heavy model initialisation happens at most once per user.
+LAST_SEMANTIC_CHECKS: Dict[str, datetime] = _load_semantic_check_timestamps()
 
 async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
     """
@@ -48,7 +90,10 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
     # Iterate through all users (Multi-tenancy support)
     user_ids = get_all_user_ids()
     total_active_strategies = 0
-    
+
+    # Evict stale semantic monitor instances to prevent unbounded memory growth
+    semantic_dashboard_api.evict_stale_monitors()
+
     for user_id in user_ids:
         db = get_session_for_user(user_id)
         if not db:
@@ -76,30 +121,25 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
                 except Exception as e:
                     logger.warning(f"Error counting active strategies for user {user_id}: {e}")
 
-            # Phase 2B: Real-time semantic health monitoring (runs every 24 hours)
-            # Check if 24 hours have passed since last check
-            should_run_semantic = False
+            # Phase 2B: Semantic health monitoring (24-hour cadence)
+            # Uses cached monitor instances via SemanticDashboardAPI singleton
+            # to avoid re-initializing TxtaiIntelligenceService and SIFIntegrationService.
             now = datetime.utcnow()
             last_check = LAST_SEMANTIC_CHECKS.get(user_id)
-            
-            if not last_check or (now - last_check).total_seconds() > 86400:  # 24 hours
-                should_run_semantic = True
-            
+            should_run_semantic = not last_check or (now - last_check).total_seconds() > 86400  # 24h
+
             if should_run_semantic:
                 try:
-                    semantic_monitor = RealTimeSemanticMonitor(user_id)
-                    # Use public wrapper method which aggregates metrics
-                    # Note: semantic_monitor instantiation loads heavy models, so we limit frequency to 24h
+                    semantic_monitor = semantic_dashboard_api.get_monitor(user_id)
                     semantic_health = await semantic_monitor.check_semantic_health(user_id)
-                    logger.info(f"[Semantic Monitor] User {user_id} health check: {semantic_health.status} (score: {semantic_health.value:.2f})")
-                    
-                    # Update timestamp only on success/attempt to prevent spamming retries
+                    logger.info(
+                        f"[Semantic Monitor] User {user_id} health check: "
+                        f"{semantic_health.status} (score: {semantic_health.value:.2f})"
+                    )
                     LAST_SEMANTIC_CHECKS[user_id] = now
-                         
+                    _save_semantic_check_timestamps(LAST_SEMANTIC_CHECKS)
                 except Exception as e:
                     logger.warning(f"[Semantic Monitor] Error checking semantic health for user {user_id}: {e}")
-            else:
-                pass
 
 
             # Check each registered task type for this user
@@ -113,11 +153,10 @@ async def check_and_execute_due_tasks(scheduler: 'TaskScheduler'):
         finally:
             db.close()
     
-    # Adjust interval based on TOTAL active strategies across all users
-    # We manually update the stats and check interval, skipping adjust_check_interval_if_needed 
-    # because it's not multi-tenant aware yet.
+    # Adjust interval based on active strategy presence across all users.
+    # Only one strategy can be active per user at a time, so > 0 check is sufficient.
     scheduler.stats['active_strategies_count'] = total_active_strategies
-    
+
     if total_active_strategies > 0:
         optimal_interval = scheduler.min_check_interval_minutes
     else:

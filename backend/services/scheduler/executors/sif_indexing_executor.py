@@ -103,7 +103,7 @@ class SIFIndexingExecutor(TaskExecutor):
             guardian_report = None
             if content_synced:
                 try:
-                    from services.intelligence.agents.specialized_agents import ContentGuardianAgent
+                    from services.intelligence.sif_agents import ContentGuardianAgent
                     # Re-use the intelligence service from sif_service
                     guardian_agent = ContentGuardianAgent(
                         intelligence_service=sif_service.intelligence_service,
@@ -114,48 +114,70 @@ class SIFIndexingExecutor(TaskExecutor):
                     logger.info("Triggering Content Guardian Site Audit...")
                     guardian_report = await guardian_agent.perform_site_audit(website_url)
                     
-                    # Persist the audit report (optional, or rely on logs/alerts)
-                    # For now, we just include it in the task result
+                    # Persist the audit report in the task log result data
                 except Exception as e:
                     logger.error(f"Failed to run Content Guardian audit: {e}")
             
             # Determine overall success
-            # We consider it a success if at least one operation worked, or if both were attempted without error
-            # But ideally, content sync is the heavy lifter.
             success = metadata_synced or content_synced
-            
-            if not success:
-                logger.warning(f"SIF indexing completed but no data was synced/indexed for {user_id}")
 
             task.last_executed = datetime.utcnow()
-            task.last_success = datetime.utcnow()
-            
-            # Schedule next execution (Recurring)
-            frequency_hours = task.frequency_hours or 48
-            task.next_execution = datetime.utcnow() + timedelta(hours=frequency_hours)
-            task.status = "active"
 
-            task.consecutive_failures = 0
-            task.failure_pattern = None
-            task.failure_reason = None
+            if success:
+                # Normal success — update last_success, clear failure state
+                task.last_success = datetime.utcnow()
+                task.consecutive_failures = 0
+                task.failure_pattern = None
+                task.failure_reason = None
+                frequency_hours = task.frequency_hours or 48
+                task.next_execution = datetime.utcnow() + timedelta(hours=frequency_hours)
+                task.status = "active"
 
-            task_log.status = "success"
-            task_log.result_data = {
-                "metadata_synced": metadata_synced,
-                "content_synced": content_synced,
-                "guardian_report": guardian_report,
-                "website_url": website_url
-            }
-            task_log.execution_time_ms = int((time.time() - start_time) * 1000)
+                task_log.status = "success"
+                task_log.result_data = {
+                    "metadata_synced": metadata_synced,
+                    "content_synced": content_synced,
+                    "guardian_report": guardian_report,
+                    "website_url": website_url
+                }
+                task_log.execution_time_ms = int((time.time() - start_time) * 1000)
 
-            db.commit()
+                db.commit()
 
-            return TaskExecutionResult(
-                success=True,
-                result_data=task_log.result_data,
-                execution_time_ms=task_log.execution_time_ms,
-                retryable=False
-            )
+                return TaskExecutionResult(
+                    success=True,
+                    result_data=task_log.result_data,
+                    execution_time_ms=task_log.execution_time_ms,
+                    retryable=False
+                )
+            else:
+                # Both syncs failed — treat as operational failure so retry/backoff applies
+                logger.warning(f"SIF indexing completed but no data was synced/indexed for {user_id}")
+                task.last_failure = datetime.utcnow()
+                task.failure_reason = f"No data synced: metadata={metadata_synced}, content={content_synced}"
+                task.consecutive_failures = (task.consecutive_failures or 0) + 1
+                task.status = "active"
+                task.next_execution = datetime.utcnow() + timedelta(minutes=60)
+
+                task_log.status = "failed"
+                task_log.error_message = task.failure_reason
+                task_log.result_data = {
+                    "metadata_synced": metadata_synced,
+                    "content_synced": content_synced,
+                    "guardian_report": guardian_report,
+                    "website_url": website_url
+                }
+                task_log.execution_time_ms = int((time.time() - start_time) * 1000)
+
+                db.commit()
+
+                return TaskExecutionResult(
+                    success=False,
+                    error_message=task_log.error_message,
+                    execution_time_ms=task_log.execution_time_ms,
+                    retryable=True,
+                    retry_delay=3600
+                )
 
         except Exception as e:
             db.rollback()

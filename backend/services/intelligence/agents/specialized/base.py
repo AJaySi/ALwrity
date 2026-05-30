@@ -57,6 +57,30 @@ class SIFBaseAgent(BaseALwrityAgent):
         if kwargs:
             logger.debug(f"[{self.__class__.__name__}] Parameters: {kwargs}")
 
+    async def _ensure_intelligence_ready(self) -> bool:
+        """Ensure txtai intelligence service is initialized without blocking the event loop."""
+        try:
+            await self.intelligence._ensure_initialized_async()
+        except Exception as init_err:
+            logger.warning(f"[{self.__class__.__name__}] Intelligence initialization failed: {init_err}")
+            return False
+        return bool(getattr(self.intelligence, "_initialized", False) and self.intelligence.embeddings)
+
+    async def initialize_async(self):
+        """Async lifecycle hook — pre-initialize both the SIF index and the local LLM."""
+        await self._ensure_intelligence_ready()
+        llm = getattr(self, "llm", None)
+        if hasattr(llm, "ensure_initialized_async"):
+            await llm.ensure_initialized_async()
+        logger.info(f"[{self.__class__.__name__}] Async initialization complete")
+
+    async def shutdown(self):
+        """Async lifecycle hook — release model resources."""
+        llm = getattr(self, "llm", None)
+        if hasattr(llm, "shutdown"):
+            await llm.shutdown()
+        logger.info(f"[{self.__class__.__name__}] Shutdown complete")
+
     def _create_txtai_agent(self):
         """
         SIF agents use the intelligence service directly, but we can expose

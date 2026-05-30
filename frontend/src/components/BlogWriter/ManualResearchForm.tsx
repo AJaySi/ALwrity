@@ -9,9 +9,10 @@ interface ManualResearchFormProps {
   onKeywordsChange?: (kw: string) => void;
   blogLengthRef?: React.MutableRefObject<string>;
   researchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
+  onBrainstormResult?: (result: import('../../api/gscBrainstorm').BrainstormResult) => void;
 }
 
-export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onKeywordsChange, blogLengthRef, researchRef }) => {
+export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onKeywordsChange, blogLengthRef, researchRef, onBrainstormResult }) => {
   const [keywords, setKeywords] = useState('');
   const [blogLength, setBlogLength] = useState('1000');
 
@@ -112,6 +113,7 @@ export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResear
           <BrainstormButton
             keywords={keywords}
             onKeywordsChange={setKeywords}
+            onBrainstormResult={onBrainstormResult}
             disabled={isSubmitting}
           />
           <button

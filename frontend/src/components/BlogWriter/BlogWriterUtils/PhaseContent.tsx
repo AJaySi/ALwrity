@@ -18,7 +18,6 @@ interface PhaseContentProps {
   aiGeneratedTitles: any[];
   sourceMappingStats: any;
   groundingInsights: any;
-  optimizationResults: any;
   researchCoverage: any;
   setOutline: (o: any) => void;
   sections: Record<string, string>;
@@ -35,15 +34,22 @@ interface PhaseContentProps {
   onCustomTitle: any;
   sectionImages?: Record<string, string>;
   setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
-  copilotKitAvailable?: boolean; // Whether CopilotKit is available
-  onResearchComplete?: (research: any) => void; // Callback when research completes (for manual form)
-  onKeywordsChange?: (kw: string) => void; // Sync keywords to parent for header chip label
-  blogLengthRef?: React.MutableRefObject<string>; // Ref to sync blog length to parent
-  startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>; // Ref to expose startResearch
-  onOutlineGenerationStart?: (taskId: string) => void; // Callback when outline generation starts
-  onContentGenerationStart?: (taskId: string) => void; // Callback when content generation starts
+  copilotKitAvailable?: boolean;
+  onResearchComplete?: (research: any) => void;
+  onKeywordsChange?: (kw: string) => void;
+  blogLengthRef?: React.MutableRefObject<string>;
+  startResearchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
+  onOutlineGenerationStart?: (taskId: string) => void;
+  onContentGenerationStart?: (taskId: string) => void;
   buildFullMarkdown?: () => string;
   convertMarkdownToHTML?: (md: string) => string;
+  brainstormResult?: import('../../../api/gscBrainstorm').BrainstormResult;
+  onBrainstormResult?: (result: import('../../../api/gscBrainstorm').BrainstormResult) => void;
+  onResearchWithKeywords?: (keywords: string) => void;
+  selectedContentAngle?: string;
+  onAngleSelect?: (angle: string) => void;
+  selectedCompetitiveAdvantage?: string;
+  onCompetitiveAdvantageSelect?: (advantage: string) => void;
 }
 
 export const PhaseContent: React.FC<PhaseContentProps> = ({
@@ -57,7 +63,6 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   aiGeneratedTitles,
   sourceMappingStats,
   groundingInsights,
-  optimizationResults,
   researchCoverage,
   setOutline,
   sections,
@@ -83,6 +88,13 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   onContentGenerationStart,
   buildFullMarkdown,
   convertMarkdownToHTML,
+  brainstormResult,
+  onBrainstormResult,
+  onResearchWithKeywords,
+  selectedContentAngle,
+  onAngleSelect,
+  selectedCompetitiveAdvantage,
+  onCompetitiveAdvantageSelect,
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -90,7 +102,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
         {currentPhase === 'research' && (
           <>
             {research ? (
-              <ResearchResults research={research} />
+              <ResearchResults research={research} brainstormResult={brainstormResult} onResearchWithKeywords={onResearchWithKeywords} selectedContentAngle={selectedContentAngle} onAngleSelect={onAngleSelect} selectedCompetitiveAdvantage={selectedCompetitiveAdvantage} onCompetitiveAdvantageSelect={onCompetitiveAdvantageSelect} />
             ) : (
               <>
                 {copilotKitAvailable ? (
@@ -104,6 +116,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                     onKeywordsChange={onKeywordsChange}
                     blogLengthRef={blogLengthRef}
                     researchRef={startResearchRef}
+                    onBrainstormResult={onBrainstormResult}
                   />
                 )}
               </>
@@ -139,7 +152,6 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                   research={research}
                   sourceMappingStats={sourceMappingStats}
                   groundingInsights={groundingInsights}
-                  optimizationResults={optimizationResults}
                   researchCoverage={researchCoverage}
                   onRefine={(op: any, id: any, payload: any) => blogWriterApi.refineOutline({ outline, operation: op, section_id: id, payload }).then((res: any) => setOutline(res.outline))}
                   sectionImages={sectionImages}

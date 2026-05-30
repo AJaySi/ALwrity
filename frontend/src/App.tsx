@@ -39,6 +39,7 @@ const ApprovalsPage = React.lazy(() => import('./pages/ApprovalsPage'));
 const TeamActivityPage = React.lazy(() => import('./pages/TeamActivityPage'));
 const StripeDisputesDashboard = React.lazy(() => import('./pages/StripeDisputesDashboard'));
 const GSCAuthCallback = React.lazy(() => import('./components/SEODashboard/components/GSCAuthCallback'));
+const YouTubeCallbackPage = React.lazy(() => import('./components/YouTubeCreator/YouTubeCallbackPage'));
 const ErrorBoundaryTest = React.lazy(() => import('./components/shared/ErrorBoundaryTest'));
 
 // Named exports — need .then() wrapper to resolve default
@@ -247,6 +248,7 @@ const App: React.FC = () => {
                     <Route path="/wp/callback" element={<WordPressCallbackPage />} />
                     <Route path="/gsc/callback" element={<GSCAuthCallback />} />
                     <Route path="/bing/callback" element={<BingCallbackPage />} />
+                    <Route path="/youtube/callback" element={<YouTubeCallbackPage />} />
                     <Route path="/bing-analytics-storage" element={<ProtectedRoute><FeatureRoute feature="bing"><BingAnalyticsStorage /></FeatureRoute></ProtectedRoute>} />
               </Routes>
             </Suspense>

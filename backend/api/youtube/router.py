@@ -30,6 +30,8 @@ from .task_manager import task_manager
 from .handlers import avatar as avatar_handlers
 from .handlers import images as image_handlers
 from .handlers import audio as audio_handlers
+from .oauth_router import router as youtube_oauth_router
+from .publish_router import router as youtube_publish_router
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
 logger = get_service_logger("api.youtube")
@@ -41,10 +43,12 @@ from .paths import (
     ensure_youtube_media_dirs,
 )
 
-# Include sub-routers for avatar, images, and audio
+# Include sub-routers for avatar, images, audio, and OAuth
 router.include_router(avatar_handlers.router)
 router.include_router(image_handlers.router)
 router.include_router(audio_handlers.router)
+router.include_router(youtube_oauth_router)
+router.include_router(youtube_publish_router)
 
 
 # Request/Response Models

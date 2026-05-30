@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 def calculate_strategic_scores(ai_recommendations: Dict[str, Any]) -> Dict[str, float]:
     """
     Calculate strategic performance scores from AI recommendations.
+    Dimension-specific weights — no blanket multipliers.
     
     Args:
         ai_recommendations: Dictionary containing AI analysis results
@@ -28,35 +29,48 @@ def calculate_strategic_scores(ai_recommendations: Dict[str, Any]) -> Dict[str, 
         'conversion_score': 0.0,
         'innovation_score': 0.0
     }
-    
-    # Calculate scores based on AI recommendations
-    total_confidence = 0
-    total_score = 0
-    
+
+    weight_sum = 0.0
+
+    dimension_weights = {
+        'comprehensive_strategy': {'quality': 0.35, 'engagement': 0.20, 'conversion': 0.25, 'innovation': 0.20},
+        'audience_intelligence': {'quality': 0.25, 'engagement': 0.40, 'conversion': 0.20, 'innovation': 0.15},
+        'competitive_intelligence': {'quality': 0.30, 'engagement': 0.15, 'conversion': 0.25, 'innovation': 0.30},
+        'performance_optimization': {'quality': 0.20, 'engagement': 0.15, 'conversion': 0.45, 'innovation': 0.20},
+        'content_calendar_optimization': {'quality': 0.30, 'engagement': 0.25, 'conversion': 0.20, 'innovation': 0.25},
+    }
+
     for analysis_type, recommendations in ai_recommendations.items():
-        if isinstance(recommendations, dict) and 'metrics' in recommendations:
-            metrics = recommendations['metrics']
-            score = metrics.get('score', 50)
-            confidence = metrics.get('confidence', 0.5)
-            
-            total_score += score * confidence
-            total_confidence += confidence
-    
-    if total_confidence > 0:
-        scores['overall_score'] = total_score / total_confidence
-    
-    # Set other scores based on overall score
-    scores['content_quality_score'] = scores['overall_score'] * 1.1
-    scores['engagement_score'] = scores['overall_score'] * 0.9
-    scores['conversion_score'] = scores['overall_score'] * 0.95
-    scores['innovation_score'] = scores['overall_score'] * 1.05
-    
+        if not isinstance(recommendations, dict):
+            continue
+        metrics = recommendations.get('metrics')
+        if not isinstance(metrics, dict):
+            continue
+
+        score = metrics.get('score', 50)
+        confidence = metrics.get('confidence', 0.5)
+        weight = confidence
+
+        scores['overall_score'] += score * weight
+        weight_sum += weight
+
+        weights = dimension_weights.get(analysis_type, {'quality': 0.25, 'engagement': 0.25, 'conversion': 0.25, 'innovation': 0.25})
+        scores['content_quality_score'] += score * weights['quality'] * weight
+        scores['engagement_score'] += score * weights['engagement'] * weight
+        scores['conversion_score'] += score * weights['conversion'] * weight
+        scores['innovation_score'] += score * weights['innovation'] * weight
+
+    if weight_sum > 0:
+        for k in scores:
+            scores[k] = round(scores[k] / weight_sum, 2)
+
     return scores
 
 
 def extract_market_positioning(ai_recommendations: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract market positioning insights from AI recommendations.
+    Scans all analysis types for positioning signals. Returns empty dict if none found.
     
     Args:
         ai_recommendations: Dictionary containing AI analysis results
@@ -64,17 +78,50 @@ def extract_market_positioning(ai_recommendations: Dict[str, Any]) -> Dict[str, 
     Returns:
         Dictionary with market positioning data
     """
-    return {
-        'industry_position': 'emerging',
-        'competitive_advantage': 'AI-powered content',
-        'market_share': '2.5%',
-        'positioning_score': 4
-    }
+    positioning = {}
+    best_confidence = 0.0
+
+    for analysis_type, recommendations in ai_recommendations.items():
+        if not isinstance(recommendations, dict):
+            continue
+        metrics = recommendations.get('metrics', {})
+        confidence = metrics.get('confidence', 0.0)
+        if confidence <= best_confidence:
+            continue
+
+        recs = recommendations.get('recommendations', [])
+        if isinstance(recs, list):
+            for r in recs:
+                if not isinstance(r, dict):
+                    continue
+                pos = r.get('market_position') or r.get('positioning')
+                adv = r.get('competitive_advantage')
+                share = r.get('market_share')
+                score = r.get('positioning_score') or metrics.get('positioning_score')
+                if any([pos, adv, share, score]):
+                    best_confidence = confidence
+                    if pos:
+                        positioning['industry_position'] = pos
+                    if adv:
+                        positioning['competitive_advantage'] = adv
+                    if share:
+                        positioning['market_share'] = str(share)
+                    if score is not None:
+                        positioning['positioning_score'] = score
+
+    if not positioning:
+        for key in ('industry_position', 'competitive_advantage', 'market_share', 'positioning_score'):
+            val = ai_recommendations.get(key)
+            if val is not None:
+                positioning[key] = val
+
+    return positioning
 
 
 def extract_competitive_advantages(ai_recommendations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Extract competitive advantages from AI recommendations.
+    Scans all analysis types for advantage signals. Returns empty list if none found.
     
     Args:
         ai_recommendations: Dictionary containing AI analysis results
@@ -82,23 +129,40 @@ def extract_competitive_advantages(ai_recommendations: Dict[str, Any]) -> List[D
     Returns:
         List of competitive advantages with impact and implementation status
     """
-    return [
-        {
-            'advantage': 'AI-powered content creation',
-            'impact': 'High',
-            'implementation': 'In Progress'
-        },
-        {
-            'advantage': 'Data-driven strategy',
-            'impact': 'Medium',
-            'implementation': 'Complete'
-        }
-    ]
+    advantages = []
+
+    for analysis_type, recommendations in ai_recommendations.items():
+        if not isinstance(recommendations, dict):
+            continue
+        recs = recommendations.get('recommendations', [])
+        if not isinstance(recs, list):
+            continue
+        for r in recs:
+            if not isinstance(r, dict):
+                continue
+            adv = r.get('advantage') or r.get('competitive_advantage')
+            if adv:
+                advantages.append({
+                    'advantage': adv,
+                    'impact': r.get('impact', 'Medium'),
+                    'implementation': r.get('implementation', 'Planned')
+                })
+
+    seen = set()
+    unique = []
+    for a in advantages:
+        key = a['advantage'].strip().lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(a)
+
+    return unique
 
 
 def extract_strategic_risks(ai_recommendations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Extract strategic risks from AI recommendations.
+    Scans all analysis types for risk signals. Returns empty list if none found.
     
     Args:
         ai_recommendations: Dictionary containing AI analysis results
@@ -106,23 +170,46 @@ def extract_strategic_risks(ai_recommendations: Dict[str, Any]) -> List[Dict[str
     Returns:
         List of strategic risks with probability and impact assessment
     """
-    return [
-        {
-            'risk': 'Content saturation in market',
-            'probability': 'Medium',
-            'impact': 'High'
-        },
-        {
-            'risk': 'Algorithm changes affecting reach',
-            'probability': 'High',
-            'impact': 'Medium'
-        }
-    ]
+    risks = []
+
+    for analysis_type, recommendations in ai_recommendations.items():
+        if not isinstance(recommendations, dict):
+            continue
+        recs = recommendations.get('recommendations', [])
+        if not isinstance(recs, list):
+            continue
+        for r in recs:
+            if not isinstance(r, dict):
+                continue
+            risk_text = r.get('risk') or r.get('strategic_risk') or r.get('threat')
+            if risk_text:
+                risks.append({
+                    'risk': risk_text,
+                    'probability': r.get('probability', 'Medium'),
+                    'impact': r.get('impact', 'Medium')
+                })
+
+        risks_list = recommendations.get('risks') or recommendations.get('strategic_risks')
+        if isinstance(risks_list, list):
+            for r in risks_list:
+                if isinstance(r, dict) and r.get('risk'):
+                    risks.append(r)
+
+    seen = set()
+    unique = []
+    for r in risks:
+        key = r['risk'].strip().lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+
+    return unique
 
 
 def extract_opportunity_analysis(ai_recommendations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Extract opportunity analysis from AI recommendations.
+    Scans all analysis types for opportunity signals. Returns empty list if none found.
     
     Args:
         ai_recommendations: Dictionary containing AI analysis results
@@ -130,18 +217,40 @@ def extract_opportunity_analysis(ai_recommendations: Dict[str, Any]) -> List[Dic
     Returns:
         List of opportunities with potential impact and implementation ease
     """
-    return [
-        {
-            'opportunity': 'Video content expansion',
-            'potential_impact': 'High',
-            'implementation_ease': 'Medium'
-        },
-        {
-            'opportunity': 'Social media engagement',
-            'potential_impact': 'Medium',
-            'implementation_ease': 'High'
-        }
-    ]
+    opportunities = []
+
+    for analysis_type, recommendations in ai_recommendations.items():
+        if not isinstance(recommendations, dict):
+            continue
+        recs = recommendations.get('recommendations', [])
+        if not isinstance(recs, list):
+            continue
+        for r in recs:
+            if not isinstance(r, dict):
+                continue
+            opp = r.get('opportunity') or r.get('growth_opportunity')
+            if opp:
+                opportunities.append({
+                    'opportunity': opp,
+                    'potential_impact': r.get('potential_impact', 'Medium'),
+                    'implementation_ease': r.get('implementation_ease', 'Medium')
+                })
+
+        opps_list = recommendations.get('opportunities') or recommendations.get('growth_opportunities')
+        if isinstance(opps_list, list):
+            for o in opps_list:
+                if isinstance(o, dict) and o.get('opportunity'):
+                    opportunities.append(o)
+
+    seen = set()
+    unique = []
+    for o in opportunities:
+        key = o['opportunity'].strip().lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(o)
+
+    return unique
 
 
 def initialize_caches() -> Dict[str, Any]:

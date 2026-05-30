@@ -4,7 +4,7 @@ Handles streaming endpoints for enhanced content strategies.
 """
 
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from starlette.requests import Request
 from sqlalchemy.orm import Session
@@ -12,8 +12,6 @@ from loguru import logger
 import json
 import asyncio
 from datetime import datetime
-from collections import defaultdict
-import time
 
 # Import database
 from services.database import get_db_session
@@ -25,31 +23,13 @@ from middleware.auth_middleware import get_current_user, get_current_user_with_q
 from ....services.enhanced_strategy_service import EnhancedStrategyService
 from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
 
-# Import utilities
-from ....utils.error_handlers import ContentPlanningErrorHandler
-from ....utils.response_builders import ResponseBuilder
-from ....utils.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
+# Use bounded shared cache instead of process-local unbounded dict
+from ...services.content_strategy.performance.caching import CachingService
 
 router = APIRouter(tags=["Strategy Streaming"])
 
-# Cache for streaming endpoints (5 minutes cache)
-streaming_cache = defaultdict(dict)
-CACHE_DURATION = 300  # 5 minutes
-
-def get_cached_data(cache_key: str) -> Optional[Dict[str, Any]]:
-    """Get cached data if it exists and is not expired."""
-    if cache_key in streaming_cache:
-        cached_data = streaming_cache[cache_key]
-        if time.time() - cached_data.get("timestamp", 0) < CACHE_DURATION:
-            return cached_data.get("data")
-    return None
-
-def set_cached_data(cache_key: str, data: Dict[str, Any]):
-    """Set cached data with timestamp."""
-    streaming_cache[cache_key] = {
-        "data": data,
-        "timestamp": time.time()
-    }
+# Shared bounded cache for streaming endpoints
+streaming_cache_service = CachingService()
 
 # Helper function to get database session
 def get_db():
@@ -123,11 +103,7 @@ async def stream_enhanced_strategies(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Credentials": "true"
+            "Connection": "keep-alive"
         }
     )
 
@@ -150,9 +126,9 @@ async def stream_strategic_intelligence(
             
             logger.info(f"🚀 Starting strategic intelligence stream for authenticated user: {authenticated_user_id}")
             
-            # Check cache first
+            # Check bounded shared cache first
             cache_key = f"strategic_intelligence_{authenticated_user_id}"
-            cached_data = get_cached_data(cache_key)
+            cached_data = await streaming_cache_service.get_cached_data("streaming_intelligence", cache_key)
             if cached_data:
                 logger.info(f"✅ Returning cached strategic intelligence data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
@@ -167,7 +143,6 @@ async def stream_strategic_intelligence(
             # Send progress update
             yield {"type": "progress", "message": "Retrieving strategies...", "progress": 20}
             
-            # Use authenticated user_id to ensure users can only see their own strategies
             strategies_data = await enhanced_service.get_enhanced_strategies(authenticated_user_id, None, db)
             
             # Send progress update
@@ -194,54 +169,29 @@ async def stream_strategic_intelligence(
             # Send progress update
             yield {"type": "progress", "message": "Processing intelligence data...", "progress": 60}
             
+            # Build strategic intelligence from actual strategy data — no hardcoded fallback defaults
             strategic_intelligence = {
                 "market_positioning": {
-                    "current_position": strategy.get("competitive_position", "Challenger"),
-                    "target_position": "Market Leader",
-                    "differentiation_factors": [
-                        "AI-powered content optimization",
-                        "Data-driven strategy development",
-                        "Personalized user experience"
-                    ]
+                    "current_position": strategy.get("competitive_position") or None,
+                    "differentiation_factors": strategy.get("differentiation_factors") or None
                 },
                 "competitive_analysis": {
-                    "top_competitors": strategy.get("top_competitors", [])[:3] or [
-                        "Competitor A", "Competitor B", "Competitor C"
-                    ],
-                    "competitive_advantages": [
-                        "Advanced AI capabilities",
-                        "Comprehensive data integration",
-                        "User-centric design"
-                    ],
-                    "market_gaps": strategy.get("market_gaps", []) or [
-                        "AI-driven content personalization",
-                        "Real-time performance optimization",
-                        "Predictive analytics"
-                    ]
+                    "top_competitors": (strategy.get("top_competitors") or [None])[:3],
+                    "competitive_advantages": strategy.get("competitive_advantages") or None,
+                    "market_gaps": strategy.get("market_gaps") or None
                 },
-                "ai_insights": ai_recommendations.get("strategic_insights", []) or [
-                    "Focus on pillar content strategy",
-                    "Implement topic clustering",
-                    "Optimize for voice search"
-                ],
-                "opportunities": [
-                    {
-                        "area": "Content Personalization",
-                        "potential_impact": "High",
-                        "implementation_timeline": "3-6 months",
-                        "estimated_roi": "25-40%"
-                    },
-                    {
-                        "area": "AI-Powered Optimization",
-                        "potential_impact": "Medium",
-                        "implementation_timeline": "6-12 months",
-                        "estimated_roi": "15-30%"
-                    }
-                ]
+                "ai_insights": ai_recommendations.get("strategic_insights") if ai_recommendations else None,
+                "opportunities": strategy.get("opportunities") or None
+            }
+            
+            # Filter out null-only sections for cleaner responses
+            strategic_intelligence = {
+                k: v for k, v in strategic_intelligence.items()
+                if v is not None and v != [None]
             }
             
             # Cache the strategic intelligence data
-            set_cached_data(cache_key, strategic_intelligence)
+            await streaming_cache_service.set_cached_data("streaming_intelligence", cache_key, strategic_intelligence)
             
             # Send progress update
             yield {"type": "progress", "message": "Finalizing strategic intelligence...", "progress": 80}
@@ -260,11 +210,7 @@ async def stream_strategic_intelligence(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Credentials": "true"
+            "Connection": "keep-alive"
         }
     )
 
@@ -287,9 +233,9 @@ async def stream_keyword_research(
             
             logger.info(f"🚀 Starting keyword research stream for authenticated user: {authenticated_user_id}")
             
-            # Check cache first
+            # Check bounded shared cache first
             cache_key = f"keyword_research_{authenticated_user_id}"
-            cached_data = get_cached_data(cache_key)
+            cached_data = await streaming_cache_service.get_cached_data("streaming_intelligence", cache_key)
             if cached_data:
                 logger.info(f"✅ Returning cached keyword research data for user: {authenticated_user_id}")
                 yield {"type": "result", "status": "success", "data": cached_data, "progress": 100}
@@ -333,33 +279,24 @@ async def stream_keyword_research(
             # Send progress update
             yield {"type": "progress", "message": "Processing keyword data...", "progress": 60}
             
+            # Build keyword data from actual analysis — no hardcoded fallback defaults
             keyword_data = {
                 "trend_analysis": {
-                    "high_volume_keywords": analysis_results.get("opportunities", [])[:3] or [
-                        {"keyword": "AI marketing automation", "volume": "10K-100K", "difficulty": "Medium"},
-                        {"keyword": "content strategy 2024", "volume": "1K-10K", "difficulty": "Low"},
-                        {"keyword": "digital marketing trends", "volume": "10K-100K", "difficulty": "High"}
-                    ],
-                    "trending_keywords": [
-                        {"keyword": "AI content generation", "growth": "+45%", "opportunity": "High"},
-                        {"keyword": "voice search optimization", "growth": "+32%", "opportunity": "Medium"},
-                        {"keyword": "video marketing strategy", "growth": "+28%", "opportunity": "High"}
-                    ]
+                    "high_volume_keywords": (analysis_results.get("opportunities") or [None])[:3],
+                    "trending_keywords": analysis_results.get("trending_keywords") or None
                 },
-                "intent_analysis": {
-                    "informational": ["how to", "what is", "guide to"],
-                    "navigational": ["company name", "brand name", "website"],
-                    "transactional": ["buy", "purchase", "download", "sign up"]
-                },
-                "opportunities": analysis_results.get("opportunities", []) or [
-                    {"keyword": "AI content tools", "search_volume": "5K-10K", "competition": "Low", "cpc": "$2.50"},
-                    {"keyword": "content marketing ROI", "search_volume": "1K-5K", "competition": "Medium", "cpc": "$4.20"},
-                    {"keyword": "social media strategy", "search_volume": "10K-50K", "competition": "High", "cpc": "$3.80"}
-                ]
+                "intent_analysis": analysis_results.get("intent_analysis") or None,
+                "opportunities": analysis_results.get("opportunities") or None
+            }
+            
+            # Filter out null-only sections
+            keyword_data = {
+                k: v for k, v in keyword_data.items()
+                if v is not None and v != [None]
             }
             
             # Cache the keyword data
-            set_cached_data(cache_key, keyword_data)
+            await streaming_cache_service.set_cached_data("streaming_intelligence", cache_key, keyword_data)
             
             # Send progress update
             yield {"type": "progress", "message": "Finalizing keyword research...", "progress": 80}
@@ -378,10 +315,71 @@ async def stream_keyword_research(
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Credentials": "true"
+            "Connection": "keep-alive"
         }
-    ) 
+    )
+
+@router.get("/stream/ai-generation-status")
+async def stream_ai_generation_status(
+    request: Request,
+    strategy_id: int = Query(..., description="Strategy ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user_with_query_token),
+    db: Session = Depends(get_db)
+):
+    """Stream AI generation status for a strategy with real-time updates."""
+    
+    async def status_generator():
+        try:
+            clerk_user_id = str(current_user.get('id', ''))
+            if not clerk_user_id:
+                yield {"type": "error", "detail": "Invalid user ID", "progress": 0}
+                return
+            
+            authenticated_user_id = clerk_user_id
+            
+            logger.info(f"🚀 Starting AI generation status stream for user: {authenticated_user_id}, strategy: {strategy_id}")
+            
+            yield {"type": "progress", "detail": "Fetching AI generation status...", "progress": 10}
+            
+            db_service = EnhancedStrategyDBService(db)
+            enhanced_service = EnhancedStrategyService(db_service)
+            
+            strategy = await enhanced_service.get_enhanced_strategy(strategy_id, authenticated_user_id, db)
+            
+            if not strategy or strategy.get("status") == "not_found":
+                yield {"type": "error", "detail": "Strategy not found", "progress": 0}
+                return
+            
+            yield {"type": "progress", "detail": "Checking AI analysis status...", "progress": 30}
+            
+            ai_recommendations = strategy.get("ai_recommendations")
+            if ai_recommendations:
+                if isinstance(ai_recommendations, str):
+                    try:
+                        ai_recommendations = json.loads(ai_recommendations)
+                    except (json.JSONDecodeError, TypeError):
+                        ai_recommendations = {}
+            
+            ai_status = "completed" if ai_recommendations else "pending"
+            
+            if ai_status == "completed":
+                yield {"type": "progress", "detail": "AI analysis completed", "progress": 80}
+                yield {"type": "result", "status": "completed", "detail": "AI generation completed", "progress": 100}
+            else:
+                yield {"type": "progress", "detail": "AI analysis is pending", "progress": 50}
+                yield {"type": "result", "status": "pending", "detail": "AI generation is in progress", "progress": 50}
+            
+            logger.info(f"✅ AI generation status stream completed for user: {authenticated_user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error in AI generation status stream: {str(e)}")
+            yield {"type": "error", "detail": str(e), "progress": 0}
+    
+    return StreamingResponse(
+        stream_data(status_generator()),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )

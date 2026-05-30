@@ -20,6 +20,9 @@ from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
 # Import educational content manager
 from .content_strategy.educational_content import EducationalContentManager
 
+# Import authentication
+from middleware.auth_middleware import get_current_user
+
 # Import utilities
 from ....utils.error_handlers import ContentPlanningErrorHandler
 from ....utils.response_builders import ResponseBuilder
@@ -40,13 +43,14 @@ _latest_strategies = {}
 
 @router.post("/generate-comprehensive-strategy")
 async def generate_comprehensive_strategy(
-    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     strategy_name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a comprehensive AI-powered content strategy."""
     try:
+        user_id = current_user.get('id')
         logger.info(f"🚀 Generating comprehensive AI strategy for user: {user_id}")
         
         # Get user context and onboarding data
@@ -103,7 +107,7 @@ async def generate_comprehensive_strategy(
 
 @router.post("/generate-strategy-component")
 async def generate_strategy_component(
-    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     component_type: str,
     base_strategy: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
@@ -111,6 +115,7 @@ async def generate_strategy_component(
 ) -> Dict[str, Any]:
     """Generate a specific strategy component using AI."""
     try:
+        user_id = current_user.get('id')
         logger.info(f"🚀 Generating strategy component '{component_type}' for user: {user_id}")
         
         # Validate component type
@@ -187,11 +192,12 @@ async def generate_strategy_component(
 
 @router.get("/strategy-generation-status")
 async def get_strategy_generation_status(
-    user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the status of strategy generation for a user."""
     try:
+        user_id = current_user.get('id')
         logger.info(f"Getting strategy generation status for user: {user_id}")
         
         # Get user's strategies
@@ -247,6 +253,7 @@ async def get_strategy_generation_status(
 async def optimize_existing_strategy(
     strategy_id: int,
     optimization_type: str = "comprehensive",
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Optimize an existing strategy using AI."""
@@ -309,12 +316,13 @@ async def optimize_existing_strategy(
 @router.post("/generate-comprehensive-strategy-polling")
 async def generate_comprehensive_strategy_polling(
     request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate a comprehensive AI-powered content strategy using polling approach."""
     try:
         # Extract parameters from request body
-        user_id = request.get("user_id", 1)
+        user_id = current_user.get('id')
         strategy_name = request.get("strategy_name")
         config = request.get("config", {})
         
@@ -611,6 +619,7 @@ async def generate_comprehensive_strategy_polling(
 @router.get("/strategy-generation-status/{task_id}")
 async def get_strategy_generation_status_by_task(
     task_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the status of strategy generation for a specific task."""
@@ -647,11 +656,12 @@ async def get_strategy_generation_status_by_task(
 
 @router.get("/latest-strategy")
 async def get_latest_generated_strategy(
-    user_id: int = Query(1, description="User ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get the latest generated strategy from the polling system or database."""
     try:
+        user_id = current_user.get('id')
         logger.info(f"🔍 Getting latest generated strategy for user: {user_id}")
         
         # First, try to get from database (most reliable)

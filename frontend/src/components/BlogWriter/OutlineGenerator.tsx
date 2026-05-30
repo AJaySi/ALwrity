@@ -10,6 +10,8 @@ interface OutlineGeneratorProps {
   onModalShow?: () => void; // Callback to show progress modal immediately
   navigateToPhase?: (phase: string) => void;
   onOutlineCreated?: (outline: any[], titleOptions?: any[]) => void; // Callback when outline is created/found (for cached outlines)
+  selectedContentAngle?: string; // Prioritized content angle for outline generation
+  selectedCompetitiveAdvantage?: string; // Prioritized competitive advantage for outline emphasis
 }
 
 const useCopilotActionTyped = useCopilotAction as any;
@@ -20,7 +22,9 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
   onPollingStart,
   onModalShow,
   navigateToPhase,
-  onOutlineCreated
+  onOutlineCreated,
+  selectedContentAngle,
+  selectedCompetitiveAdvantage,
 }, ref) => {
   // Guard against concurrent outline generation (multiple triggers: UI button + CopilotKit action)
   const outlineGenInProgressRef = useRef(false);
@@ -58,7 +62,11 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
       outlineGenInProgressRef.current = true;
       try {
         onModalShow?.();
-        const { task_id } = await blogWriterApi.startOutlineGeneration({ research });
+        const { task_id } = await blogWriterApi.startOutlineGeneration({
+          research,
+          selected_content_angle: selectedContentAngle || undefined,
+          selected_competitive_advantage: selectedCompetitiveAdvantage || undefined,
+        });
         onTaskStart(task_id);
         onPollingStart(task_id);
         return { success: true, task_id };
@@ -116,7 +124,11 @@ export const OutlineGenerator = forwardRef<any, OutlineGeneratorProps>(({
         onModalShow?.();
         
         // Start async outline generation
-        const { task_id } = await blogWriterApi.startOutlineGeneration({ research });
+        const { task_id } = await blogWriterApi.startOutlineGeneration({
+          research,
+          selected_content_angle: selectedContentAngle || undefined,
+          selected_competitive_advantage: selectedCompetitiveAdvantage || undefined,
+        });
         
         // Start polling immediately after getting task_id
         // This ensures we catch progress messages from the very beginning

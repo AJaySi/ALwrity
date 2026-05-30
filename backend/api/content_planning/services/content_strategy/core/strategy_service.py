@@ -510,7 +510,7 @@ class EnhancedStrategyService:
     async def get_system_health(self, db: Session) -> Dict[str, Any]:
         """Get system health status."""
         try:
-            return await self.health_monitoring_service.get_system_health(db)
+            return await self.health_monitoring_service.check_system_health(db)
         except Exception as e:
             logger.error(f"Error getting system health: {str(e)}")
             raise
@@ -583,7 +583,7 @@ class EnhancedStrategyService:
     async def optimize_strategy_operation(self, operation_name: str, operation_func, *args, **kwargs) -> Dict[str, Any]:
         """Optimize strategy operation with performance monitoring."""
         try:
-            return await self.performance_optimization_service.optimize_operation(
+            return await self.performance_optimization_service.optimize_response_time(
                 operation_name, operation_func, *args, **kwargs
             )
         except Exception as e:

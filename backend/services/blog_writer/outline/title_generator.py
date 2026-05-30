@@ -76,8 +76,8 @@ class TitleGenerator:
             formatted_title += '.'
         
         # Limit length to reasonable blog title size
-        if len(formatted_title) > 100:
-            formatted_title = formatted_title[:97] + "..."
+        if len(formatted_title) > 200:
+            formatted_title = formatted_title[:197] + "..."
         
         return formatted_title
     

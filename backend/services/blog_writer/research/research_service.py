@@ -155,7 +155,7 @@ class ResearchService:
                     sources = raw_result.get('sources', [])
                     search_widget = ""  # Exa doesn't provide search widgets
                     search_queries = raw_result.get('search_queries', [])
-                    grounding_metadata = None  # Exa doesn't provide grounding metadata
+                    grounding_metadata = self._build_grounding_metadata_from_sources(sources, search_queries)
                     
                 except RuntimeError as e:
                     # Fail fast - no fallback for testing/debugging
@@ -239,7 +239,7 @@ class ResearchService:
                     sources = raw_result.get('sources', [])
                     search_widget = ""  # Tavily doesn't provide search widgets
                     search_queries = raw_result.get('search_queries', [])
-                    grounding_metadata = None  # Tavily doesn't provide grounding metadata
+                    grounding_metadata = self._build_grounding_metadata_from_sources(sources, search_queries)
                     
                 except RuntimeError as e:
                     # Fail fast - no fallback for testing/debugging
@@ -482,7 +482,7 @@ class ResearchService:
                     sources = raw_result.get('sources', []) or []
                     search_widget = ""  # Exa doesn't provide search widgets
                     search_queries = raw_result.get('search_queries', []) or []
-                    grounding_metadata = None  # Exa doesn't provide grounding metadata
+                    grounding_metadata = self._build_grounding_metadata_from_sources(sources, search_queries)
                     
                 except RuntimeError as e:
                     # Fail fast - no fallback for testing/debugging
@@ -568,7 +568,7 @@ class ResearchService:
                     sources = raw_result.get('sources', []) or []
                     search_widget = ""  # Tavily doesn't provide search widgets
                     search_queries = raw_result.get('search_queries', []) or []
-                    grounding_metadata = None  # Tavily doesn't provide grounding metadata
+                    grounding_metadata = self._build_grounding_metadata_from_sources(sources, search_queries)
                     
                 except RuntimeError as e:
                     # Fail fast - no fallback for testing/debugging
@@ -727,6 +727,58 @@ class ResearchService:
             sources.append(source)
         
         return sources
+
+    def _build_grounding_metadata_from_sources(self, sources: List[Dict[str, Any]], search_queries: List[str]) -> Optional[GroundingMetadata]:
+        """Build GroundingMetadata from Exa/Tavily sources (which lack native Google grounding)."""
+        if not sources:
+            return None
+
+        grounding_chunks = []
+        grounding_supports = []
+        citations = []
+
+        for i, source in enumerate(sources):
+            score = source.get('credibility_score', 0.85)
+
+            chunk = GroundingChunk(
+                title=source.get('title', 'Untitled'),
+                url=source.get('url', ''),
+                confidence_score=score,
+            )
+            grounding_chunks.append(chunk)
+
+            highlights = source.get('highlights', [])
+            if highlights:
+                for h in highlights:
+                    grounding_supports.append(GroundingSupport(
+                        confidence_scores=[score],
+                        grounding_chunk_indices=[i],
+                        segment_text=h,
+                    ))
+            else:
+                excerpt = source.get('excerpt', '')
+                if excerpt:
+                    grounding_supports.append(GroundingSupport(
+                        confidence_scores=[score],
+                        grounding_chunk_indices=[i],
+                        segment_text=excerpt,
+                    ))
+
+            citations.append(Citation(
+                citation_type='inline',
+                start_index=0,
+                end_index=0,
+                text=(highlights[0] if highlights else source.get('excerpt', source.get('title', '')))[:200],
+                source_indices=[i],
+                reference=f'Source {i + 1}',
+            ))
+
+        return GroundingMetadata(
+            grounding_chunks=grounding_chunks,
+            grounding_supports=grounding_supports,
+            citations=citations,
+            web_search_queries=search_queries or [],
+        )
 
     def _normalize_cached_research_data(self, cached_data: Dict[str, Any]) -> Dict[str, Any]:
         """

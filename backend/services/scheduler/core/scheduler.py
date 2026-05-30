@@ -27,7 +27,7 @@ from utils.logger_utils import get_service_logger
 
 from ..utils.user_job_store import get_user_job_store_name
 from models.scheduler_models import SchedulerEventLog
-from .interval_manager import determine_optimal_interval, adjust_check_interval_if_needed
+from .interval_manager import determine_optimal_interval
 from .job_restoration import restore_persona_jobs
 from .oauth_task_restoration import restore_oauth_monitoring_tasks
 from .website_analysis_task_restoration import restore_website_analysis_tasks
@@ -627,15 +627,6 @@ class TaskScheduler:
             return
 
         await check_and_execute_due_tasks(self)
-    
-    async def _adjust_check_interval_if_needed(self, db: Session):
-        """
-        Intelligently adjust check interval based on active strategies.
-        
-        Args:
-            db: Database session
-        """
-        await adjust_check_interval_if_needed(self, db)
     
     async def _execute_missed_jobs(self):
         """

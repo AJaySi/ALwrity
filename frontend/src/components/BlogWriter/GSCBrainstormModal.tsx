@@ -108,22 +108,22 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
       >
         {/* Header */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '12px 28px', borderBottom: '1px solid #e8e8e8', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          padding: '10px 24px', borderBottom: '1px solid #e8e8e8', flexShrink: 0,
         }}>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1a1a1a', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '-0.01em' }}>
             Brainstorm Topics
           </h3>
           <input
             value={topicInput}
             onChange={(e) => setTopicInput(e.target.value)}
             disabled={isBrainstorming}
-            placeholder="Enter research topic or keywords..."
+            placeholder="Enter topic keywords..."
             style={{
-              flex: 1, padding: '6px 10px', border: '1px solid #ddd',
-              borderRadius: '6px', fontSize: '13px', color: '#333',
+              flex: '0 1 auto', width: '35%', minWidth: '160px', padding: '6px 10px',
+              border: '1px solid #ddd', borderRadius: '8px', fontSize: '13px', color: '#333',
               backgroundColor: isBrainstorming ? '#f5f5f5' : '#fff',
-              outline: 'none', minWidth: 0,
+              outline: 'none',
             }}
           />
           <button
@@ -140,7 +140,7 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
                 : 'Re-run brainstorm with these keywords (bypasses cache)'
             }
             style={{
-              padding: '6px 14px', border: 'none', borderRadius: '6px',
+              padding: '6px 14px', border: 'none', borderRadius: '8px',
               backgroundColor: isBrainstorming ? '#ccc' : '#1976d2',
               color: '#fff', fontSize: '12px', fontWeight: 600,
               cursor: isBrainstorming || topicInput.trim().split(/\s+/).length < 3 ? 'not-allowed' : 'pointer',
@@ -148,8 +148,23 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
             }}
           >{isBrainstorming ? 'Running...' : 'Re-Run'}</button>
           {summary?.site_url && (
-            <span style={{ fontSize: '11px', color: '#999', flexShrink: 0, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {summary.site_url.replace(/^https?:\/\//, '').slice(0, 30)}
+            <span style={{
+              fontSize: '11px', fontWeight: 500, color: '#1565c0', backgroundColor: '#e3f2fd',
+              padding: '3px 10px', borderRadius: '12px', whiteSpace: 'nowrap', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+            }}>
+              <span style={{ fontSize: '10px' }}>🌐</span>
+              {summary.site_url.replace(/^https?:\/\//, '').slice(0, 25)}
+            </span>
+          )}
+          {summary?.date_range?.start && (
+            <span style={{
+              fontSize: '11px', fontWeight: 500, color: '#6a1b9a', backgroundColor: '#f3e5f5',
+              padding: '3px 10px', borderRadius: '12px', whiteSpace: 'nowrap', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+            }}>
+              <span style={{ fontSize: '10px' }}>📅</span>
+              Last 30 days
             </span>
           )}
           <button
@@ -157,18 +172,13 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
             style={{
               background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer',
               color: '#999', padding: '2px 8px', borderRadius: '4px',
-              transition: 'background-color 0.15s', lineHeight: 1, flexShrink: 0,
+              transition: 'background-color 0.15s', lineHeight: 1, flexShrink: 0, marginLeft: 'auto',
             }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             aria-label="Close"
           >✕</button>
         </div>
-
-        {/* Summary dashboard */}
-        {summary && summary.total_keywords_analyzed > 0 && (
-          <SummaryDashboard summary={summary} />
-        )}
 
         {/* Loading with educational progress */}
         {isBrainstorming && (
@@ -260,75 +270,91 @@ export const GSCBrainstormModal: React.FC<GSCBrainstormModalProps> = ({
           </div>
         )}
 
-        {/* Results */}
+        {/* Results with sidebar */}
         {!isBrainstorming && !error && hasData && (
-          <>
-            {/* Tabs */}
-            <div style={{
-              display: 'flex', borderBottom: '1px solid #e8e8e8',
-              backgroundColor: '#fafafa', padding: '0 4px', flexShrink: 0,
-            }}>
-              {tabLabels.map((tab) => {
-                const count = getTabCount(tab);
-                const isActive = activeTab === tab;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    style={{
-                      padding: '12px 20px', border: 'none',
-                      borderBottom: isActive ? '2px solid #1976d2' : '2px solid transparent',
-                      background: isActive ? '#fff' : 'transparent',
-                      color: isActive ? '#1976d2' : '#666',
-                      fontWeight: isActive ? 600 : 400,
-                      cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap',
-                      transition: 'color 0.15s, background-color 0.15s',
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}
-                  >
-                    {tab}
-                    {count > 0 && (
-                      <span style={{
-                        backgroundColor: isActive ? '#1976d2' : '#bbb',
-                        color: '#fff', borderRadius: '10px', padding: '1px 8px',
-                        fontSize: '11px', fontWeight: 600, lineHeight: '18px',
-                      }}>{count}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            {/* Left sidebar — summary metrics */}
+            {summary && summary.total_keywords_analyzed > 0 && (
+              <SummarySidebar summary={summary} />
+            )}
 
-            {/* Tab content */}
-            <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px' }}>
-              {activeTab === 'Quick Wins' && <QuickWinsTab wins={quickWins} onSelect={onSelectSuggestion} />}
-              {activeTab === 'Opportunities' && <OpportunitiesTab opportunities={contentOpportunities} onSelect={onSelectSuggestion} />}
-              {activeTab === 'Keyword Gaps' && <GapsTab gaps={keywordGaps} onSelect={onSelectSuggestion} />}
-              {activeTab === 'Pages' && <PagesTab pages={pageOpportunities} />}
-              {activeTab === 'AI Recommendations' && <AIRecommendationsTab recommendations={aiRecommendations} onSelect={onSelectSuggestion} />}
+            {/* Right panel — tabs + content */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Gradient tabs */}
+              <div style={{
+                display: 'flex', gap: '6px', padding: '10px 16px 8px',
+                backgroundColor: '#f5f7fa', borderBottom: '1px solid #e0e0e0',
+                flexShrink: 0, flexWrap: 'wrap',
+              }}>
+                {tabLabels.map((tab) => {
+                  const count = getTabCount(tab);
+                  const isActive = activeTab === tab;
+                  const tabGradients: Record<string, string> = {
+                    'Quick Wins': 'linear-gradient(135deg, #43a047, #66bb6a)',
+                    'Opportunities': 'linear-gradient(135deg, #ef6c00, #ffa726)',
+                    'Keyword Gaps': 'linear-gradient(135deg, #1565c0, #42a5f5)',
+                    'Pages': 'linear-gradient(135deg, #c62828, #ef5350)',
+                    'AI Recommendations': 'linear-gradient(135deg, #6a1b9a, #ab47bc)',
+                  };
+                  const tabInfo: Record<string, string> = {
+                    'Quick Wins': 'Keywords already on page 1 (positions 4-10). Small optimizations can push them to top 3.',
+                    'Opportunities': 'Content needing improvement — high impressions with low CTR, or page 2 rankings needing a boost.',
+                    'Keyword Gaps': 'Keywords ranking 4-20 with untapped traffic potential if improved to top 3.',
+                    'Pages': 'Individual pages with high impressions but low click-through rates needing meta improvements.',
+                    'AI Recommendations': 'AI-generated blog post suggestions based on all analysis data.',
+                  };
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      title={tabInfo[tab]}
+                      style={{
+                        padding: '8px 18px', border: 'none', borderRadius: '20px',
+                        background: isActive ? tabGradients[tab] : '#e8eaed',
+                        color: isActive ? '#fff' : '#555',
+                        fontWeight: isActive ? 600 : 400,
+                        cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap',
+                        transition: 'all 0.2s', boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        position: 'relative',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = '#d0d4da';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.background = '#e8eaed';
+                        }
+                      }}
+                    >
+                      {tab}
+                      {count > 0 && (
+                        <span style={{
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)',
+                          color: isActive ? '#fff' : '#666',
+                          borderRadius: '10px', padding: '1px 8px',
+                          fontSize: '11px', fontWeight: 600, lineHeight: '18px',
+                        }}>{count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab content */}
+              <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+                {activeTab === 'Quick Wins' && <QuickWinsTab wins={quickWins} onSelect={onSelectSuggestion} />}
+                {activeTab === 'Opportunities' && <OpportunitiesTab opportunities={contentOpportunities} onSelect={onSelectSuggestion} />}
+                {activeTab === 'Keyword Gaps' && <GapsTab gaps={keywordGaps} onSelect={onSelectSuggestion} />}
+                {activeTab === 'Pages' && <PagesTab pages={pageOpportunities} />}
+                {activeTab === 'AI Recommendations' && <AIRecommendationsTab recommendations={aiRecommendations} onSelect={onSelectSuggestion} />}
+              </div>
             </div>
-          </>
+          </div>
         )}
 
-        {/* Footer */}
-        <div style={{
-          padding: '14px 28px', borderTop: '1px solid #e8e8e8',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          backgroundColor: '#fafafa', flexShrink: 0,
-        }}>
-          <span style={{ fontSize: '12px', color: '#999' }}>Click any keyword or title to use it as your research topic</span>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '10px 24px', backgroundColor: '#fff',
-              border: '1px solid #ddd', borderRadius: '8px',
-              cursor: 'pointer', fontSize: '14px', color: '#555',
-              transition: 'background-color 0.15s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
-          >Close</button>
-        </div>
       </div>
     </div>
   );
@@ -391,8 +417,8 @@ const HelpIcon: React.FC<{ text: string }> = ({ text }) => {
 
 const PIE_COLORS = ['#2e7d32', '#1565c0', '#f57c00', '#999'];
 
-const SummaryDashboard: React.FC<{ summary: BrainstormSummary }> = ({ summary }) => {
-  const dist = summary.keyword_distribution || {};
+const SummarySidebar: React.FC<{ summary: BrainstormSummary }> = ({ summary }) => {
+  const dist = summary.keyword_distribution || { positions_1_3: 0, positions_4_10: 0, positions_11_20: 0, positions_21_plus: 0 };
   const total = dist.positions_1_3 + dist.positions_4_10 + dist.positions_11_20 + dist.positions_21_plus || 1;
   const healthColor = summary.health_score >= 70 ? '#2e7d32' : summary.health_score >= 40 ? '#f57c00' : '#d32f2f';
   const ctrColor = summary.ctr_vs_benchmark >= 0 ? '#2e7d32' : '#d32f2f';
@@ -405,27 +431,51 @@ const SummaryDashboard: React.FC<{ summary: BrainstormSummary }> = ({ summary })
   ];
 
   return (
-    <div style={{ borderBottom: '1px solid #e8e8e8', flexShrink: 0 }}>
+    <div style={{
+      width: '240px', flexShrink: 0, backgroundColor: '#f8fbff',
+      borderRight: '1px solid #e0e0e0', overflow: 'auto',
+      display: 'flex', flexDirection: 'column', gap: '6px',
+      padding: '14px 12px',
+    }}>
+      {/* Sidebar header */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '20px',
-        padding: '10px 28px', backgroundColor: '#f8fbff',
+        display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px',
+        padding: '0 2px',
       }}>
-        {/* Metric boxes */}
-        <div style={{ display: 'flex', gap: '16px', flex: 1, flexWrap: 'wrap' }}>
-          <MetricBox label="Impressions" value={summary.total_impressions?.toLocaleString()} tooltip={METRIC_HELP.Impressions} />
-          <MetricBox label="Clicks" value={summary.total_clicks?.toLocaleString()} tooltip={METRIC_HELP.Clicks} />
-          <MetricBox driving label="Avg CTR" value={`${summary.avg_ctr}%`} sublabel={`vs 3.1% avg`} sublabelColor={ctrColor} tooltip={METRIC_HELP['Avg CTR']} />
-          <MetricBox label="Avg Position" value={`${summary.avg_position}`} tooltip={METRIC_HELP['Avg Position']} />
-          <MetricBox driving label="SEO Health" value={`${summary.health_score}/100`} valueColor={healthColor} tooltip={METRIC_HELP['SEO Health']} />
-        </div>
+        <span style={{ fontSize: '13px', fontWeight: 700, color: '#1a1a1a', letterSpacing: '-0.01em' }}>
+          Performance
+        </span>
+        <HelpIcon text={METRIC_HELP['SEO Health']} />
+      </div>
 
-        {/* Rank distribution pie chart */}
-        {total > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            <div style={{ width: '80px', height: '80px' }}>
-              <ResponsiveContainer width="100%" height="100%">
+      {/* Metrics */}
+      <div style={{
+        backgroundColor: '#fff', borderRadius: '10px', padding: '10px 12px',
+        border: '1px solid #e8ecf0', display: 'flex', flexDirection: 'column', gap: '6px',
+      }}>
+        <MetricRow label="Keywords" value={`${summary.total_keywords_analyzed}`} />
+        <MetricRow label="Impressions" value={summary.total_impressions?.toLocaleString()} tooltip={METRIC_HELP.Impressions} />
+        <MetricRow label="Clicks" value={summary.total_clicks?.toLocaleString()} tooltip={METRIC_HELP.Clicks} />
+        <MetricRow label="CTR" value={`${summary.avg_ctr}%`} tooltip={METRIC_HELP['Avg CTR']} rightLabel={`vs 3.1% ${summary.ctr_vs_benchmark >= 0 ? '+' : ''}${summary.ctr_vs_benchmark}%`} rightColor={ctrColor} />
+        <MetricRow label="Avg Pos" value={`${summary.avg_position}`} tooltip={METRIC_HELP['Avg Position']} />
+        <MetricRow label="SEO Health" value={`${summary.health_score}/100`} valueColor={healthColor} tooltip={METRIC_HELP['SEO Health']} />
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: '1px', backgroundColor: '#e0e0e0', margin: '2px 0' }} />
+
+      {/* Pie chart + legend */}
+      {total > 1 && (
+        <>
+          <div style={{ textAlign: 'center', backgroundColor: '#fff', borderRadius: '10px', padding: '10px', border: '1px solid #e8ecf0' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#555', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+              Rank Distribution
+              <HelpIcon text={METRIC_HELP['Rank Distribution']} />
+            </div>
+            <div style={{ width: '120px', height: '120px', margin: '0 auto' }}>
+              <ResponsiveContainer width={120} height={120}>
                 <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={22} outerRadius={36} dataKey="value" paddingAngle={2} stroke="none">
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={50} dataKey="value" paddingAngle={2} stroke="none">
                     {pieData.map((entry, idx) => (
                       <Cell key={idx} fill={PIE_COLORS[idx]} />
                     ))}
@@ -444,21 +494,50 @@ const SummaryDashboard: React.FC<{ summary: BrainstormSummary }> = ({ summary })
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '11px', marginTop: '6px' }}>
               {pieData.map((d, idx) => (
-                <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#666' }}>
+                <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#555' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: PIE_COLORS[idx], display: 'inline-block', flexShrink: 0 }} />
-                  {d.name}: <strong>{d.value}</strong>
-                  <HelpIcon text={METRIC_HELP[d.name as keyof typeof METRIC_HELP] || ''} />
+                  <span style={{ flex: 1, textAlign: 'left' }}>{d.name}</span>
+                  <strong>{d.value}</strong>
+                  <span style={{ color: '#999', minWidth: '32px', textAlign: 'right' }}>{d.pct}%</span>
                 </span>
               ))}
             </div>
           </div>
-        )}
+        </>
+      )}
+
+      {/* Health insight */}
+      <div style={{
+        padding: '10px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 500,
+        backgroundColor: healthColor === '#2e7d32' ? '#e8f5e9' : healthColor === '#f57c00' ? '#fff3e0' : '#ffebee',
+        border: `1px solid ${healthColor === '#2e7d32' ? '#c8e6c9' : healthColor === '#f57c00' ? '#ffe0b2' : '#ffcdd2'}`,
+        color: healthColor, lineHeight: 1.5,
+      }}>
+        <span style={{ marginRight: '4px' }}>{summary.health_score >= 70 ? '✅' : summary.health_score >= 40 ? '⚠️' : '🔴'}</span>
+        {summary.health_score >= 70
+          ? 'Good shape! Your topic keywords are well-positioned.'
+          : summary.health_score >= 40
+            ? `Need work. ${dist.positions_21_plus} keywords rank outside page 1 — write targeted content.`
+            : `Low visibility. ${Math.round((dist.positions_21_plus / total) * 100)}% of keywords are beyond page 2 — focus on foundational content.`}
       </div>
     </div>
   );
 };
+
+const MetricRow: React.FC<{ label: string; value: string; valueColor?: string; tooltip?: string; rightLabel?: string; rightColor?: string }> = ({ label, value, valueColor, tooltip, rightLabel, rightColor }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <span style={{ fontSize: '11px', color: '#888', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}>
+      {label}
+      {tooltip && <HelpIcon text={tooltip} />}
+    </span>
+    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <span style={{ fontSize: '13px', fontWeight: 700, color: valueColor || '#1a1a1a' }}>{value}</span>
+      {rightLabel && <span style={{ fontSize: '10px', color: rightColor || '#999', fontWeight: 500 }}>{rightLabel}</span>}
+    </span>
+  </div>
+);
 
 const MetricBox: React.FC<{
   label: string; value: string; valueColor?: string;
@@ -489,36 +568,38 @@ const QuickWinsTab: React.FC<{ wins: QuickWin[]; onSelect: (kw: string) => void 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <p style={{ margin: '0 0 4px', fontSize: '14px', color: '#555' }}>
+    <div>
+      <p style={{ margin: '0 0 14px', fontSize: '14px', color: '#555', maxWidth: '700px' }}>
         These keywords are already on page 1. A small optimization push could land them in the top 3 — the highest-ROI opportunities available.
         <HelpIcon text="'Page 1' means Google's first search results page (positions 1-10). Being on page 1 is critical — over 90% of clicks go to page 1 results. Top 3 positions get the lion's share of those clicks." />
       </p>
-      {wins.map((win, i) => (
-        <div
-          key={i}
-          style={{
-            padding: '16px 18px', border: '1px solid #c8e6c9', borderRadius: '10px',
-            cursor: 'pointer', transition: 'all 0.15s', backgroundColor: '#f1f8e9',
-            borderLeft: '4px solid #4caf50',
-          }}
-          onClick={() => onSelect(win.keyword)}
-          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcedc8'; e.currentTarget.style.borderLeftColor = '#2e7d32'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#f1f8e9'; e.currentTarget.style.borderLeftColor = '#4caf50'; }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#2e7d32' }}>{win.keyword}</span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <Badge label={`#${Math.round(win.position)}`} color="#1565c0" />
-              <Badge label={`+${win.estimated_traffic_gain} clicks/mo`} color="#2e7d32" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+        {wins.map((win, i) => (
+          <div
+            key={i}
+            style={{
+              padding: '16px 18px', border: '1px solid #c8e6c9', borderRadius: '10px',
+              cursor: 'pointer', transition: 'all 0.15s', backgroundColor: '#f1f8e9',
+              borderLeft: '4px solid #4caf50', display: 'flex', flexDirection: 'column',
+            }}
+            onClick={() => onSelect(win.keyword)}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcedc8'; e.currentTarget.style.borderLeftColor = '#2e7d32'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#f1f8e9'; e.currentTarget.style.borderLeftColor = '#4caf50'; }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontWeight: 600, fontSize: '15px', color: '#2e7d32' }}>{win.keyword}</span>
+              <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Badge label={`#${Math.round(win.position)}`} color="#1565c0" />
+                <Badge label={`+${win.estimated_traffic_gain} clicks/mo`} color="#2e7d32" />
+              </div>
+            </div>
+            <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#444', lineHeight: 1.5, flex: 1 }}>{win.reason}</p>
+            <div style={{ fontSize: '12px', color: '#888' }}>
+              <InlineHelp text="Times your site appeared in Google search results">{(win.impressions.toLocaleString())} impressions</InlineHelp> &middot; <InlineHelp text="Percentage of people who saw and clicked your result">{win.current_ctr}% CTR</InlineHelp>
             </div>
           </div>
-          <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#444', lineHeight: 1.5 }}>{win.reason}</p>
-          <div style={{ fontSize: '12px', color: '#888' }}>
-            <InlineHelp text="Times your site appeared in Google search results">{(win.impressions.toLocaleString())} impressions</InlineHelp> &middot; <InlineHelp text="Percentage of people who saw and clicked your result">{win.current_ctr}% CTR</InlineHelp>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };
@@ -533,39 +614,50 @@ const OpportunitiesTab: React.FC<{ opportunities: ContentOpportunity[]; onSelect
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {opportunities.map((opp, i) => (
-        <div
-          key={i}
-          style={{
-            padding: '16px 18px', border: '1px solid #e0e0e0', borderRadius: '10px',
-            cursor: 'pointer', transition: 'all 0.15s',
-            borderLeft: `4px solid ${opp.priority === 'High' ? '#d32f2f' : '#f57c00'}`,
-          }}
-          onClick={() => onSelect(opp.keyword)}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#1a1a1a' }}>{opp.keyword}</span>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <Badge
-                label={opp.type === 'Content Optimization' ? 'Optimize' : 'Enhance'}
-                color={opp.type === 'Content Optimization' ? '#1565c0' : '#f57c00'}
-              />
-              <Badge label={opp.priority} color={opp.priority === 'High' ? '#d32f2f' : '#666'} />
-              {opp.suggested_format && <Badge label={opp.suggested_format} color="#6a1b9a" />}
+    <div>
+      <p style={{ margin: '0 0 14px', fontSize: '14px', color: '#555', maxWidth: '700px' }}>
+        Two types of opportunities detected: <strong>Content Optimization</strong> (high impressions, low CTR — fix your title/meta) and <strong>Content Enhancement</strong> (page 2 rankings — boost content to reach page 1).
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+        {opportunities.map((opp, i) => {
+          const isBlue = opp.type === 'Content Optimization';
+          const bgColor = isBlue ? '#e3f2fd' : '#fff3e0';
+          const borderColor = isBlue ? '#42a5f5' : '#ffa726';
+          const kwColor = isBlue ? '#1565c0' : '#e65100';
+          const borderLeftColor = opp.priority === 'High' ? '#d32f2f' : borderColor;
+          const hoverBg = isBlue ? '#bbdefb' : '#ffe0b2';
+          const hoverBorder = opp.priority === 'High' ? '#b71c1c' : (isBlue ? '#1565c0' : '#e65100');
+          return (
+            <div
+              key={i}
+              style={{
+                padding: '16px 18px', border: `1px solid ${isBlue ? '#bbdefb' : '#ffe0b2'}`, borderRadius: '10px',
+                cursor: 'pointer', transition: 'all 0.15s', backgroundColor: bgColor,
+                borderLeft: `4px solid ${borderLeftColor}`, display: 'flex', flexDirection: 'column',
+              }}
+              onClick={() => onSelect(opp.keyword)}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = hoverBg; e.currentTarget.style.borderLeftColor = hoverBorder; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = bgColor; e.currentTarget.style.borderLeftColor = borderLeftColor; }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontWeight: 600, fontSize: '15px', color: kwColor, flex: 1 }}>{opp.keyword}</span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
+                  <Badge label={opp.type === 'Content Optimization' ? 'Optimize' : 'Enhance'} color={isBlue ? '#1565c0' : '#f57c00'} />
+                  <Badge label={opp.priority} color={opp.priority === 'High' ? '#d32f2f' : '#666'} />
+                  {opp.suggested_format && <Badge label={opp.suggested_format} color="#6a1b9a" />}
+                </div>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', lineHeight: 1.5, flex: 1 }}>{opp.opportunity}</p>
+              <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#888', flexWrap: 'wrap' }}>
+                <InlineHelp text="How many times this keyword appeared in search results">{opp.impressions.toLocaleString()} impressions</InlineHelp>
+                <InlineHelp text="Your average ranking for this keyword. Position 1 = top of Google.">Pos {opp.current_position}</InlineHelp>
+                <InlineHelp text="Click-Through Rate — the % of viewers who clicked on your result">{opp.current_ctr}% CTR</InlineHelp>
+                <span style={{ color: '#2e7d32', fontWeight: 600 }}>+{opp.estimated_traffic_gain} clicks/mo</span>
+              </div>
             </div>
-          </div>
-          <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', lineHeight: 1.5 }}>{opp.opportunity}</p>
-          <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#888', flexWrap: 'wrap' }}>
-            <InlineHelp text="How many times this keyword appeared in search results">{opp.impressions.toLocaleString()} impressions</InlineHelp>
-            <InlineHelp text="Your average ranking for this keyword. Position 1 = top of Google.">Position {opp.current_position}</InlineHelp>
-            <InlineHelp text="Click-Through Rate — the % of viewers who clicked on your result">{opp.current_ctr}% CTR</InlineHelp>
-            <span style={{ color: '#2e7d32', fontWeight: 600 }}>+{opp.estimated_traffic_gain} clicks/mo potential</span>
-          </div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -580,35 +672,37 @@ const GapsTab: React.FC<{ gaps: KeywordGap[]; onSelect: (kw: string) => void }> 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <p style={{ margin: '0 0 6px', fontSize: '14px', color: '#555' }}>
+    <div>
+      <p style={{ margin: '0 0 14px', fontSize: '14px', color: '#555', maxWidth: '700px' }}>
         These keywords rank between positions 4-20. Writing targeted content could push them to page 1 where CTR increases dramatically.
         <HelpIcon text="CTR (Click-Through Rate) jumps significantly on page 1 — the #1 result gets ~28% of clicks, while page 2 results get less than 1%. Moving from page 2 to page 1 can 10x your traffic." />
       </p>
-      {gaps.map((gap, i) => (
-        <div
-          key={i}
-          style={{
-            padding: '14px 16px', border: '1px solid #e0e0e0', borderRadius: '10px',
-            cursor: 'pointer', display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', transition: 'background-color 0.15s',
-          }}
-          onClick={() => onSelect(gap.keyword)}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
-        >
-          <div>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#1a1a1a' }}>{gap.keyword}</span>
-            <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-              <InlineHelp text="Click-Through Rate — how often searchers click your result">{gap.current_ctr}% CTR</InlineHelp> &middot; {gap.clicks} clicks
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+        {gaps.map((gap, i) => (
+          <div
+            key={i}
+            style={{
+              padding: '16px 18px', border: '1px solid #bbdefb', borderRadius: '10px',
+              cursor: 'pointer', transition: 'all 0.15s', backgroundColor: '#e3f2fd',
+              borderLeft: '4px solid #42a5f5', display: 'flex', flexDirection: 'column',
+            }}
+            onClick={() => onSelect(gap.keyword)}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#bbdefb'; e.currentTarget.style.borderLeftColor = '#1565c0'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#e3f2fd'; e.currentTarget.style.borderLeftColor = '#42a5f5'; }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+              <span style={{ fontWeight: 600, fontSize: '15px', color: '#1565c0', flex: 1 }}>{gap.keyword}</span>
+              <Badge label={`#${gap.position.toFixed(0)}`} color="#1565c0" />
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', lineHeight: 1.5, flex: 1 }}>
+              <InlineHelp text="Click-Through Rate — how often searchers click your result">{gap.current_ctr}% CTR</InlineHelp> &middot; {gap.clicks} clicks &middot; <span style={{ color: '#2e7d32', fontWeight: 500 }}>+{gap.estimated_traffic_if_page1} clicks/mo if page 1</span>
+            </p>
+            <div style={{ fontSize: '12px', color: '#888' }}>
+              <InlineHelp text="The number of positions to improve to reach top 3">{gap.gap_from_page1} positions from top 3</InlineHelp>
             </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: '12px' }}>
-            <InlineHelp text="Position 1-10 is page 1 of Google, 11-20 is page 2">Position #{gap.position.toFixed(0)}</InlineHelp>
-            <div style={{ color: '#2e7d32', fontWeight: 500 }}>+{gap.estimated_traffic_if_page1} clicks/mo if page 1</div>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };
@@ -623,27 +717,33 @@ const PagesTab: React.FC<{ pages: PageOpportunity[] }> = ({ pages }) => {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <p style={{ margin: '0 0 4px', fontSize: '14px', color: '#555' }}>
+    <div>
+      <p style={{ margin: '0 0 14px', fontSize: '14px', color: '#555', maxWidth: '700px' }}>
         These pages get significant impressions but low click-through rates. Improving their titles and meta descriptions can boost clicks.
         <HelpIcon text="Meta descriptions are the short preview text under your page title in search results. A compelling meta description can double your CTR. Titles should include your target keyword and a value proposition." />
       </p>
-      {pages.map((pg, i) => (
-        <div key={i} style={{
-          padding: '16px 18px', border: '1px solid #e0e0e0', borderRadius: '10px',
-          borderLeft: '4px solid #d32f2f',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#1a1a1a' }}>{pg.page_title}</span>
-            <Badge label={`${pg.current_ctr}% CTR`} color={pg.current_ctr < 1 ? '#d32f2f' : '#f57c00'} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+        {pages.map((pg, i) => (
+          <div key={i} style={{
+            padding: '16px 18px', border: '1px solid #ffcdd2', borderRadius: '10px',
+            borderLeft: '4px solid #ef5350', backgroundColor: '#ffebee',
+            display: 'flex', flexDirection: 'column', transition: 'background-color 0.15s',
+          }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ffcdd2'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffebee'}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontWeight: 600, fontSize: '15px', color: '#c62828', flex: 1 }}>{pg.page_title}</span>
+              <Badge label={`${pg.current_ctr}% CTR`} color={pg.current_ctr < 1 ? '#d32f2f' : '#f57c00'} />
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', lineHeight: 1.5, flex: 1 }}>{pg.reason}</p>
+            <div style={{ fontSize: '12px', color: '#888' }}>
+              <InlineHelp text="How many times this page appeared in search results">{pg.impressions.toLocaleString()} impressions</InlineHelp> &middot; {pg.clicks} clicks &middot; <InlineHelp text="Average search ranking for this page. Lower is better.">Pos {pg.current_position}</InlineHelp>
+            </div>
+            <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', wordBreak: 'break-all' }}>{pg.page}</div>
           </div>
-          <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#555', lineHeight: 1.5 }}>{pg.reason}</p>
-          <div style={{ fontSize: '12px', color: '#888' }}>
-            <InlineHelp text="How many times this page appeared in search results">{pg.impressions.toLocaleString()} impressions</InlineHelp> &middot; {pg.clicks} clicks &middot; <InlineHelp text="Average search ranking for this page. Lower is better.">Position {pg.current_position}</InlineHelp>
-          </div>
-          <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', wordBreak: 'break-all' }}>{pg.page}</div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };
@@ -669,6 +769,8 @@ const AIRecommendationsTab: React.FC<{ recommendations: AIRecommendations | null
 const RecommendationSection: React.FC<{ title: string; items: AIRecommendation[]; onSelect: (kw: string) => void; color: string }> = ({ title, items, onSelect, color }) => {
   if (!items || items.length === 0) return null;
 
+  const lightBg = `${color}11`;
+
   return (
     <div>
       <h4 style={{
@@ -676,32 +778,34 @@ const RecommendationSection: React.FC<{ title: string; items: AIRecommendation[]
         display: 'flex', alignItems: 'center', gap: '8px',
       }}>
         <span style={{
-          width: '8px', height: '8px', borderRadius: '50%',
-          backgroundColor: color, display: 'inline-block',
+          width: '10px', height: '10px', borderRadius: '50%',
+          backgroundColor: color, display: 'inline-block', flexShrink: 0,
         }} />
         {title}
+        <span style={{ fontSize: '12px', color: '#999', fontWeight: 400 }}>({items.length} suggestions)</span>
       </h4>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
         {items.map((item, i) => (
           <div
             key={i}
             style={{
-              padding: '14px 16px', border: '1px solid #e8e8e8', borderRadius: '10px',
-              cursor: 'pointer', transition: 'all 0.15s',
+              padding: '16px 18px', border: `1px solid ${color}44`, borderRadius: '10px',
+              cursor: 'pointer', transition: 'all 0.15s', backgroundColor: lightBg,
+              borderLeft: `4px solid ${color}`, display: 'flex', flexDirection: 'column',
             }}
             onClick={() => {
               const kw = item.keyword || item.title.split(/[:(]/)[0].replace(/^[-\s]+/, '').trim();
               if (kw && kw.length > 2) onSelect(kw);
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f8faff'; e.currentTarget.style.borderColor = '#c8d8e8'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#fff'; e.currentTarget.style.borderColor = '#e8e8e8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${color}22`; e.currentTarget.style.borderColor = color; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = lightBg; e.currentTarget.style.borderColor = `${color}44`; }}
           >
             <div style={{ fontWeight: 600, fontSize: '14px', color: '#1a1a1a', marginBottom: '4px' }}>{item.title}</div>
             {item.keyword && <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>
               Target: <strong style={{ color: '#555' }}>{item.keyword}</strong>
             </div>}
-            {item.reason && <div style={{ fontSize: '13px', color: '#555', lineHeight: 1.5 }}>{item.reason}</div>}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+            {item.reason && <div style={{ fontSize: '13px', color: '#555', lineHeight: 1.5, flex: 1 }}>{item.reason}</div>}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
               {item.format && <span style={{
                 fontSize: '11px', backgroundColor: '#f0f0f0',
                 padding: '2px 10px', borderRadius: '4px', color: '#666',

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { BlogOutlineSection, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage } from '../../services/blogWriterApi';
+import { BlogOutlineSection, SourceMappingStats, GroundingInsights, ResearchCoverage } from '../../services/blogWriterApi';
 import OutlineIntelligenceChips from './OutlineIntelligenceChips';
 import ImageGeneratorModal from '../ImageGen/ImageGeneratorModal';
 import ChartGeneratorModal from '../Chart/ChartGeneratorModal';
 import LinkSearchModal from '../Link/LinkSearchModal';
 import { ChartGenerateResponse } from '../../services/chartApi';
 import chartApi from '../../services/chartApi';
+import { OperationButton } from '../shared/OperationButton';
 
 interface Props {
   outline: BlogOutlineSection[];
@@ -13,7 +14,6 @@ interface Props {
   research?: any;
   sourceMappingStats?: SourceMappingStats | null;
   groundingInsights?: GroundingInsights | null;
-  optimizationResults?: OptimizationResults | null;
   researchCoverage?: ResearchCoverage | null;
   sectionImages?: Record<string, string>;
   setSectionImages?: (images: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
@@ -722,7 +722,6 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
   research,
   sourceMappingStats,
   groundingInsights,
-  optimizationResults,
   researchCoverage,
   sectionImages = {},
   setSectionImages
@@ -953,7 +952,7 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
             <h2 style={styles.headerTitle}>Blog Outline</h2>
             <span style={styles.infoChip}>{outline.length} sections</span>
             <span style={styles.infoChip}>{getTotalWords()} words</span>
-            <OutlineIntelligenceChips sections={outline} sourceMappingStats={sourceMappingStats} groundingInsights={groundingInsights} optimizationResults={optimizationResults} researchCoverage={researchCoverage} />
+            <OutlineIntelligenceChips sections={outline} sourceMappingStats={sourceMappingStats} groundingInsights={groundingInsights} researchCoverage={researchCoverage} />
           </div>
           <div style={styles.buttonGroup}>
             <button onClick={() => setTocModalOpen(true)} style={styles.buttonToc} title="View Table of Contents">
@@ -1092,13 +1091,35 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
                   >
                     ✏️
                   </button>
-                  <button 
-                    onClick={() => setImageModalState({ open: true, sectionId: section.id })} 
-                    title="Generate AI image for this section" 
-                    style={styles.buttonImage}
-                  >
-                    🖼️ Image
-                  </button>
+                  <OperationButton
+                    operation={{
+                      provider: "stability",
+                      operation_type: "image_generation",
+                    }}
+                    label="🖼️ Image"
+                    size="small"
+                    variant="contained"
+                    showCost={true}
+                    checkOnHover={true}
+                    checkOnMount={false}
+                    onClick={() => setImageModalState({ open: true, sectionId: section.id })}
+                    sx={{
+                      background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      textTransform: 'none',
+                      minWidth: 'auto',
+                      minHeight: 'auto',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      boxShadow: 'none',
+                      lineHeight: 1.4,
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
+                      },
+                    }}
+                  />
                   <button 
                     onClick={() => setChartModalState({ open: true, sectionId: section.id })} 
                     title="Generate chart from section data" 
@@ -1235,12 +1256,37 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
                     >
                       🔗 Links
                     </button>
-                    <button 
-                      onClick={e => { e.stopPropagation(); setImageModalState({ open: true, sectionId: section.id }); }} 
-                      style={styles.buttonImageRow}
-                    >
-                      🖼️ Image
-                    </button>
+                    <span onClick={e => e.stopPropagation()}>
+                      <OperationButton
+                        operation={{
+                          provider: "stability",
+                          operation_type: "image_generation",
+                        }}
+                        label="🖼️ Image"
+                        size="small"
+                        variant="contained"
+                        showCost={true}
+                        checkOnHover={true}
+                        checkOnMount={false}
+                        onClick={() => setImageModalState({ open: true, sectionId: section.id })}
+                        sx={{
+                          background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          textTransform: 'none',
+                          minWidth: 'auto',
+                          minHeight: 'auto',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          boxShadow: '0 1px 4px rgba(37,99,235,0.3)',
+                          lineHeight: 1.4,
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
+                          },
+                        }}
+                      />
+                    </span>
                   </div>
                 </div>
               )}

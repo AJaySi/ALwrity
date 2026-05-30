@@ -9,7 +9,6 @@ from .data_processors import (
     transform_onboarding_data_to_fields,
     get_data_sources,
     get_detailed_input_data_points,
-    get_fallback_onboarding_data,
     get_website_analysis_data,
     get_research_preferences_data,
     get_api_keys_data
@@ -36,7 +35,6 @@ __all__ = [
     'transform_onboarding_data_to_fields',
     'get_data_sources',
     'get_detailed_input_data_points',
-    'get_fallback_onboarding_data',
     'get_website_analysis_data',
     'get_research_preferences_data',
     'get_api_keys_data',

@@ -109,48 +109,49 @@ async def preflight_check(
             
             # Get pricing for this operation
             model_name = op.get('model')
+            pricing_info = None
             if model_name:
                 pricing_info = pricing_service.get_pricing_for_provider_model(
                     op['provider'],
                     model_name
                 )
-                
-                if pricing_info:
-                    # Determine cost based on operation type
-                    if op['provider'] in [APIProvider.VIDEO, APIProvider.IMAGE_EDIT, APIProvider.STABILITY]:
-                        cost = pricing_info.get('cost_per_request', 0.0) or pricing_info.get('cost_per_image', 0.0) or 0.0
-                    elif op['provider'] == APIProvider.AUDIO:
-                        model_lower = (model_name or "").lower()
-                        if model_lower == "minimax/voice-clone":
-                            cost = pricing_info.get('cost_per_request', 0.5) or 0.5
-                        elif model_lower == "wavespeed-ai/qwen3-tts/voice-clone":
-                            chars = max(0, int(op.get('tokens_requested') or 0))
-                            cost = max(0.005, 0.005 * (chars / 100.0))
-                        else:
-                            cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
-                    elif op['tokens_requested'] > 0:
-                        cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
+            
+            if pricing_info:
+                # Determine cost based on operation type
+                if op['provider'] in [APIProvider.VIDEO, APIProvider.IMAGE_EDIT, APIProvider.STABILITY]:
+                    cost = pricing_info.get('cost_per_request', 0.0) or pricing_info.get('cost_per_image', 0.0) or 0.0
+                elif op['provider'] == APIProvider.AUDIO:
+                    model_lower = (model_name or "").lower()
+                    if model_lower == "minimax/voice-clone":
+                        cost = pricing_info.get('cost_per_request', 0.5) or 0.5
+                    elif model_lower == "wavespeed-ai/qwen3-tts/voice-clone":
+                        chars = max(0, int(op.get('tokens_requested') or 0))
+                        cost = max(0.005, 0.005 * (chars / 100.0))
                     else:
-                        cost = pricing_info.get('cost_per_request', 0.0) or 0.0
-                    
+                        cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
+                elif op['tokens_requested'] > 0:
+                    cost = (pricing_info.get('cost_per_input_token', 0.0) or 0.0) * op['tokens_requested']
+                else:
+                    cost = pricing_info.get('cost_per_request', 0.0) or 0.0
+                
+                op_result['cost'] = round(cost, 4)
+                total_cost += cost
+            else:
+                # Use default cost if pricing not found or no model specified
+                if op['provider'] == APIProvider.VIDEO:
+                    op_result['cost'] = 0.10  # Default video cost
+                    total_cost += 0.10
+                elif op['provider'] == APIProvider.IMAGE_EDIT:
+                    op_result['cost'] = 0.05  # Default image edit cost
+                    total_cost += 0.05
+                elif op['provider'] == APIProvider.STABILITY:
+                    op_result['cost'] = 0.04  # Default image generation cost
+                    total_cost += 0.04
+                elif op['provider'] == APIProvider.AUDIO:
+                    # Default audio cost: $0.05 per 1,000 characters
+                    cost = (op['tokens_requested'] / 1000.0) * 0.05
                     op_result['cost'] = round(cost, 4)
                     total_cost += cost
-                else:
-                    # Use default cost if pricing not found
-                    if op['provider'] == APIProvider.VIDEO:
-                        op_result['cost'] = 0.10  # Default video cost
-                        total_cost += 0.10
-                    elif op['provider'] == APIProvider.IMAGE_EDIT:
-                        op_result['cost'] = 0.05  # Default image edit cost
-                        total_cost += 0.05
-                    elif op['provider'] == APIProvider.STABILITY:
-                        op_result['cost'] = 0.04  # Default image generation cost
-                        total_cost += 0.04
-                    elif op['provider'] == APIProvider.AUDIO:
-                        # Default audio cost: $0.05 per 1,000 characters
-                        cost = (op['tokens_requested'] / 1000.0) * 0.05
-                        op_result['cost'] = round(cost, 4)
-                        total_cost += cost
             
             # Get limit information
             limit_info = None

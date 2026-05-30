@@ -341,9 +341,35 @@ class ActiveStrategyService:
     
     def has_active_strategies_with_tasks(self) -> bool:
         """
-        Check if there are any active strategies with monitoring tasks.
-        
+        Check if this user has any active strategies with monitoring tasks.
+
+        Uses SQL EXISTS for efficiency instead of COUNT.
+
         Returns:
             True if there are active strategies with tasks, False otherwise
         """
-        return self.count_active_strategies_with_tasks() > 0
+        try:
+            if not self.db_session:
+                logger.warning("Database session not available")
+                return False
+
+            from sqlalchemy import exists, and_
+            from models.monitoring_models import MonitoringTask
+
+            # Use EXISTS for efficiency: short-circuits on first match.
+            # SQLAlchemy infers FROM clause from the column references in WHERE.
+            stmt = exists().where(
+                and_(
+                    StrategyActivationStatus.strategy_id == EnhancedContentStrategy.id,
+                    MonitoringTask.strategy_id == EnhancedContentStrategy.id,
+                    StrategyActivationStatus.status == 'active',
+                    MonitoringTask.status == 'active',
+                )
+            )
+
+            result = self.db_session.query(stmt).scalar()
+            return bool(result)
+
+        except Exception as e:
+            logger.error(f"Error checking active strategies with tasks: {e}")
+            return True  # safer to over-check on error

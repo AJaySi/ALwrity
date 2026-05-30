@@ -45,6 +45,7 @@ import { llmInsightsGenerator } from '../../api/llmInsightsGenerator';
 import { EnterpriseAuditResults } from './components/EnterpriseAuditResults';
 import { GSCAnalysisResults } from './components/GSCAnalysisResults';
 import { ActionableInsightsDisplay } from './components/ActionableInsightsDisplay';
+import { AIVisibilitySection } from './components/AIVisibilitySection';
 
 interface AnalysisStep {
   label: string;
@@ -485,6 +486,7 @@ export const SEOAnalysisController: React.FC = () => {
                     {auditResult && <Tab label="Enterprise Audit" />}
                     {gscResult && <Tab label="GSC Analysis" />}
                     {insights.length > 0 && <Tab label="AI Insights" />}
+                    <Tab label="AI Overview Insights" />
                   </Tabs>
                 </Paper>
 
@@ -525,6 +527,20 @@ export const SEOAnalysisController: React.FC = () => {
                     )}
                   </TabPanel>
                 )}
+
+                {/* AI Overview Insights — always last tab */}
+                {(() => {
+                  const aioIndex = (auditResult ? 1 : 0) + (gscResult ? 1 : 0) + (insights.length > 0 ? 1 : 0);
+                  return (
+                    <TabPanel value={tabValue} index={aioIndex}>
+                      <AIVisibilitySection
+                        gscConnected={!!gscResult}
+                        siteUrl={websiteUrl}
+                        onConnectGSC={() => setActiveStep(0)}
+                      />
+                    </TabPanel>
+                  );
+                })()}
               </Box>
             )}
           </Grid>

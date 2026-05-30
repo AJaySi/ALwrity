@@ -29,12 +29,13 @@ def get_connected_platforms(user_id: str) -> List[str]:
     - Bing: bing_oauth_tokens table
     - WordPress: wordpress_oauth_tokens table
     - Wix: wix_oauth_tokens table
+    - YouTube: youtube_oauth_tokens table
     
     Args:
         user_id: User ID (Clerk string)
         
     Returns:
-        List of connected platform identifiers: ['gsc', 'bing', 'wordpress', 'wix']
+        List of connected platform identifiers: ['gsc', 'bing', 'wordpress', 'wix', 'youtube']
     """
     connected = []
     
@@ -113,6 +114,35 @@ def get_connected_platforms(user_id: str) -> List[str]:
             logger.debug(f"[OAuth Monitoring] ❌ Wix not connected for user {user_id}")
     except Exception as e:
         logger.warning(f"[OAuth Monitoring] ⚠️ Wix check failed for user {user_id}: {e}", exc_info=True)
+    
+    try:
+        # Check YouTube - use dynamic database path
+        db_path = get_user_db_path(user_id)
+        import sqlite3
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='youtube_oauth_tokens'"
+            )
+            if cursor.fetchone():
+                cursor.execute(
+                    "SELECT id, is_active, expires_at FROM youtube_oauth_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    token_id, is_active, expires_at_str = row
+                    if is_active:
+                        connected.append("youtube")
+                        logger.debug(f"[OAuth Monitoring] ✅ YouTube connected for user {user_id}")
+                    else:
+                        logger.debug(f"[OAuth Monitoring] ❌ YouTube token inactive for user {user_id}")
+                else:
+                    logger.debug(f"[OAuth Monitoring] ❌ YouTube not connected for user {user_id}")
+            else:
+                logger.debug(f"[OAuth Monitoring] ❌ YouTube table not found for user {user_id}")
+    except Exception as e:
+        logger.warning(f"[OAuth Monitoring] ⚠️ YouTube check failed for user {user_id}: {e}", exc_info=True)
     
     # Don't log here - let the caller log a formatted summary if needed
     # This function is called frequently and should be silent

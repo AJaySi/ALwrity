@@ -11,6 +11,7 @@ export interface ImageGenerationRequest {
   guidance_scale?: number;
   steps?: number;
   seed?: number;
+  overlay_text?: string;
 }
 
 export interface ImageGenerationResponse {

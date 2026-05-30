@@ -35,15 +35,18 @@ router = APIRouter(prefix="/strategies", tags=["strategies"])
 @router.post("/", response_model=ContentStrategyResponse)
 async def create_content_strategy(
     strategy: ContentStrategyCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new content strategy."""
     try:
-        logger.info(f"Creating content strategy: {strategy.name}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Creating content strategy: {strategy.name} for user: {clerk_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         strategy_service = EnhancedStrategyService(db_service)
         strategy_data = strategy.dict()
+        strategy_data['user_id'] = clerk_user_id
         created_strategy = await strategy_service.create_enhanced_strategy(strategy_data, db)
         
         return ContentStrategyResponse(**created_strategy)
@@ -105,11 +108,13 @@ async def get_content_strategies(
 @router.get("/{strategy_id}", response_model=ContentStrategyResponse)
 async def get_content_strategy(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific content strategy by ID."""
     try:
-        logger.info(f"Fetching content strategy: {strategy_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Fetching content strategy: {strategy_id} for user: {clerk_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         strategy_service = EnhancedStrategyService(db_service)
@@ -127,11 +132,13 @@ async def get_content_strategy(
 async def update_content_strategy(
     strategy_id: int,
     update_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a content strategy."""
     try:
-        logger.info(f"Updating content strategy: {strategy_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Updating content strategy: {strategy_id} for user: {clerk_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         updated_strategy = await db_service.update_enhanced_strategy(strategy_id, update_data)
@@ -150,11 +157,13 @@ async def update_content_strategy(
 @router.delete("/{strategy_id}")
 async def delete_content_strategy(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a content strategy."""
     try:
-        logger.info(f"Deleting content strategy: {strategy_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Deleting content strategy: {strategy_id} for user: {clerk_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         deleted = await db_service.delete_enhanced_strategy(strategy_id)
@@ -173,11 +182,13 @@ async def delete_content_strategy(
 @router.get("/{strategy_id}/analytics")
 async def get_strategy_analytics(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get analytics for a specific strategy."""
     try:
-        logger.info(f"Fetching analytics for strategy: {strategy_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Fetching analytics for strategy: {strategy_id} for user: {clerk_user_id}")
         
         db_service = EnhancedStrategyDBService(db)
         analytics = await db_service.get_enhanced_strategies_with_analytics(strategy_id)
@@ -194,11 +205,13 @@ async def get_strategy_analytics(
 @router.get("/{strategy_id}/summary")
 async def get_strategy_summary(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a comprehensive summary of a strategy with analytics."""
     try:
-        logger.info(f"Fetching summary for strategy: {strategy_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Fetching summary for strategy: {strategy_id} for user: {clerk_user_id}")
         
         # Get strategy with analytics for comprehensive summary
         db_service = EnhancedStrategyDBService(db)

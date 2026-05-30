@@ -135,6 +135,8 @@ from api.seo_dashboard import (
     get_semantic_health,
     get_semantic_cache_stats,
     get_sif_indexing_health,
+    get_guardian_audit,
+    get_keyword_gaps,
 )
 
 # Initialize FastAPI app
@@ -364,6 +366,30 @@ async def sif_indexing_health_endpoint(current_user: dict = Depends(get_current_
     Used by the Semantic Indexing Status widget on the dashboard.
     """
     return await get_sif_indexing_health(current_user)
+
+
+@app.get("/api/seo-dashboard/guardian-audit")
+async def guardian_audit_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Get the latest Content Guardian audit report for the current user.
+    Returns content quality, brand voice, safety, and cannibalization metrics.
+    Used by the Content Guardian Audit Card on the dashboard.
+    """
+    return await get_guardian_audit(current_user)
+
+
+@app.get("/api/seo-dashboard/keyword-gaps")
+async def keyword_gaps_endpoint(
+    current_user: dict = Depends(get_current_user),
+    site_url: str = None,
+):
+    """
+    Get keyword gap analysis from GSC data.
+    Returns keyword gaps, quick wins, content opportunities, and page opportunities
+    for the user's site, derived from last 30 days of GSC search analytics.
+    """
+    return await get_keyword_gaps(current_user, site_url)
+
 
 # Comprehensive SEO Analysis endpoints
 @app.post("/api/seo-dashboard/analyze-comprehensive")

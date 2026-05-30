@@ -176,11 +176,7 @@ class FieldTransformationService:
                         # Default transformation - use first available source data
                         field_value = self._default_transformation(source_data, field_name)
                     
-                    # If no value found, provide default based on field type
-                    if field_value is None or field_value == "":
-                        field_value = self._get_default_value_for_field(field_name)
-                    
-                    if field_value is not None:
+                    if field_value is not None and field_value != "":
                         transformed_fields[field_name] = {
                             'value': field_value,
                             'source': sources[0] if sources else 'default',
@@ -942,44 +938,6 @@ class FieldTransformationService:
         except Exception as e:
             logger.error(f"Error extracting A/B testing capabilities: {str(e)}")
             return False
-
-    def _get_default_value_for_field(self, field_name: str) -> Any:
-        """Get default value for a field when no data is available."""
-        # Provide sensible defaults for required fields
-        default_values = {
-            'business_objectives': 'Lead Generation, Brand Awareness',
-            'target_metrics': 'Traffic Growth: 30%, Engagement Rate: 5%, Conversion Rate: 2%',
-            'content_budget': 1000,
-            'team_size': 1,
-            'implementation_timeline': '3 months',
-            'market_share': 'Small but growing',
-            'competitive_position': 'Niche',
-            'performance_metrics': 'Current Traffic: 1000, Current Engagement: 3%',
-            'content_preferences': 'Blog posts, Social media content',
-            'consumption_patterns': 'Mobile: 60%, Desktop: 40%',
-            'audience_pain_points': 'Time constraints, Content quality',
-            'buying_journey': 'Awareness: 40%, Consideration: 35%, Decision: 25%',
-            'seasonal_trends': 'Q4 peak, Summer slowdown',
-            'engagement_metrics': 'Likes: 100, Shares: 20, Comments: 15',
-            'top_competitors': 'Competitor A, Competitor B',
-            'competitor_content_strategies': 'Blog-focused, Video-heavy',
-            'market_gaps': 'Underserved niche, Content gap',
-            'industry_trends': 'AI integration, Video content',
-            'emerging_trends': 'Voice search, Interactive content',
-            'preferred_formats': ['Blog Posts', 'Videos', 'Infographics'],
-            'content_mix': 'Educational: 40%, Entertaining: 30%, Promotional: 30%',
-            'content_frequency': 'Weekly',
-            'optimal_timing': 'Best Days: Tuesday, Thursday, Best Time: 10 AM',
-            'quality_metrics': 'Readability: 8, Engagement: 7, SEO Score: 6',
-            'editorial_guidelines': 'Professional tone, Clear structure',
-            'brand_voice': 'Professional yet approachable',
-            'traffic_sources': 'Organic: 60%, Social: 25%, Direct: 15%',
-            'conversion_rates': 'Overall: 2%, Blog: 3%, Landing Pages: 5%',
-            'content_roi_targets': 'Target ROI: 300%, Break Even: 6 months',
-            'ab_testing_capabilities': False
-        }
-        
-        return default_values.get(field_name, None)
 
     def _default_transformation(self, source_data: Dict[str, Any], field_name: str) -> Any:
         """Default transformation when no specific method is available."""

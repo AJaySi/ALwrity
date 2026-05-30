@@ -51,7 +51,7 @@ class TenantProviderConfigResolver:
     _DEFAULT_MODELS: Dict[Tuple[str, str], str] = {
         ("text", "google"): "gemini-2.0-flash-001",
         ("text", "huggingface"): "mistralai/Mistral-7B-Instruct-v0.3:groq",
-        ("image", "wavespeed"): "qwen-image",
+        ("image", "wavespeed"): "flux-kontext-pro",
         ("image", "huggingface"): "black-forest-labs/FLUX.1-Krea-dev",
         ("video", "huggingface"): "tencent/HunyuanVideo",
         ("video", "wavespeed"): "hunyuan-video-1.5",

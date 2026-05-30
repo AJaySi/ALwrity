@@ -318,53 +318,14 @@ class ContentPlanningAPI {
     userId?: number
   ) {
     try {
-      const params: Record<string, string> = {};
-      if (userId) {
-        params.user_id = userId.toString();
-      }
-      const queryString = new URLSearchParams(params).toString();
-      const url = `${this.baseURL}/ai-analytics/stream?${queryString}`;
-      
-      const eventSource = new EventSource(url);
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          switch (data.type) {
-            case 'connected':
-              onProgress({ message: data.message, progress: 0 });
-              break;
-            case 'progress':
-              onProgress({ 
-                message: data.message, 
-                progress: data.progress,
-                step: data.step 
-              });
-              break;
-            case 'complete':
-              onComplete(data);
-              eventSource.close();
-              break;
-            case 'error':
-              onError(new Error(data.message));
-              eventSource.close();
-              break;
-          }
-        } catch (parseError) {
-          onError(new Error('Failed to parse server message'));
-        }
-      };
-      
-      eventSource.onerror = (error) => {
-        onError(new Error('EventSource failed'));
-        eventSource.close();
-      };
-      
-      // Return cleanup function
-      return () => {
-        eventSource.close();
-      };
+      onProgress({ message: 'Fetching AI analytics...', progress: 20 });
+      const response = await apiClient.get(`${this.baseURL}/ai-analytics/`, {
+        params: userId ? { user_id: userId } : {}
+      });
+      onProgress({ message: 'Processing analytics data...', progress: 80 });
+      const data = response.data?.data || response.data;
+      onComplete(data);
+      return () => {};
     } catch (error: any) {
       onError(error);
     }
@@ -387,7 +348,7 @@ class ContentPlanningAPI {
   }
 
   async checkDatabaseHealth() {
-    const response = await apiClient.get(`${this.baseURL}/database/health`);
+    const response = await apiClient.get(`${this.baseURL}/health/database`);
     return response.data;
   }
 
@@ -534,7 +495,12 @@ class ContentPlanningAPI {
 
   async getTrendingTopics(request: TrendingTopicsRequest): Promise<TrendingTopicsResponse> {
     return this.handleRequest(async () => {
-      const response = await apiClient.post(`${this.baseURL}/calendar-generation/trending-topics`, request);
+      const response = await apiClient.get(`${this.baseURL}/calendar-generation/trending-topics`, {
+        params: {
+          industry: request.industry,
+          limit: request.limit || 10
+        }
+      });
       return response.data;
     });
   }
@@ -581,14 +547,14 @@ class ContentPlanningAPI {
 
   async createEnhancedStrategy(strategy: any): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies`, strategy);
+      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/create`, strategy);
       return response.data.data || response.data;
     });
   }
 
   async getEnhancedStrategyCompletion(strategyId: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/${strategyId}/completion`);
+      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/strategies/${strategyId}/completion`);
       return response.data?.data || response.data;
     });
   }
@@ -623,7 +589,7 @@ class ContentPlanningAPI {
       _t: Date.now() // 🚨 CRITICAL: Cache-busting timestamp to ensure fresh AI generation
     };
     if (userId) params.user_id = userId;
-    const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/autofill/refresh`, null, { params });
+    const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/strategies/autofill/refresh`, null, { params });
     
     // The backend returns ResponseBuilder format: { status, message, data, status_code, timestamp }
     // We need to return the actual payload from response.data.data
@@ -668,7 +634,7 @@ class ContentPlanningAPI {
 
   async getOnboardingIntegration(strategyId: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/${strategyId}/onboarding-integration`);
+      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/strategies/${strategyId}/onboarding-integration`);
       return response.data?.data || response.data;
     });
   }
@@ -676,14 +642,14 @@ class ContentPlanningAPI {
   // AI Analysis Methods
   async generateEnhancedAIRecommendations(strategyId: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/${strategyId}/ai-recommendations`);
+      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/strategies/${strategyId}/ai-recommendations`);
       return response.data.data || response.data;
     }, true);
   }
 
   async regenerateAIAnalysis(strategyId: string, analysisType: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/${strategyId}/ai-analysis/regenerate`, {
+      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/strategies/${strategyId}/ai-analysis/regenerate`, {
         analysis_type: analysisType
       });
       return response.data;
@@ -692,7 +658,7 @@ class ContentPlanningAPI {
 
   async getEnhancedAIAnalyses(strategyId: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/${strategyId}/ai-analyses`);
+      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/strategies/${strategyId}/ai-analyses`);
       return response.data;
     });
   }
@@ -748,7 +714,7 @@ class ContentPlanningAPI {
   async getLatestGeneratedStrategy(userId?: number): Promise<any> {
     return this.handleRequest(async () => {
       const params = userId ? { user_id: userId } : {};
-      const response = await apiClient.get(`${this.baseURL}/content-strategy/ai-generation/latest-strategy`, { params });
+      const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/ai-generation/latest-strategy`, { params });
       // Return the strategy data from the nested response structure
       const result = response.data?.data?.strategy;
       return result;
@@ -760,7 +726,7 @@ class ContentPlanningAPI {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const params = userId ? { user_id: userId } : {};
-        const response = await apiClient.get(`${this.baseURL}/content-strategy/ai-generation/latest-strategy`, { params });
+        const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/ai-generation/latest-strategy`, { params });
         const result = response.data?.data?.strategy;
         return result;
       } catch (error: any) {
@@ -778,7 +744,7 @@ class ContentPlanningAPI {
 
   async startStrategyGenerationPolling(userId: number, strategyName: string): Promise<any> {
     return this.handleRequest(async () => {
-      const response = await apiClient.post(`${this.baseURL}/content-strategy/ai-generation/generate-comprehensive-strategy-polling`, {
+      const response = await apiClient.post(`${this.baseURL}/enhanced-strategies/ai-generation/generate-comprehensive-strategy-polling`, {
         user_id: userId,
         strategy_name: strategyName,
         config: {
@@ -810,7 +776,7 @@ class ContentPlanningAPI {
         attempts++;
         console.log(`🔄 Polling attempt ${attempts}/${maxAttempts} for task ${taskId}`);
         
-        const response = await apiClient.get(`${this.baseURL}/content-strategy/ai-generation/strategy-generation-status/${taskId}`);
+        const response = await apiClient.get(`${this.baseURL}/enhanced-strategies/ai-generation/strategy-generation-status/${taskId}`);
         const responseData = response.data;
         
         console.log('📊 Polling response:', responseData);

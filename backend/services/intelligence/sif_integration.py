@@ -1369,19 +1369,6 @@ class SIFIntegrationService:
             logger.error(f"Failed to invalidate user cache: {e}")
             return False
     
-    async def warm_user_cache(self, common_queries: List[str]) -> bool:
-        """Pre-populate cache with common queries for the user."""
-        try:
-            if self.enable_caching and self.cache_manager:
-                self.cache_manager.warm_cache_for_user(self.user_id, common_queries)
-                logger.info(f"Warmed cache for user {self.user_id} with {len(common_queries)} queries")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Failed to warm user cache: {e}")
-            return False
-
-
 # Integration with existing API endpoints
 class SIFIntegrationAPI:
     """API wrapper for SIF operations with caching integration."""

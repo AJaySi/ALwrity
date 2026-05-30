@@ -133,6 +133,8 @@ class SemanticHarvesterService:
                                 'cost': cost, 'user_id': user_id, 'period': current_period,
                             })
                             db.commit()
+                            from services.subscription.cache import clear_dashboard_cache
+                            clear_dashboard_cache(user_id)
                             logger.info(f"[SemanticHarvester] Tracked Exa usage: user={user_id}, cost=${cost}")
                         finally:
                             db.close()

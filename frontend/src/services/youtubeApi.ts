@@ -570,4 +570,49 @@ export const youtubeApi = {
       throw new Error(errorMessage);
     }
   },
+
+  // === YouTube OAuth Methods ===
+
+  async getYouTubeAuthUrl(): Promise<{ auth_url: string }> {
+    const response = await apiClient.get(`${API_BASE}/oauth/auth/url`);
+    return response.data;
+  },
+
+  async getYouTubeStatus(): Promise<{ success: boolean; connected: boolean; channels: Array<{ token_id: number; channel_id: string; channel_name: string; expires_at: string; connected_at: string; is_active: boolean }> }> {
+    const response = await apiClient.get(`${API_BASE}/oauth/status`);
+    return response.data;
+  },
+
+  async disconnectYouTube(tokenId: number): Promise<{ success: boolean }> {
+    const response = await apiClient.delete(`${API_BASE}/oauth/disconnect/${tokenId}`);
+    return response.data;
+  },
+
+  // === YouTube Publish Methods ===
+
+  async startPublish(params: {
+    token_id: number;
+    video_source: string;
+    title: string;
+    description?: string;
+    tags?: string[];
+    privacy_status?: string;
+    category_id?: string;
+    made_for_kids?: boolean;
+  }): Promise<{ success: boolean; task_id?: string; error?: string; message: string }> {
+    const response = await apiClient.post(`${API_BASE}/publish`, params);
+    return response.data;
+  },
+
+  async getPublishStatus(taskId: string): Promise<{
+    success: boolean;
+    task_id?: string;
+    video_id?: string;
+    video_url?: string;
+    error?: string;
+    message: string;
+  }> {
+    const response = await apiClient.get(`${API_BASE}/publish/${taskId}`);
+    return response.data;
+  },
 };

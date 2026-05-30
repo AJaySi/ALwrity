@@ -127,12 +127,6 @@ export interface GroundingInsights {
   };
 }
 
-export interface OptimizationResults {
-  overall_quality_score: number;
-  improvements_made: string[];
-  optimization_focus: string;
-}
-
 export interface ResearchCoverage {
   sources_utilized: number;
   content_gaps_identified: number;
@@ -147,7 +141,6 @@ export interface BlogOutlineResponse {
   // Additional metadata for enhanced UI
   source_mapping_stats?: SourceMappingStats;
   grounding_insights?: GroundingInsights;
-  optimization_results?: OptimizationResults;
   research_coverage?: ResearchCoverage;
 }
 
@@ -271,6 +264,7 @@ export interface TaskStatusResponse<T = BlogResearchResponse> {
 export const blogWriterApi = {
   // Async polling endpoints
   async startResearch(payload: BlogResearchRequest): Promise<{task_id: string; status: string}> {
+    console.log(`[blogWriterApi] POST /api/blog/research/start baseURL=${apiClient.defaults.baseURL}`);
     const { data } = await apiClient.post("/api/blog/research/start", payload);
     return data;
   },
@@ -280,7 +274,7 @@ export const blogWriterApi = {
     return data;
   },
 
-  async startOutlineGeneration(payload: { research: BlogResearchResponse; persona?: PersonaInfo; word_count?: number; custom_instructions?: string }): Promise<{task_id: string; status: string}> {
+  async startOutlineGeneration(payload: { research: BlogResearchResponse; persona?: PersonaInfo; word_count?: number; custom_instructions?: string; selected_content_angle?: string; selected_competitive_advantage?: string }): Promise<{task_id: string; status: string}> {
     const { data } = await aiApiClient.post("/api/blog/outline/start", payload);
     return data;
   },

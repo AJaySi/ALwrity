@@ -13,6 +13,9 @@ export { default as SEOCopilot } from './SEOCopilot';
 export { useSEOCopilotStore, useSEOCopilotAnalysis, useSEOCopilotSuggestions, useSEOCopilotDashboard } from '../../stores/seoCopilotStore';
 export { default as seoApiService } from '../../services/seoApiService';
 
+// AI Overview Insights
+export { AIVisibilitySection } from './components/AIVisibilitySection';
+
 // Types
 export type {
   SEOAnalysisData,

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
 from loguru import logger
@@ -22,8 +22,17 @@ from api.content_planning.services.content_strategy.onboarding import Onboarding
 from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from sqlalchemy import desc
+
 # Phase 2B: Import semantic monitoring
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor, SemanticHealthMetric
+
+# GSC services for keyword gap analysis
+from services.gsc_service import GSCService
+from services.gsc_brainstorm_service import GSCBrainstormService
+
+# Import SIF models for guardian audit
+from models.website_analysis_monitoring_models import SIFIndexingTask, SIFIndexingExecutionLog
 
 router = APIRouter(prefix="/api/seo-dashboard", tags=["SEO Dashboard"])
 
@@ -575,6 +584,172 @@ async def get_sif_indexing_health(current_user: dict = Depends(get_current_user)
     except Exception as e:
         logger.error(f"Failed to get SIF indexing health: {e}")
         raise HTTPException(status_code=500, detail="Failed to get SIF indexing health")
+
+
+async def get_guardian_audit(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Get the latest Content Guardian audit report for the current user.
+    Returns audit data (quality, brand voice, safety, cannibalization) or a
+    null-state response if no audit has been performed yet.
+    """
+    try:
+        user_id = str(current_user.get("id"))
+        db_session = get_session_for_user(user_id)
+        if not db_session:
+            raise HTTPException(status_code=500, detail="Database connection unavailable")
+
+        try:
+            # Find the most recent SIF indexing task for this user
+            task = (
+                db_session.query(SIFIndexingTask)
+                .filter(SIFIndexingTask.user_id == user_id)
+                .order_by(desc(SIFIndexingTask.created_at))
+                .first()
+            )
+
+            if not task:
+                return {
+                    "has_audit": False,
+                    "status": "not_available",
+                    "message": "No SIF indexing task found. Onboarding may not be complete.",
+                }
+
+            # Get the latest execution log with a guardian report
+            log = (
+                db_session.query(SIFIndexingExecutionLog)
+                .filter(
+                    SIFIndexingExecutionLog.task_id == task.id,
+                    SIFIndexingExecutionLog.result_data.isnot(None),
+                )
+                .order_by(desc(SIFIndexingExecutionLog.execution_date))
+                .first()
+            )
+
+            if not log or not log.result_data:
+                return {
+                    "has_audit": False,
+                    "status": "pending",
+                    "message": "SIF indexing has not completed a run yet.",
+                }
+
+            guardian_report = log.result_data.get("guardian_report")
+            if not guardian_report:
+                return {
+                    "has_audit": False,
+                    "status": "no_report",
+                    "message": "Guardian audit was not performed on the last indexing run.",
+                }
+
+            return {
+                "has_audit": True,
+                "status": "available",
+                "audit_timestamp": guardian_report.get("audit_timestamp"),
+                "website_url": guardian_report.get("website_url"),
+                "total_pages_crawled": guardian_report.get("total_pages_crawled", 0),
+                "content_quality": guardian_report.get("content_quality"),
+                "brand_voice_consistency": guardian_report.get("brand_voice_consistency"),
+                "safety_issues": guardian_report.get("safety_issues"),
+                "cannibalization_issues": guardian_report.get("cannibalization_issues"),
+                "last_execution_time": log.execution_date.isoformat() if log.execution_date else None,
+            }
+        finally:
+            db_session.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get guardian audit: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get guardian audit")
+
+
+async def get_keyword_gaps(
+    current_user: dict = Depends(get_current_user),
+    site_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Get keyword gap analysis from GSC data.
+    Returns keyword gaps, quick wins, content opportunities, and page-level opportunities
+    derived from the user's Google Search Console search analytics (last 30 days).
+    """
+    try:
+        user_id = str(current_user.get("id"))
+
+        gsc_service = GSCService()
+        brainstorm_service = GSCBrainstormService(gsc_service)
+
+        # Resolve site URL
+        if not site_url:
+            sites = gsc_service.get_site_list(user_id)
+            if not sites:
+                return {
+                    "error": "No GSC sites found. Connect Google Search Console first.",
+                    "keyword_gaps": [],
+                    "quick_wins": [],
+                    "content_opportunities": [],
+                    "page_opportunities": [],
+                    "summary": {},
+                }
+            site_url = sites[0].get("siteUrl", "")
+
+        # Fetch GSC analytics (last 30 days)
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        analytics = gsc_service.get_search_analytics(
+            user_id=user_id,
+            site_url=site_url,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        if "error" in analytics:
+            return {
+                "error": analytics.get("error", "Failed to fetch GSC data"),
+                "keyword_gaps": [],
+                "quick_wins": [],
+                "content_opportunities": [],
+                "page_opportunities": [],
+                "summary": {},
+            }
+
+        query_rows = analytics.get("query_data", {}).get("rows", [])
+        page_rows = analytics.get("page_data", {}).get("rows", [])
+
+        keywords_data = GSCBrainstormService._parse_query_rows(query_rows)
+        pages_data = GSCBrainstormService._parse_page_rows(page_rows)
+
+        if not keywords_data:
+            return {
+                "error": "No keyword data available for the last 30 days.",
+                "keyword_gaps": [],
+                "quick_wins": [],
+                "content_opportunities": [],
+                "page_opportunities": [],
+                "summary": {
+                    "site_url": site_url,
+                    "date_range": {"start": start_date, "end": end_date},
+                    "total_keywords_analyzed": 0,
+                },
+            }
+
+        # Run rule-based analysis WITHOUT topic filter (site-wide)
+        content_opportunities = GSCBrainstormService._identify_content_opportunities(keywords_data)
+        keyword_gaps = GSCBrainstormService._identify_keyword_gaps(keywords_data)
+        quick_wins = GSCBrainstormService._identify_quick_wins(keywords_data)
+        page_opportunities = GSCBrainstormService._identify_page_opportunities(pages_data)
+        summary = GSCBrainstormService._compute_summary(
+            keywords_data, pages_data, site_url, start_date, end_date
+        )
+
+        return {
+            "keyword_gaps": keyword_gaps,
+            "quick_wins": quick_wins,
+            "content_opportunities": content_opportunities,
+            "page_opportunities": page_opportunities,
+            "summary": summary,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get keyword gaps: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get keyword gaps: {str(e)}")
 
 
 async def get_onboarding_task_health(

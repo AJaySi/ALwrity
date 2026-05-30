@@ -275,7 +275,7 @@ class OnboardingDataIntegration(Base):
             'website_analysis_data': self.website_analysis_data,
             'research_preferences_data': self.research_preferences_data,
             'api_keys_data': self.api_keys_data,
-            'canonical_profile': self.canonical_profile,
+            'canonical_profile': getattr(self, 'canonical_profile', None),
             'field_mappings': self.field_mappings,
             'auto_populated_fields': self.auto_populated_fields,
             'user_overrides': self.user_overrides,

@@ -24,21 +24,21 @@ class WaveSpeedImageProvider(ImageGenerationProvider):
         "ideogram-v3-turbo": {
             "name": "Ideogram V3 Turbo",
             "description": "Photorealistic generation with superior text rendering",
-            "cost_per_image": 0.10,  # Estimated, adjust based on actual pricing
+            "cost_per_image": 0.30,
             "max_resolution": (1024, 1024),
             "default_steps": 20,
         },
         "qwen-image": {
             "name": "Qwen Image",
             "description": "Fast, high-quality text-to-image generation",
-            "cost_per_image": 0.05,  # Estimated, adjust based on actual pricing
+            "cost_per_image": 0.30,
             "max_resolution": (1024, 1024),
             "default_steps": 15,
         },
         "flux-kontext-pro": {
             "name": "FLUX Kontext Pro",
             "description": "Professional typography and text rendering with improved prompt adherence",
-            "cost_per_image": 0.04,  # $0.04 per image
+            "cost_per_image": 0.30,
             "max_resolution": (1024, 1024),
             "default_steps": 20,
         }

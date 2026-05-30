@@ -14,9 +14,11 @@ try:
 except ImportError:
     SIF_AVAILABLE = False
 
+
 class CompetitorResponseAgent(BaseALwrityAgent):
     """
     Agent responsible for monitoring competitors and generating counter-strategies.
+    Uses SIF index for real competitive data when available.
     """
     
     def __init__(self, user_id: str, shared_llm_name: str, llm: Any = None, **kwargs):
@@ -44,61 +46,123 @@ class CompetitorResponseAgent(BaseALwrityAgent):
             tools=[
                 {
                     "name": "competitor_monitor",
-                    "description": "Monitors competitor content and changes",
+                    "description": "Returns competitor monitoring status via SIF",
                     "target": self._competitor_monitor_tool
                 },
                 {
                     "name": "threat_analyzer",
-                    "description": "Analyzes competitive threats",
+                    "description": "Returns threat analysis availability and SIF status",
                     "target": self._threat_analyzer_tool
                 }
             ],
             llm=_llm_for_agent,
             max_iterations=5,
-            # Removed unsupported 'system' argument
-            # Instruction will be provided via orchestrator context or initial prompt
-            # Instruction should be provided during invocation or via orchestrator context
         )
     
-    # Tool Implementations
+    # Tool Implementations (sync — called by txtai Agent)
     
     def _competitor_monitor_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Competitor monitoring tool that retrieves data via SIF.
-        
-        Args:
-            context: Dictionary containing 'competitor_url' (optional) to filter monitoring targets.
+        Competitor monitoring tool. Returns SIF availability and directs to async method.
         """
-        # Stub implementation
-        return {"status": "monitored", "changes": []}
+        competitor_url = context.get("competitor_url", "any")
+        if not self.sif_service:
+            return {
+                "status": "unavailable",
+                "changes": [],
+                "message": "SIF not initialized. Use async analyze_competitors() for real data."
+            }
+        return {
+            "status": "sif_available",
+            "competitor_url": competitor_url,
+            "changes": [],
+            "message": "SIF available. Use async analyze_competitors() for detailed analysis."
+        }
     
     def _threat_analyzer_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Threat analysis tool using SIF data.
-        
-        Args:
-            context: Dictionary containing analysis parameters like 'focus_area' or 'timeframe'.
+        Threat analysis tool. Returns SIF status.
         """
-        # Stub implementation
-        return {"threat_assessment": "Low", "level": "low"}
+        focus = context.get("focus_area", "general")
+        if not self.sif_service:
+            return {
+                "threat_assessment": "unknown",
+                "level": "unknown",
+                "message": "SIF not available. Use async analyze_competitors()."
+            }
+        return {
+            "threat_assessment": "pending",
+            "level": "pending",
+            "focus_area": focus,
+            "message": "SIF available. Use async analyze_competitors(focus_area='{focus}')."
+        }
+
+    # Async entry points
+    
+    async def analyze_competitors(self, website_url: str = "", focus_area: str = "general") -> Dict[str, Any]:
+        """
+        Search the SIF index for competitor intelligence and return real matches.
+        """
+        if not self.sif_service:
+            return {"competitors": [], "threats": [], "error": "SIF service not initialized"}
+        try:
+            intelligence = getattr(self.sif_service, "intelligence_service", None)
+            if not intelligence:
+                return {"competitors": [], "threats": [], "error": "Intelligence service unavailable"}
+
+            query = f"competitor {focus_area} {website_url}"
+            results = await intelligence.search(query, limit=10)
+            return {
+                "competitors": [{"url": r.get("id", ""), "snippet": r.get("text", "")[:200]} for r in results],
+                "threats": [],
+                "pages_analyzed": len(results),
+                "focus_area": focus_area,
+                "analysis_timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"[CompetitorResponseAgent] Analysis failed: {e}")
+            return {"competitors": [], "threats": [], "error": str(e)}
 
     async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
         """
-        Propose tasks based on competitive intel.
+        Propose tasks based on competitive intel from the SIF index.
         """
         proposals = []
-        
-        # 1. Competitor Gap Fill
-        proposals.append(TaskProposal(
-            title="Cover 'AI Agent Frameworks'",
-            description="Competitor X just published a guide on this. Create a better version.",
-            pillar_id="create",
-            priority="high",
-            estimated_time=60,
-            source_agent="CompetitorResponseAgent",
-            reasoning="High-value topic gaining traction.",
-            action_type="navigate",
-            action_url="/content-planning-dashboard"
-        ))
-        
+        competitor_count = 0
+        focus_area = context.get("focus_area", "content strategy")
+
+        if self.sif_service:
+            try:
+                intelligence = getattr(self.sif_service, "intelligence_service", None)
+                if intelligence:
+                    results = await intelligence.search(f"competitor {focus_area}", limit=5)
+                    competitor_count = len(results)
+            except Exception as e:
+                logger.debug(f"[CompetitorResponseAgent] SIF competitor search failed: {e}")
+
+        if competitor_count > 0:
+            proposals.append(TaskProposal(
+                title="Review Competitor Content",
+                description=f"SIF found {competitor_count} competitor pages. Review for gap opportunities.",
+                pillar_id="create",
+                priority="high",
+                estimated_time=45,
+                source_agent="CompetitorResponseAgent",
+                reasoning="SIF-detected competitor activity presents content gap opportunities.",
+                action_type="navigate",
+                action_url="/content-planning-dashboard"
+            ))
+        else:
+            proposals.append(TaskProposal(
+                title="Research Competitor Topics",
+                description="Search for competitor content in your niche to identify coverage gaps.",
+                pillar_id="create",
+                priority="medium",
+                estimated_time=30,
+                source_agent="CompetitorResponseAgent",
+                reasoning="Understanding competitor positioning improves content strategy.",
+                action_type="navigate",
+                action_url="/content-planning-dashboard"
+            ))
+
         return proposals

@@ -162,6 +162,8 @@ def _track_video_operation_usage(
             image_edit_limit_display = image_edit_limit if (image_edit_limit > 0 or tier != 'enterprise') else '∞'
             
             db_track.commit()
+            from services.subscription.cache import clear_dashboard_cache
+            clear_dashboard_cache(user_id)
             logger.info(f"{log_prefix} ✅ Successfully tracked usage: user {user_id} -> {operation_type} -> {new_calls} calls, ${cost:.4f}")
             
             # UNIFIED SUBSCRIPTION LOG
@@ -861,6 +863,8 @@ def track_video_usage(
         db_track.flush()
         logger.debug(f"[video_gen] Committing usage tracking changes...")
         db_track.commit()
+        from services.subscription.cache import clear_dashboard_cache
+        clear_dashboard_cache(user_id)
         db_track.refresh(usage_summary)
         logger.debug(f"[video_gen] Commit successful. Final video_calls: {usage_summary.video_calls}, video_cost: {usage_summary.video_cost}")
 

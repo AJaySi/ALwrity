@@ -27,6 +27,9 @@ from .tenant_provider_config import tenant_provider_config_resolver
 
 logger = get_service_logger("image_generation.facade")
 
+# Models that can render readable text directly in generated images
+_TEXT_CAPABLE = {"flux-kontext-pro", "flux-2-flex", "glm-image"}
+
 
 def _select_provider(explicit: Optional[str], user_id: Optional[str] = None) -> str:
     cfg = tenant_provider_config_resolver.resolve(
@@ -109,8 +112,13 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
         image_options.model = "black-forest-labs/FLUX.1-Krea-dev"
     
     if provider_name == "wavespeed" and not image_options.model:
-        # Default to cost-effective model: Qwen Image ($0.05/image, optimized for blog images)
-        image_options.model = "qwen-image"
+        # Default to FLUX Kontext Pro (professional typography, lower cost)
+        image_options.model = "flux-kontext-pro"
+
+    # Append overlay text for text-capable models
+    overlay_text = opts.get("overlay_text")
+    if overlay_text and image_options.model and image_options.model.lower() in _TEXT_CAPABLE:
+        image_options.prompt += f" Include the text '{overlay_text}' as a typographic element in the image."
 
     logger.info("Generating image via provider=%s model=%s", provider_name, image_options.model)
     provider = _get_provider(provider_name, user_id=user_id)
@@ -130,18 +138,13 @@ def generate_image(prompt: str, options: Optional[Dict[str, Any]] = None, user_i
         if result.metadata and "estimated_cost" in result.metadata:
             estimated_cost = float(result.metadata["estimated_cost"])
         else:
-            # Fallback: estimate based on provider/model (OSS-focused pricing)
+            # Fallback: estimate based on provider/model
             if provider_name == "wavespeed":
-                if result.model and "qwen" in result.model.lower():
-                    estimated_cost = 0.05  # Qwen Image: $0.05/image
-                elif result.model and "ideogram" in result.model.lower():
-                    estimated_cost = 0.10  # Ideogram V3 Turbo: $0.10/image
-                else:
-                    estimated_cost = 0.05  # Default to Qwen Image pricing
+                estimated_cost = 0.30
             elif provider_name == "stability":
-                estimated_cost = 0.04
+                estimated_cost = 0.30
             else:
-                estimated_cost = 0.05  # Default estimate
+                estimated_cost = 0.30
         
         # Reuse tracking helper
         _track_image_operation_usage(
@@ -215,8 +218,8 @@ def generate_character_image(
         if user_id and image_bytes:
             logger.info(f"[Character Image Generation] ✅ API call successful, tracking usage for user {user_id}")
             
-            # Character image cost (same as ideogram-v3-turbo)
-            estimated_cost = 0.10
+            # Character image cost
+            estimated_cost = 0.30
             
             # Reuse tracking helper
             _track_image_operation_usage(
@@ -272,12 +275,7 @@ def generate_character_image(
         if result.metadata and "estimated_cost" in result.metadata:
             estimated_cost = float(result.metadata["estimated_cost"])
         else:
-            # Fallback: estimate based on provider/model
-            if provider_name == "wavespeed":
-                # Default WaveSpeed edit cost
-                estimated_cost = 0.02  # Default for most editing models
-            else:
-                estimated_cost = 0.05  # Default estimate
+            estimated_cost = 0.30
         
         # Reuse tracking helper
         _track_image_operation_usage(

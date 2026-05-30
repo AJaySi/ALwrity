@@ -1,7 +1,8 @@
 """
 Outline Generator - AI-powered outline generation from research data.
 
-Generates comprehensive, SEO-optimized outlines using research intelligence.
+Generates comprehensive, SEO-optimized outlines using research intelligence
+and a keyword-curation engine that prevents keyword stuffing.
 """
 
 from typing import Dict, Any, List, Tuple
@@ -23,6 +24,7 @@ from .metadata_collector import MetadataCollector
 from .prompt_builder import PromptBuilder
 from .response_processor import ResponseProcessor
 from .parallel_processor import ParallelProcessor
+from .keyword_curator import KeywordCurator
 
 
 class OutlineGenerator:
@@ -41,6 +43,14 @@ class OutlineGenerator:
         self.prompt_builder = PromptBuilder()
         self.response_processor = ResponseProcessor()
         self.parallel_processor = ParallelProcessor(self.source_mapper, self.grounding_engine)
+        
+        # Keyword curation engine
+        self.keyword_curator = KeywordCurator()
+    
+    def _curate_keywords(self, research) -> Dict[str, Any]:
+        """Run keyword curation on the research data's keyword_analysis."""
+        raw_analysis = research.keyword_analysis if research else {}
+        return self.keyword_curator.curate(raw_analysis)
     
     async def generate(self, request: BlogOutlineRequest, user_id: str) -> BlogOutlineResponse:
         """
@@ -59,18 +69,24 @@ class OutlineGenerator:
         # Extract research insights
         research = request.research
         primary_keywords = research.keyword_analysis.get('primary', [])
-        secondary_keywords = research.keyword_analysis.get('secondary', [])
         content_angles = research.suggested_angles
         sources = research.sources
         search_intent = research.keyword_analysis.get('search_intent', 'informational')
         
+        # Curate keywords — reduces 40+ raw keywords to ~13 locked, role-assigned keywords
+        curated_keywords = self._curate_keywords(research)
+        
         # Check for custom instructions
         custom_instructions = getattr(request, 'custom_instructions', None)
+        # Selected (prioritized) content angle and competitive advantage, if any
+        selected_content_angle = getattr(request, 'selected_content_angle', None)
+        selected_competitive_advantage = getattr(request, 'selected_competitive_advantage', None)
         
-        # Build comprehensive outline generation prompt with rich research data
+        # Build comprehensive outline generation prompt with curated keyword payload
         outline_prompt = self.prompt_builder.build_outline_prompt(
-            primary_keywords, secondary_keywords, content_angles, sources,
-            search_intent, request, custom_instructions
+            curated_keywords, content_angles, sources,
+            search_intent, request, custom_instructions, selected_content_angle,
+            selected_competitive_advantage
         )
         
         logger.info("Generating AI-powered outline using research results")
@@ -107,7 +123,7 @@ class OutlineGenerator:
         ai_title_options = outline_data.get('title_options', [])
         content_angle_titles = self.title_generator.extract_content_angle_titles(research)
         
-        # Combine AI-generated titles with content angles
+        # Combine AI-generated titles with content angles (full primary keywords for title variety)
         title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords)
         
         logger.info(f"Generated optimized outline with {len(balanced_sections)} sections and {len(title_options)} title options")
@@ -115,7 +131,6 @@ class OutlineGenerator:
         # Collect metadata for enhanced UI
         source_mapping_stats = self.metadata_collector.collect_source_mapping_stats(mapped_sections, research)
         grounding_insights_data = self.metadata_collector.collect_grounding_insights(grounding_insights)
-        optimization_results = self.metadata_collector.collect_optimization_results(optimized_sections, "comprehensive optimization")
         research_coverage = self.metadata_collector.collect_research_coverage(research)
         
         return BlogOutlineResponse(
@@ -124,7 +139,6 @@ class OutlineGenerator:
             outline=balanced_sections,
             source_mapping_stats=source_mapping_stats,
             grounding_insights=grounding_insights_data,
-            optimization_results=optimization_results,
             research_coverage=research_coverage
         )
     
@@ -148,20 +162,26 @@ class OutlineGenerator:
         # Extract research insights
         research = request.research
         primary_keywords = research.keyword_analysis.get('primary', [])
-        secondary_keywords = research.keyword_analysis.get('secondary', [])
         content_angles = research.suggested_angles
         sources = research.sources
         search_intent = research.keyword_analysis.get('search_intent', 'informational')
         
+        # Curate keywords — reduces 40+ raw keywords to ~13 locked, role-assigned keywords
+        curated_keywords = self._curate_keywords(research)
+        
         # Check for custom instructions
         custom_instructions = getattr(request, 'custom_instructions', None)
+        # Selected (prioritized) content angle and competitive advantage, if any
+        selected_content_angle = getattr(request, 'selected_content_angle', None)
+        selected_competitive_advantage = getattr(request, 'selected_competitive_advantage', None)
         
         await task_manager.update_progress(task_id, "📊 Analyzing research data and building content strategy...")
         
-        # Build comprehensive outline generation prompt with rich research data
+        # Build comprehensive outline generation prompt with curated keyword payload
         outline_prompt = self.prompt_builder.build_outline_prompt(
-            primary_keywords, secondary_keywords, content_angles, sources,
-            search_intent, request, custom_instructions
+            curated_keywords, content_angles, sources,
+            search_intent, request, custom_instructions, selected_content_angle,
+            selected_competitive_advantage
         )
         
         await task_manager.update_progress(task_id, "🤖 Generating AI-powered outline with research insights...")
@@ -203,7 +223,7 @@ class OutlineGenerator:
         ai_title_options = outline_data.get('title_options', [])
         content_angle_titles = self.title_generator.extract_content_angle_titles(research)
         
-        # Combine AI-generated titles with content angles
+        # Combine AI-generated titles with content angles (full primary keywords for title variety)
         title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords)
         
         await task_manager.update_progress(task_id, "✅ Outline generation and optimization completed successfully!")
@@ -211,7 +231,6 @@ class OutlineGenerator:
         # Collect metadata for enhanced UI
         source_mapping_stats = self.metadata_collector.collect_source_mapping_stats(mapped_sections, research)
         grounding_insights_data = self.metadata_collector.collect_grounding_insights(grounding_insights)
-        optimization_results = self.metadata_collector.collect_optimization_results(optimized_sections, "comprehensive optimization")
         research_coverage = self.metadata_collector.collect_research_coverage(research)
         
         return BlogOutlineResponse(
@@ -220,7 +239,6 @@ class OutlineGenerator:
             outline=balanced_sections,
             source_mapping_stats=source_mapping_stats,
             grounding_insights=grounding_insights_data,
-            optimization_results=optimization_results,
             research_coverage=research_coverage
         )
     
@@ -318,6 +336,5 @@ class OutlineGenerator:
         insights = self.grounding_engine.get_high_confidence_insights(research_data.grounding_metadata)
         logger.info(f"✅ Extracted {len(insights)} high-confidence insights")
         return insights
-    
     
     

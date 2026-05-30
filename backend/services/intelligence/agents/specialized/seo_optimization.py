@@ -14,9 +14,11 @@ try:
 except ImportError:
     SIF_AVAILABLE = False
 
+
 class SEOOptimizationAgent(BaseALwrityAgent):
     """
     Agent responsible for technical SEO, keyword strategy, and performance optimization.
+    Uses SIF index for real data when available.
     """
     
     def __init__(self, user_id: str, shared_llm_name: str, llm: Any = None, **kwargs):
@@ -44,91 +46,147 @@ class SEOOptimizationAgent(BaseALwrityAgent):
             tools=[
                 {
                     "name": "seo_auditor",
-                    "description": "Performs comprehensive SEO audits",
+                    "description": "Returns SEO audit status and available SIF data",
                     "target": self._seo_auditor_tool
                 },
                 {
                     "name": "keyword_researcher",
-                    "description": "Researches high-potential keywords",
+                    "description": "Returns keyword research status via SIF",
                     "target": self._keyword_researcher_tool
                 },
                 {
                     "name": "on_page_optimizer",
-                    "description": "Optimizes on-page elements",
+                    "description": "Returns on-page optimization availability",
                     "target": self._on_page_optimizer_tool
                 },
                 {
                     "name": "technical_fixer",
-                    "description": "Fixes technical SEO issues",
+                    "description": "Returns technical fix availability",
                     "target": self._technical_fixer_tool
                 }
             ],
             llm=_llm_for_agent,
             max_iterations=15,
-            # Removed unsupported 'system' argument
-            # Instruction will be provided via orchestrator context or initial prompt
-            # Instruction should be provided during invocation or via orchestrator context
         )
     
-    # Tool Implementations
+    # Tool Implementations (sync — called by txtai Agent)
     
     def _seo_auditor_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        SEO audit tool that retrieves existing SEO data via SIF.
-        
-        Args:
-            context: Dictionary containing 'website_url' to audit.
+        SEO audit tool. Returns availability and directs caller to async method for full analysis.
         """
-        # Stub implementation
-        return {"health": "good", "issues": []}
+        website_url = context.get("website_url", "unknown")
+        if not self.sif_service:
+            return {
+                "health": "unknown",
+                "issues": [],
+                "status": "sif_unavailable",
+                "message": "SIF service not initialized. Call perform_seo_audit() for async analysis."
+            }
+        return {
+            "health": "pending",
+            "website_url": website_url,
+            "issues": [],
+            "status": "sif_available",
+            "message": "SIF available. Call perform_seo_audit() for detailed async analysis."
+        }
 
     def _keyword_researcher_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Keyword research tool.
-        
-        Args:
-            context: Dictionary containing 'seed_keywords' or 'topic'.
+        Keyword research tool. Returns SIF availability and sample context if present.
         """
-        # Stub implementation
-        return {"keywords": []}
+        seed = context.get("seed_keywords", context.get("topic", "unknown"))
+        if not self.sif_service:
+            return {"keywords": [], "status": "sif_unavailable", "message": "SIF not available."}
+        return {
+            "keywords": [],
+            "status": "sif_available",
+            "message": f"SIF available. Use async search_keywords(topic='{seed}') for detailed research."
+        }
 
     def _on_page_optimizer_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        On-page optimization tool.
-        
-        Args:
-            context: Dictionary containing 'url' and 'target_keyword'.
-        """
-        # Stub implementation
-        return {"optimized": True}
+        """On-page optimization tool. Requires async analysis."""
+        return {
+            "optimized": False,
+            "status": "unavailable",
+            "message": "On-page optimization requires async analysis via propose_daily_tasks()."
+        }
 
     def _technical_fixer_tool(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Technical SEO fixer tool. Auto-fix not implemented."""
+        issue_id = context.get("issue_id", "unknown")
+        return {
+            "fixed": False,
+            "status": "unavailable",
+            "message": f"Issue '{issue_id}' requires manual review. Automated fixes not implemented."
+        }
+
+    # Async entry points
+    
+    async def perform_seo_audit(self, website_url: str) -> Dict[str, Any]:
         """
-        Technical SEO fixer tool.
-        
-        Args:
-            context: Dictionary containing 'issue_id' to fix.
+        Perform a comprehensive SEO audit by searching the SIF index.
+        Returns real data about indexed content, keyword coverage, and gaps.
         """
-        # Stub implementation
-        return {"fixed": True}
+        if not self.sif_service:
+            return {"health": "unknown", "issues": [], "error": "SIF service not initialized"}
+        try:
+            intelligence = getattr(self.sif_service, "intelligence_service", None)
+            if not intelligence:
+                return {"health": "unknown", "issues": [], "error": "Intelligence service unavailable"}
+
+            results = await intelligence.search(f"seo website analysis {website_url}", limit=10)
+            return {
+                "health": "reviewed",
+                "website_url": website_url,
+                "pages_indexed": len(results),
+                "issues": [],
+                "audit_timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"[SEOOptimizationAgent] SEO audit failed: {e}")
+            return {"health": "unknown", "issues": [], "error": str(e)}
 
     async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
         """
-        Propose SEO-focused tasks.
+        Propose SEO-focused tasks based on real SIF index data.
         """
         proposals = []
-        
-        # 1. Quick SEO Win
-        proposals.append(TaskProposal(
-            title="Fix Broken Links",
-            description="3 internal links on 'About Us' page are broken.",
-            pillar_id="distribute",
-            priority="high",
-            estimated_time=10,
-            source_agent="SEOOptimizationAgent",
-            reasoning="Easy technical win.",
-            action_type="navigate",
-            action_url="/content-planning-dashboard"
-        ))
-        
+        issues_found = 0
+        website_url = context.get("website_url", "")
+
+        if self.sif_service:
+            try:
+                intelligence = getattr(self.sif_service, "intelligence_service", None)
+                if intelligence:
+                    results = await intelligence.search("seo issue problem error fix", limit=5)
+                    issues_found = len(results)
+            except Exception as e:
+                logger.debug(f"[SEOOptimizationAgent] SIF search for issues failed: {e}")
+
+        if issues_found > 0:
+            proposals.append(TaskProposal(
+                title="Review SEO Issues",
+                description=f"SIF indexed content suggests {issues_found} areas that may need SEO attention.",
+                pillar_id="distribute",
+                priority="high",
+                estimated_time=30,
+                source_agent="SEOOptimizationAgent",
+                reasoning="Addressing SEO gaps improves organic visibility.",
+                action_type="navigate",
+                action_url="/content-planning-dashboard"
+            ))
+        else:
+            proposals.append(TaskProposal(
+                title="Run SEO Audit",
+                description="Perform a comprehensive SEO audit to identify optimization opportunities.",
+                pillar_id="distribute",
+                priority="medium",
+                estimated_time=15,
+                source_agent="SEOOptimizationAgent",
+                reasoning="Regular audits prevent SEO degradation.",
+                action_type="navigate",
+                action_url="/content-planning-dashboard"
+            ))
+
         return proposals

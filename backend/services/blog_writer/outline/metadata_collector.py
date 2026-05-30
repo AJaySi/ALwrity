@@ -1,7 +1,7 @@
 """
 Metadata Collector - Handles collection and formatting of outline metadata.
 
-Collects source mapping stats, grounding insights, optimization results, and research coverage.
+Collects source mapping stats, grounding insights, and research coverage.
 """
 
 from typing import Dict, Any, List
@@ -52,31 +52,6 @@ class MetadataCollector:
             citation_insights=grounding_insights.get('citation_insights'),
             search_intent_insights=grounding_insights.get('search_intent_insights'),
             quality_indicators=grounding_insights.get('quality_indicators')
-        )
-    
-    def collect_optimization_results(self, optimized_sections, focus):
-        """Collect optimization results for UI display."""
-        from models.blog_models import OptimizationResults
-        
-        # Calculate a quality score based on section completeness
-        total_sections = len(optimized_sections)
-        complete_sections = sum(1 for section in optimized_sections 
-                              if section.heading and section.subheadings and section.key_points)
-        
-        quality_score = (complete_sections / total_sections * 10) if total_sections > 0 else 0.0
-        
-        improvements_made = [
-            "Enhanced section headings for better SEO",
-            "Optimized keyword distribution across sections",
-            "Improved content flow and logical progression",
-            "Balanced word count distribution",
-            "Enhanced subheadings for better readability"
-        ]
-        
-        return OptimizationResults(
-            overall_quality_score=round(quality_score, 1),
-            improvements_made=improvements_made,
-            optimization_focus=focus
         )
     
     def collect_research_coverage(self, research):

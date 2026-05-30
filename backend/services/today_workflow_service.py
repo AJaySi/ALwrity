@@ -9,6 +9,8 @@ from models.agent_activity_models import AgentAlert
 from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.database import get_all_user_ids, get_session_for_user
+from services.onboarding.progress_service import OnboardingProgressService
+from services.active_strategy_service import ActiveStrategyService
 from loguru import logger
 
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
@@ -739,13 +741,35 @@ def _plan_uses_fallback(tasks: List[Dict[str, Any]]) -> bool:
 
 async def generate_scheduled_daily_workflows() -> Dict[str, int]:
     user_ids = get_all_user_ids()
-    stats = {"users_seen": 0, "created": 0, "existing": 0, "failed": 0}
+    stats = {"users_seen": 0, "created": 0, "existing": 0, "skipped_no_onboarding": 0, "skipped_no_strategy": 0, "failed": 0}
 
     for user_id in user_ids:
         stats["users_seen"] += 1
         db = None
         try:
+            # Gate 1: Onboarding must be completed
+            onboarding_service = OnboardingProgressService()
+            status = onboarding_service.get_onboarding_status(user_id)
+            if not status.get("is_completed", False):
+                stats["skipped_no_onboarding"] += 1
+                logger.info("Skipping daily workflow for user {} — onboarding not completed", user_id)
+                continue
+
             db = get_session_for_user(user_id)
+            if not db:
+                stats["failed"] += 1
+                continue
+
+            # Gate 2: User must have an active content strategy
+            active_strategy_service = ActiveStrategyService(db_session=db)
+            has_active_strategy = active_strategy_service.has_active_strategies_with_tasks()
+            if not has_active_strategy:
+                stats["skipped_no_strategy"] += 1
+                logger.info("Skipping daily workflow for user {} — no active strategy", user_id)
+                db.close()
+                db = None
+                continue
+
             plan, created = await get_or_create_daily_workflow_plan(
                 db,
                 user_id,

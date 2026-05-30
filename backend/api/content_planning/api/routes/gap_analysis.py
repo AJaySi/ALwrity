@@ -38,13 +38,16 @@ router = APIRouter(prefix="/gap-analysis", tags=["gap-analysis"])
 @router.post("/", response_model=ContentGapAnalysisResponse)
 async def create_content_gap_analysis(
     analysis: ContentGapAnalysisCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new content gap analysis."""
     try:
-        logger.info(f"Creating content gap analysis for: {analysis.website_url}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Creating content gap analysis for: {analysis.website_url} by user: {clerk_user_id}")
         
         analysis_data = analysis.dict()
+        analysis_data['user_id'] = clerk_user_id
         created_analysis = await gap_analysis_service.create_gap_analysis(analysis_data, db)
         
         return ContentGapAnalysisResponse(**created_analysis)
@@ -76,11 +79,13 @@ async def get_content_gap_analyses(
 @router.get("/{analysis_id}", response_model=ContentGapAnalysisResponse)
 async def get_content_gap_analysis(
     analysis_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific content gap analysis by ID."""
     try:
-        logger.info(f"Fetching content gap analysis: {analysis_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Fetching content gap analysis: {analysis_id} for user: {clerk_user_id}")
         
         analysis = await gap_analysis_service.get_gap_analysis_by_id(analysis_id, db)
         return ContentGapAnalysisResponse(**analysis)
@@ -117,15 +122,17 @@ async def analyze_content_gaps(
 @router.get("/user/{user_id}/analyses")
 async def get_user_gap_analyses(
     user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get all gap analyses for a specific user."""
+    """Get all gap analyses for the authenticated user."""
     try:
-        logger.info(f"Fetching gap analyses for user: {user_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Fetching gap analyses for authenticated user: {clerk_user_id}")
         
-        analyses = await gap_analysis_service.get_user_gap_analyses(user_id, db)
+        analyses = await gap_analysis_service.get_user_gap_analyses(clerk_user_id, db)
         return {
-            "user_id": user_id,
+            "user_id": clerk_user_id,
             "analyses": analyses,
             "total_count": len(analyses)
         }
@@ -138,11 +145,13 @@ async def get_user_gap_analyses(
 async def update_content_gap_analysis(
     analysis_id: int,
     update_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a content gap analysis."""
     try:
-        logger.info(f"Updating content gap analysis: {analysis_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Updating content gap analysis: {analysis_id} for user: {clerk_user_id}")
         
         updated_analysis = await gap_analysis_service.update_gap_analysis(analysis_id, update_data, db)
         return ContentGapAnalysisResponse(**updated_analysis)
@@ -156,11 +165,13 @@ async def update_content_gap_analysis(
 @router.delete("/{analysis_id}")
 async def delete_content_gap_analysis(
     analysis_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a content gap analysis."""
     try:
-        logger.info(f"Deleting content gap analysis: {analysis_id}")
+        clerk_user_id = str(current_user.get('id', ''))
+        logger.info(f"Deleting content gap analysis: {analysis_id} for user: {clerk_user_id}")
         
         deleted = await gap_analysis_service.delete_gap_analysis(analysis_id, db)
         

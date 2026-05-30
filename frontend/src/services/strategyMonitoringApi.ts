@@ -89,7 +89,7 @@ export const strategyMonitoringApi = {
    */
   async getPerformanceHistory(strategyId: number, days: number = 30): Promise<{ success: boolean; data: any }> {
     try {
-      const response = await apiClient.get(`/content-planning/strategy/${strategyId}/performance-history?days=${days}`);
+      const response = await apiClient.get(`/api/content-planning/strategy/${strategyId}/performance-history?days=${days}`);
       return response.data;
     } catch (error: any) {
       console.error('Error getting performance history:', error);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BlogOutlineSection, BlogResearchResponse, BlogSEOMetadataResponse, BlogSEOAnalyzeResponse, SourceMappingStats, GroundingInsights, OptimizationResults, ResearchCoverage } from '../services/blogWriterApi';
+import { BlogOutlineSection, BlogResearchResponse, BlogSEOMetadataResponse, BlogSEOAnalyzeResponse, SourceMappingStats, GroundingInsights, ResearchCoverage } from '../services/blogWriterApi';
 import { researchCache } from '../services/researchCache';
 import { blogWriterCache } from '../services/blogWriterCache';
 
@@ -49,6 +49,9 @@ const restoreInitialState = () => {
   let seoMetadata: BlogSEOMetadataResponse | null = null;
   let outlineConfirmed: boolean = false;
   let contentConfirmed: boolean = false;
+  let sourceMappingStats: SourceMappingStats | null = null;
+  let groundingInsights: GroundingInsights | null = null;
+  let researchCoverage: ResearchCoverage | null = null;
 
   try {
     // Restore research from the research cache (synchronous localStorage reads)
@@ -70,9 +73,14 @@ const restoreInitialState = () => {
       }
     }
 
-    // Restore titles
-    titleOptions = readLS<string[]>('blog_title_options', []);
-    selectedTitle = readLSString('blog_selected_title', '');
+    // Restore titles — strip any stale '...' truncation baked in by prior versions
+    titleOptions = readLS<string[]>('blog_title_options', []).map(t => t.replace(/\.\.\.$/, ''));
+    selectedTitle = readLSString('blog_selected_title', '').replace(/\.\.\.$/, '');
+
+    // Restore outline intelligence metadata
+    sourceMappingStats = readLS<SourceMappingStats | null>('blog_source_mapping_stats', null);
+    groundingInsights = readLS<GroundingInsights | null>('blog_grounding_insights', null);
+    researchCoverage = readLS<ResearchCoverage | null>('blog_research_coverage', null);
 
     // Restore confirmation flags
     outlineConfirmed = readLSBool('blog_outline_confirmed', false);
@@ -99,6 +107,9 @@ const restoreInitialState = () => {
     seoMetadata,
     outlineConfirmed,
     contentConfirmed,
+    sourceMappingStats,
+    groundingInsights,
+    researchCoverage,
   };
 };
 
@@ -123,10 +134,9 @@ export const useBlogWriterState = () => {
   const [flowAnalysisResults, setFlowAnalysisResults] = useState<any>(null);
   
   // Enhanced metadata state
-  const [sourceMappingStats, setSourceMappingStats] = useState<SourceMappingStats | null>(null);
-  const [groundingInsights, setGroundingInsights] = useState<GroundingInsights | null>(null);
-  const [optimizationResults, setOptimizationResults] = useState<OptimizationResults | null>(null);
-  const [researchCoverage, setResearchCoverage] = useState<ResearchCoverage | null>(null);
+  const [sourceMappingStats, setSourceMappingStats] = useState<SourceMappingStats | null>(initialState.sourceMappingStats);
+  const [groundingInsights, setGroundingInsights] = useState<GroundingInsights | null>(initialState.groundingInsights);
+  const [researchCoverage, setResearchCoverage] = useState<ResearchCoverage | null>(initialState.researchCoverage);
   
   // Separate research titles from AI-generated titles
   const [researchTitles, setResearchTitles] = useState<string[]>([]);
@@ -163,9 +173,6 @@ export const useBlogWriterState = () => {
     }).filter(Boolean);
 
     let formatted = formattedWords.join(' ');
-    if (formatted.length > 120) {
-      formatted = formatted.slice(0, 117).trimEnd() + '...';
-    }
     return formatted;
   }, []);
 
@@ -192,7 +199,7 @@ export const useBlogWriterState = () => {
     return result;
   }, []);
 
-  const [restoreAttempted, setRestoreAttempted] = useState(true); // Always true — state is restored synchronously
+  const [restoreAttempted] = useState(true); // Always true — state is restored synchronously
 
   // Persist contentConfirmed to localStorage whenever it changes
   useEffect(() => {
@@ -290,9 +297,6 @@ export const useBlogWriterState = () => {
       if (result.grounding_insights) {
         setGroundingInsights(result.grounding_insights);
       }
-      if (result.optimization_results) {
-        setOptimizationResults(result.optimization_results);
-      }
       if (result.research_coverage) {
         setResearchCoverage(result.research_coverage);
       }
@@ -303,6 +307,9 @@ export const useBlogWriterState = () => {
         blogWriterCache.cacheOutline(result.outline, combinedTitleOptions);
         localStorage.setItem('blog_title_options', JSON.stringify(combinedTitleOptions));
         localStorage.setItem('blog_selected_title', nextSelectedTitle || '');
+        localStorage.setItem('blog_source_mapping_stats', JSON.stringify(result.source_mapping_stats || null));
+        localStorage.setItem('blog_grounding_insights', JSON.stringify(result.grounding_insights || null));
+        localStorage.setItem('blog_research_coverage', JSON.stringify(result.research_coverage || null));
         console.log('Saved outline data to localStorage');
       } catch (error) {
         console.error('Error saving outline data:', error);
@@ -388,7 +395,6 @@ export const useBlogWriterState = () => {
     outlineTaskId,
     sourceMappingStats,
     groundingInsights,
-    optimizationResults,
     researchCoverage,
     researchTitles,
     aiGeneratedTitles,
@@ -412,7 +418,6 @@ export const useBlogWriterState = () => {
     setOutlineTaskId,
     setSourceMappingStats,
     setGroundingInsights,
-    setOptimizationResults,
     setResearchCoverage,
     setResearchTitles,
     setAiGeneratedTitles,

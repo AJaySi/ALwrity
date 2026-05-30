@@ -207,6 +207,8 @@ def track_agent_usage_sync(user_id: str, model_name: str, prompt: str, response_
             })
             
             db.commit()
+            from services.subscription.cache import clear_dashboard_cache
+            clear_dashboard_cache(user_id)
             logger.info(f"[AgentTracking] ✅ Usage tracked: {new_calls} calls, {cost_total} cost")
             
         except Exception as e:

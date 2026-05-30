@@ -35,6 +35,7 @@ Podcast Maker helps you turn a topic idea into a polished episode draft with res
 | Project CRUD + favorites | **Implemented** | Frontend calls `/api/podcast/projects*`; backend create/get/update/list/delete/favorite routes exist. |
 | Avatar upload/generate/make-presentable | **Implemented** | Frontend calls `/api/podcast/avatar/*`; backend routes exist. |
 | Audio dubbing + voice clone routes | **Partial** | Backend dubbing routes exist; not wired in `podcastApi.ts` yet. |
+| YouTube Publishing via OAuth 2.0 | **Implemented** | Publish combined podcast video to YouTube; OAuth connection, background upload task with polling, encrypted token storage. |
 | Task cancellation from Podcast Maker UI | **Partial** | Frontend has `cancelTask()` placeholder using `/api/story/task/.../cancel`, not a dedicated podcast cancel API path. |
 | Multi-provider research toggle in podcast service | **Planned/Not active in current frontend** | Podcast frontend currently targets Exa route directly instead of a user-facing provider switch in this API layer. |
 

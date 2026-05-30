@@ -19,6 +19,9 @@ from ....services.enhanced_strategy_db_service import EnhancedStrategyDBService
 # Import models
 from models.enhanced_strategy_models import EnhancedContentStrategy, EnhancedAIAnalysisResult
 
+# Import authentication
+from middleware.auth_middleware import get_current_user
+
 # Import utilities
 from ....utils.error_handlers import ContentPlanningErrorHandler
 from ....utils.response_builders import ResponseBuilder
@@ -37,6 +40,7 @@ def get_db():
 @router.get("/{strategy_id}/analytics")
 async def get_enhanced_strategy_analytics(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get comprehensive analytics for an enhanced strategy."""
@@ -72,6 +76,7 @@ async def get_enhanced_strategy_analytics(
 async def get_enhanced_strategy_ai_analysis(
     strategy_id: int,
     limit: int = Query(10, description="Number of AI analysis results to return"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get AI analysis history for an enhanced strategy."""
@@ -108,6 +113,7 @@ async def get_enhanced_strategy_ai_analysis(
 @router.get("/{strategy_id}/completion")
 async def get_enhanced_strategy_completion_stats(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get completion statistics for an enhanced strategy."""
@@ -147,6 +153,7 @@ async def get_enhanced_strategy_completion_stats(
 @router.get("/{strategy_id}/onboarding-integration")
 async def get_enhanced_strategy_onboarding_integration(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get onboarding data integration for an enhanced strategy."""
@@ -177,6 +184,7 @@ async def get_enhanced_strategy_onboarding_integration(
 @router.post("/{strategy_id}/ai-recommendations")
 async def generate_enhanced_ai_recommendations(
     strategy_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Generate AI recommendations for an enhanced strategy."""
@@ -216,6 +224,7 @@ async def generate_enhanced_ai_recommendations(
 async def regenerate_enhanced_strategy_ai_analysis(
     strategy_id: int,
     analysis_type: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Regenerate AI analysis for an enhanced strategy."""

@@ -29,6 +29,8 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTitles, setGeneratedTitles] = useState<string[]>([]);
   const [generationProgress, setGenerationProgress] = useState<string>('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editValue, setEditValue] = useState('');
 
   const handleTitleSelect = (title: string) => {
     onTitleSelect(title);
@@ -41,6 +43,23 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
       setCustomTitle('');
       setShowModal(false);
     }
+  };
+
+  const startEditing = () => {
+    setEditValue(selectedTitle || '');
+    setEditingTitle(true);
+  };
+
+  const saveTitleEdit = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== selectedTitle && onCustomTitle) {
+      onCustomTitle(trimmed);
+    }
+    setEditingTitle(false);
+  };
+
+  const cancelTitleEdit = () => {
+    setEditingTitle(false);
   };
 
   const handleGenerateSEOTitles = async () => {
@@ -120,20 +139,46 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
             <h3 style={{ margin: '0 0 8px 0', color: '#333', fontSize: '18px' }}>
               📝 Blog Title
             </h3>
-            <p style={{ 
-              margin: '0', 
-              color: '#666', 
-              fontSize: '14px',
-              lineHeight: '1.4',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '600px'
-            }}>
-              {(selectedTitle || 'No title selected').length > 150 
-                ? (selectedTitle || 'No title selected').substring(0, 150) + '...' 
-                : (selectedTitle || 'No title selected')}
-            </p>
+            {editingTitle ? (
+              <input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={saveTitleEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveTitleEdit();
+                  if (e.key === 'Escape') cancelTitleEdit();
+                }}
+                style={{
+                  margin: '0',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  color: '#333',
+                  border: '1px solid #1976d2',
+                  borderRadius: '4px',
+                  padding: '4px 8px',
+                  width: '100%',
+                  maxWidth: '600px',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+            ) : (
+              <p
+                onClick={startEditing}
+                style={{
+                  margin: '0',
+                  color: '#666',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  wordBreak: 'break-word',
+                  cursor: 'pointer'
+                }}
+                title="Click to edit title"
+              >
+                {selectedTitle || 'No title selected'}
+              </p>
+            )}
           </div>
           <div style={{ position: 'relative' }}>
             <button
@@ -358,10 +403,7 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           fontSize: '15px',
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
-                          lineHeight: '1.4',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          lineHeight: '1.4'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {
@@ -435,10 +477,7 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           fontSize: '15px',
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
-                          lineHeight: '1.4',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          lineHeight: '1.4'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {
@@ -511,10 +550,7 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           fontSize: '15px',
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
-                          lineHeight: '1.4',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          lineHeight: '1.4'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {

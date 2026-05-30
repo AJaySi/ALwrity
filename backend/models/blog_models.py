@@ -18,6 +18,11 @@ class ResearchSource(BaseModel):
     published_at: Optional[str] = None
     index: Optional[int] = None
     source_type: Optional[str] = None  # e.g., 'web'
+    highlights: Optional[List[str]] = None  # Exa key highlights up to 3 per URL
+    summary: Optional[str] = None  # Exa AI-generated summary
+    image: Optional[str] = None  # Source thumbnail image URL
+    author: Optional[str] = None  # Content author
+    content: Optional[str] = None  # Full extracted text
 
 
 class GroundingChunk(BaseModel):
@@ -167,6 +172,8 @@ class BlogOutlineRequest(BaseModel):
     persona: Optional[PersonaInfo] = None
     word_count: Optional[int] = 1500
     custom_instructions: Optional[str] = None
+    selected_content_angle: Optional[str] = None  # Prioritized content angle for outline generation
+    selected_competitive_advantage: Optional[str] = None  # Prioritized competitive advantage to emphasize in outline
 
 
 class SourceMappingStats(BaseModel):
@@ -184,11 +191,6 @@ class GroundingInsights(BaseModel):
     search_intent_insights: Optional[Dict[str, Any]] = None
     quality_indicators: Optional[Dict[str, Any]] = None
 
-class OptimizationResults(BaseModel):
-    overall_quality_score: float = 0.0
-    improvements_made: List[str] = []
-    optimization_focus: str = "general optimization"
-
 class ResearchCoverage(BaseModel):
     sources_utilized: int = 0
     content_gaps_identified: int = 0
@@ -202,7 +204,6 @@ class BlogOutlineResponse(BaseModel):
     # Additional metadata for enhanced UI
     source_mapping_stats: Optional[SourceMappingStats] = None
     grounding_insights: Optional[GroundingInsights] = None
-    optimization_results: Optional[OptimizationResults] = None
     research_coverage: Optional[ResearchCoverage] = None
 
 

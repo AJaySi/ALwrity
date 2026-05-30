@@ -7,11 +7,13 @@ import {
   useTheme
 } from '@mui/material';
 import Lightbulb from '@mui/icons-material/Lightbulb';
+import Storage from '@mui/icons-material/Storage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
 import AskAlwrityIcon from '../../assets/images/AskAlwrity-min.ico';
 import { SubscriptionGuard } from '../SubscriptionGuard';
+import { apiClient } from '../../api/client';
 
 // Shared components
 import DashboardHeader from '../shared/DashboardHeader';
@@ -23,6 +25,7 @@ import ToolsModal from './components/ToolsModal';
 import EnhancedBillingDashboard from '../billing/EnhancedBillingDashboard';
 import CompactSidebar from './components/CompactSidebar';
 import TeamHuddleWidget from './components/TeamHuddleWidget';
+import ContentGuardianCard from './components/ContentGuardianCard';
 
 // Shared types and utilities
 import { Tool } from '../shared/types';
@@ -99,6 +102,40 @@ const MainDashboard: React.FC = () => {
       });
     }
   }, [currentWorkflow, workflowProgress]);
+
+  // SIF indexing health state
+  const [sifHealth, setSifHealth] = React.useState<{
+    has_task: boolean;
+    status: string;
+    task?: {
+      raw_status: string;
+      next_execution: string | null;
+      last_success: string | null;
+      last_failure: string | null;
+      consecutive_failures: number;
+    };
+    last_run?: {
+      status: string | null;
+      time: string | null;
+      error_message: string | null;
+    };
+    message?: string;
+  } | null>(null);
+
+  // Fetch SIF indexing health on mount and every 60s
+  React.useEffect(() => {
+    const fetchSifHealth = async () => {
+      try {
+        const resp = await apiClient.get('/api/seo-dashboard/sif-health');
+        setSifHealth(resp.data);
+      } catch {
+        setSifHealth(null);
+      }
+    };
+    fetchSifHealth();
+    const interval = setInterval(fetchSifHealth, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // State to track if we need to start a newly generated workflow
   const [shouldStartWorkflow, setShouldStartWorkflow] = React.useState(false);
@@ -242,14 +279,46 @@ const MainDashboard: React.FC = () => {
 
   const statusChips = React.useMemo(() => {
     const scheduled = !!scheduleStatus?.scheduled_run_completed;
-    return [
+    const chips = [
       {
         label: scheduled ? 'Scheduled workflow ready' : 'Scheduled workflow pending',
         color: scheduled ? '#22c55e' : '#ef4444',
         icon: <Lightbulb sx={{ color: scheduled ? '#22c55e' : '#ef4444' }} />,
       },
     ];
-  }, [scheduleStatus]);
+
+    if (sifHealth) {
+      if (!sifHealth.has_task) {
+        chips.push({
+          label: 'SIF Index: not scheduled',
+          color: '#9e9e9e',
+          icon: <Storage sx={{ color: '#9e9e9e' }} />,
+        });
+      } else {
+        const failures = sifHealth.task?.consecutive_failures || 0;
+        const lastRunStatus = sifHealth.last_run?.status;
+        let label: string;
+        let color: string;
+        if (sifHealth.status === 'healthy') {
+          label = `SIF Index: active${lastRunStatus === 'success' ? '' : ' (pending)'}`;
+          color = '#22c55e';
+        } else if (sifHealth.status === 'warning') {
+          label = `SIF Index: ${failures} failure${failures > 1 ? 's' : ''}`;
+          color = '#f59e0b';
+        } else {
+          label = 'SIF Index: needs attention';
+          color = '#ef4444';
+        }
+        chips.push({
+          label,
+          color,
+          icon: <Storage sx={{ color }} />,
+        });
+      }
+    }
+
+    return chips;
+  }, [scheduleStatus, sifHealth]);
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -363,6 +432,9 @@ const MainDashboard: React.FC = () => {
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                 {/* Team Huddle Widget - New Addition */}
                 <TeamHuddleWidget />
+
+                {/* Content Guardian Audit Card */}
+                <ContentGuardianCard />
 
                 {/* Analytics Insights - Good/Bad/Ugly */}
                 <AnalyticsInsights />
