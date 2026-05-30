@@ -567,6 +567,7 @@ def suggest_prompts(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> ImagePromptSuggestResponse:
     user_id = str(current_user.get('id', ''))
+    logger.info(f"[suggest-prompts] Starting for user={user_id}, provider={req.provider}, model={req.model}")
     try:
         if req.provider:
             provider = req.provider.lower()
