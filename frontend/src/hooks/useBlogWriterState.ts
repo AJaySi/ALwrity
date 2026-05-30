@@ -52,6 +52,7 @@ const restoreInitialState = () => {
   let sourceMappingStats: SourceMappingStats | null = null;
   let groundingInsights: GroundingInsights | null = null;
   let researchCoverage: ResearchCoverage | null = null;
+  let sectionImages: Record<string, string> = {};
 
   try {
     // Restore research from the research cache (synchronous localStorage reads)
@@ -93,6 +94,13 @@ const restoreInitialState = () => {
     // Restore SEO data
     seoAnalysis = readLS<BlogSEOAnalyzeResponse | null>('blog_seo_analysis', null);
     seoMetadata = readLS<BlogSEOMetadataResponse | null>('blog_seo_metadata', null);
+
+    // Restore section images
+    const savedSectionImages = readLS<Record<string, string> | null>('blog_section_images', null);
+    if (savedSectionImages && Object.keys(savedSectionImages).length > 0) {
+      sectionImages = savedSectionImages;
+      console.log(`[SectionImages] Restored ${Object.keys(sectionImages).length} images from localStorage`);
+    }
   } catch (error) {
     console.error('Error during initial state restoration:', error);
   }
@@ -110,6 +118,7 @@ const restoreInitialState = () => {
     sourceMappingStats,
     groundingInsights,
     researchCoverage,
+    sectionImages,
   };
 };
 
@@ -149,7 +158,7 @@ export const useBlogWriterState = () => {
   const [contentConfirmed, setContentConfirmed] = useState<boolean>(initialState.contentConfirmed);
 
   // Section images state - persists images generated in outline phase to content phase
-  const [sectionImages, setSectionImages] = useState<Record<string, string>>({});
+  const [sectionImages, setSectionImages] = useState<Record<string, string>>(initialState.sectionImages);
 
   const formatContentAngleToTitle = useCallback((angle: string): string => {
     if (!angle || typeof angle !== 'string') {
@@ -232,6 +241,19 @@ export const useBlogWriterState = () => {
       }
     } catch {}
   }, [seoMetadata]);
+
+  // Persist sectionImages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      if (Object.keys(sectionImages).length > 0) {
+        localStorage.setItem('blog_section_images', JSON.stringify(sectionImages));
+      } else {
+        localStorage.removeItem('blog_section_images');
+      }
+    } catch (e) {
+      console.warn('[SectionImages] Failed to persist to localStorage via effect:', e);
+    }
+  }, [sectionImages]);
 
   // Persist sections to blogWriterCache whenever they change
   useEffect(() => {

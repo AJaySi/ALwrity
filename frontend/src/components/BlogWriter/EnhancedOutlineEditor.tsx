@@ -912,6 +912,13 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
           onImageGenerated={(imageBase64, sectionId) => { 
             if (sectionId && setSectionImages) { 
               setSectionImages((prev: Record<string, string>) => ({ ...prev, [sectionId]: imageBase64 })); 
+              try {
+                const existing = JSON.parse(localStorage.getItem('blog_section_images') || '{}');
+                existing[sectionId] = imageBase64;
+                localStorage.setItem('blog_section_images', JSON.stringify(existing));
+              } catch (e) {
+                console.warn('[SectionImages] Failed to persist to localStorage:', e);
+              }
             } 
           }}
         />
