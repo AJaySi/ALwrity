@@ -799,12 +799,13 @@ async def startup_event():
         else:
             logger.info(f"[FEATURE-MODE] Skipping scheduler startup (features: {enabled_features})")
 
-        # Check Wix API key configuration
+        # Check Wix configuration (OAuth-based, API key optional)
         wix_api_key = os.getenv('WIX_API_KEY')
         if wix_api_key:
-            logger.warning(f"✅ WIX_API_KEY loaded ({len(wix_api_key)} chars, starts with '{wix_api_key[:10]}...')")
-        else:
-            logger.warning("⚠️ WIX_API_KEY not found in environment - Wix publishing may fail")
+            logger.info(f"WIX_API_KEY loaded ({len(wix_api_key)} chars)")
+        wix_client_id = os.getenv('WIX_CLIENT_ID')
+        if not wix_client_id:
+            logger.warning("⚠️ WIX_CLIENT_ID not found in environment - Wix OAuth connection will fail")
 
         elapsed = time.time() - startup_start
         logger.info(f"ALwrity backend started successfully in {elapsed:.1f}s")

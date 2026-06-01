@@ -76,7 +76,7 @@ class GoogleSearchService:
             logger.info(f"Searching for: {search_query}")
             
             # Perform the search
-            search_results = await self._perform_search(search_query, max_results)
+            search_results = await self.perform_search(search_query, max_results)
             
             # Process and rank results
             processed_results = await self._process_search_results(search_results, topic, industry)
@@ -140,13 +140,16 @@ class GoogleSearchService:
         
         return " ".join(query_components)
     
-    async def _perform_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+    async def perform_search(self, query: str, max_results: int, **overrides) -> List[Dict[str, Any]]:
         """
         Perform the actual Google Custom Search API call.
         
         Args:
             query: The search query to execute
             max_results: Maximum number of results to return
+            **overrides: Override or disable default params.
+                         Pass `param=None` to remove a default param entirely.
+                         Pass `param=value` to override its value.
             
         Returns:
             Raw search results from Google API
@@ -158,8 +161,15 @@ class GoogleSearchService:
             "num": min(max_results, 10),  # Google CSE max is 10 per request
             "dateRestrict": "m1",  # Last month
             "sort": "date",  # Sort by date for current information
-            "safe": "active"  # Safe search for professional content
+            "safe": "active",  # Safe search for professional content
         }
+        # Apply overrides: None removes the key, non-None overrides the value
+        if overrides:
+            for k, v in overrides.items():
+                if v is None:
+                    params.pop(k, None)
+                else:
+                    params[k] = v
         
         async with aiohttp.ClientSession() as session:
             async with session.get(self.base_url, params=params) as response:
@@ -477,7 +487,7 @@ class GoogleSearchService:
         try:
             # Perform a simple test search
             test_query = "AI technology trends 2024"
-            test_results = await self._perform_search(test_query, 1)
+            test_results = await self.perform_search(test_query, 1)
             
             return {
                 "status": "success",

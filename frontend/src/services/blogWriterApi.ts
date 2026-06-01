@@ -183,6 +183,7 @@ export interface BlogSEOAnalyzeResponse {
 
 export interface BlogSEOApplyRecommendationsRequest {
   title: string;
+  introduction?: string;
   sections: Array<{ id: string; heading: string; content: string }>;
   outline: BlogOutlineSection[];
   research: Record<string, any>;
@@ -195,6 +196,7 @@ export interface BlogSEOApplyRecommendationsRequest {
 export interface BlogSEOApplyRecommendationsResponse {
   success: boolean;
   title?: string;
+  introduction?: string;
   sections: Array<{ id: string; heading: string; content: string; notes?: string[] }>;
   applied?: Array<{ category: string; summary: string }>;
   error?: string;
@@ -390,7 +392,7 @@ export const blogWriterApi = {
   },
 
   async applySeoRecommendations(payload: BlogSEOApplyRecommendationsRequest): Promise<BlogSEOApplyRecommendationsResponse> {
-    const { data } = await apiClient.post('/api/blog/seo/apply-recommendations', payload);
+    const { data } = await aiApiClient.post('/api/blog/seo/apply-recommendations', payload);
     return data;
   },
 

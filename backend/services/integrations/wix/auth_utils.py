@@ -55,19 +55,20 @@ def get_wix_headers(
             if token.startswith('OauthNG.JWS.'):
                 # Wix OAuth token - use Bearer prefix
                 headers['Authorization'] = f'Bearer {token}'
-                logger.debug(f"Using Wix OAuth token with Bearer prefix (OauthNG.JWS. format detected)")
+                logger.debug("Using Wix OAuth token with Bearer prefix (OauthNG.JWS. format detected)")
+            elif token.startswith('IST.'):
+                # Wix Headless API key - send as-is, no Bearer
+                headers['Authorization'] = token
+                logger.debug("Using Wix API key for authorization (IST. format detected)")
             else:
-                # Count dots - JWT has exactly 2 dots
+                # Standard JWT has exactly 2 dots separating header.payload.signature
                 dot_count = token.count('.')
-                
-                if dot_count == 2 and len(token) < 500:
-                    # Likely OAuth JWT token - use Bearer prefix
+                if dot_count == 2:
                     headers['Authorization'] = f'Bearer {token}'
-                    logger.debug(f"Using OAuth Bearer token (JWT format detected)")
+                    logger.debug("Using OAuth Bearer token (JWT format: 2 dots detected)")
                 else:
-                    # Likely API key - use directly without Bearer prefix
                     headers['Authorization'] = token
-                    logger.debug(f"Using API key for authorization (non-JWT format detected)")
+                    logger.debug("Using token as-is (non-JWT format detected)")
     
     if client_id:
         headers['wix-client-id'] = client_id
@@ -125,8 +126,10 @@ def should_use_api_key(access_token: Optional[str] = None) -> bool:
             access_token = str(access_token)
     
     token = access_token.strip()
-    if token.count('.') != 2 or len(token) > 500:
+    if token.startswith('OauthNG.JWS.'):
+        return False
+    if token.startswith('IST.'):
         return True
-    
-    return False
+    # Standard JWT has exactly 2 dots
+    return token.count('.') != 2
 

@@ -214,6 +214,26 @@ nav:
       - Troubleshooting: user-journeys/enterprise/troubleshooting.md
       - Advanced Security: user-journeys/enterprise/advanced-security.md
   - Features:
+    - Today's Workflow:
+      - Overview: features/todays-workflow/overview.md
+      - User Guide: features/todays-workflow/workflow-guide.md
+      - Technical Architecture: features/todays-workflow/technical-architecture.md
+      - API Reference: features/todays-workflow/api-reference.md
+    - SIF & AI Agents:
+      - Overview: features/sif-agents/overview.md
+      - Agent Directory: features/sif-agents/agent-directory.md
+      - Committee System: features/sif-agents/committee-system.md
+      - ContentGuardianAgent: features/sif-agents/content-guardian.md
+    - Team Activity:
+      - Overview: features/team-activity/overview.md
+      - Quality Audit Panel: features/team-activity/quality-audit.md
+      - Trend Signals Panel: features/team-activity/trend-signals.md
+      - Alert System: features/team-activity/alert-system.md
+    - Onboarding System:
+      - Overview: features/onboarding/overview.md
+      - Onboarding Steps: features/onboarding/steps.md
+      - Scheduled Tasks: features/onboarding/scheduler-tasks.md
+      - Technical Reference: features/onboarding/technical-reference.md
     - Backlink Outreach:
       - Overview: features/backlink-outreach/overview.md
       - Workflow Guide: features/backlink-outreach/workflow-guide.md

@@ -1,22 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { hallucinationDetectorService, HallucinationDetectionResponse } from '../../../services/hallucinationDetectorService';
 import { chartApi, ChartGenerateResponse } from '../../../services/chartApi';
-import TextSelectionMenu from './TextSelectionMenu';
+import CompactSelectionMenu from './CompactSelectionMenu';
 import ChartGeneratorModal from '../../Chart/ChartGeneratorModal';
 import LinkSearchModal from '../../Link/LinkSearchModal';
 import useSmartTypingAssist from './SmartTypingAssist';
-// import { debug } from '../../../utils/debug'; // Unused import
 
 interface BlogTextSelectionHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | HTMLTextAreaElement>;
   onTextReplace?: (originalText: string, newText: string, editType: string) => void;
+  onFormatText?: (type: string, start?: number, end?: number) => void;
 }
 
 const useBlogTextSelectionHandler = (
   contentRef: React.RefObject<HTMLDivElement | HTMLTextAreaElement>,
-  onTextReplace?: (originalText: string, newText: string, editType: string) => void
+  onTextReplace?: (originalText: string, newText: string, editType: string) => void,
+  onFormatText?: (type: string, start?: number, end?: number) => void,
 ) => {
-  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string; start: number; end: number } | null>(null);
   const [factCheckResults, setFactCheckResults] = useState<HallucinationDetectionResponse | null>(null);
   const [isFactChecking, setIsFactChecking] = useState(false);
   const [factCheckProgress, setFactCheckProgress] = useState<{ step: string; progress: number } | null>(null);
@@ -27,22 +28,13 @@ const useBlogTextSelectionHandler = (
   const [linkModalText, setLinkModalText] = useState('');
   const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Use the extracted smart typing assist hook
   const smartTypingAssist = useSmartTypingAssist(contentRef, onTextReplace);
 
-  // Fact-checking functionality
   const handleCheckFacts = async (text: string) => {
-    console.log('🔍 [BlogTextSelectionHandler] handleCheckFacts called with text:', text);
-    if (!text.trim()) {
-      console.log('🔍 [BlogTextSelectionHandler] No text to check, returning');
-      return;
-    }
-    
-    console.log('🔍 [BlogTextSelectionHandler] Starting fact check for:', text.trim());
+    if (!text.trim()) return;
     setIsFactChecking(true);
     setSelectionMenu(null);
     
-    // Progress tracking
     const progressSteps = [
       { step: "Extracting verifiable claims...", progress: 20 },
       { step: "Searching for evidence...", progress: 40 },
@@ -52,18 +44,14 @@ const useBlogTextSelectionHandler = (
     ];
     
     let currentStepIndex = 0;
-    
-    // Start progress updates
     const progressInterval = setInterval(() => {
       if (currentStepIndex < progressSteps.length) {
         setFactCheckProgress(progressSteps[currentStepIndex]);
         currentStepIndex++;
       }
-    }, 2000); // Update every 2 seconds
+    }, 2000);
     
-    // Set a timeout for the fact check (120 seconds)
     const timeoutId = setTimeout(() => {
-      console.log('🔍 [BlogTextSelectionHandler] Fact check timeout reached');
       clearInterval(progressInterval);
       setFactCheckProgress(null);
       setIsFactChecking(false);
@@ -78,20 +66,16 @@ const useBlogTextSelectionHandler = (
         timestamp: new Date().toISOString(),
         error: 'Fact check timed out after 120 seconds. Please try again with shorter text.'
       });
-    }, 120000); // 120 second timeout
+    }, 120000);
     
     try {
-      console.log('🔍 [BlogTextSelectionHandler] Calling hallucinationDetectorService.detectHallucinations...');
       const results = await hallucinationDetectorService.detectHallucinations({
         text: text.trim(),
         include_sources: true,
         max_claims: 10
       });
-      
-      console.log('🔍 [BlogTextSelectionHandler] Fact check results received:', results);
       setFactCheckResults(results);
     } catch (error) {
-      console.error('🔍 [BlogTextSelectionHandler] Error checking facts:', error);
       setFactCheckResults({
         success: false,
         claims: [],
@@ -104,7 +88,6 @@ const useBlogTextSelectionHandler = (
         error: `Failed to check facts: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     } finally {
-      console.log('🔍 [BlogTextSelectionHandler] Fact check completed, setting isFactChecking to false');
       clearInterval(progressInterval);
       clearTimeout(timeoutId);
       setFactCheckProgress(null);
@@ -116,7 +99,6 @@ const useBlogTextSelectionHandler = (
     setFactCheckResults(null);
   };
 
-  // Chart generation handler
   const handleGenerateChart = (text: string) => {
     setChartModalText(text);
     setChartModalOpen(true);
@@ -148,28 +130,22 @@ const useBlogTextSelectionHandler = (
     setLinkModalOpen(false);
   };
 
-  // Blog-specific quick edit functionality for selected text
   const handleQuickEdit = (editType: string, selectedText: string) => {
-    console.log('🔍 [BlogTextSelectionHandler] handleQuickEdit called:', editType, selectedText);
-    
     let editedText = selectedText;
     
     switch (editType) {
       case 'improve':
-        // Enhance readability and engagement
         editedText = selectedText.replace(/\./g, '. ').replace(/\s+/g, ' ').trim();
         if (!editedText.endsWith('.') && !editedText.endsWith('!') && !editedText.endsWith('?')) {
           editedText += '.';
         }
         break;
       case 'add-transition':
-        // Add transitional phrases
         const transitions = ['Furthermore,', 'Additionally,', 'Moreover,', 'In essence,', 'As a result,'];
         const randomTransition = transitions[Math.floor(Math.random() * transitions.length)];
         editedText = `${randomTransition} ${selectedText.toLowerCase()}`;
         break;
       case 'shorten':
-        // Condense while maintaining meaning
         editedText = selectedText
           .replace(/\b(very|really|extremely|quite|rather|fairly)\s+/gi, '')
           .replace(/\b(that|which) (is|are|was|were)\s+/gi, '')
@@ -178,11 +154,9 @@ const useBlogTextSelectionHandler = (
           .trim();
         break;
       case 'expand':
-        // Add explanatory content
         editedText = selectedText + ' This approach provides significant value by offering concrete benefits and actionable insights that readers can immediately implement.';
         break;
       case 'professionalize':
-        // Make more formal and professional
         editedText = selectedText
           .replace(/\bcan't\b/gi, 'cannot')
           .replace(/\bwon't\b/gi, 'will not')
@@ -193,19 +167,16 @@ const useBlogTextSelectionHandler = (
           .replace(/\bI believe\b/gi, 'Research indicates that');
         break;
       case 'add-data':
-        // Add statistical backing
         editedText = selectedText + ' According to recent industry studies, this approach has shown measurable improvements in key performance metrics.';
         break;
       default:
         return;
     }
     
-    // Call the callback with the edited text
     if (onTextReplace) {
       onTextReplace(selectedText, editedText, editType);
     }
     
-    // Also dispatch custom event for broader compatibility
     window.dispatchEvent(new CustomEvent('blogwriter:replaceSelectedText', { 
       detail: { 
         originalText: selectedText,
@@ -214,12 +185,9 @@ const useBlogTextSelectionHandler = (
       } 
     }));
     
-    // Close the selection menu
     setSelectionMenu(null);
   };
 
-
-  // Close selection menu when clicking outside any selection menu
   useEffect(() => {
     if (!selectionMenu) return;
 
@@ -240,7 +208,6 @@ const useBlogTextSelectionHandler = (
     };
   }, [selectionMenu]);
 
-  // Cleanup progress and timeouts on unmount
   useEffect(() => {
     return () => {
       setFactCheckProgress(null);
@@ -250,7 +217,6 @@ const useBlogTextSelectionHandler = (
     };
   }, []);
 
-  // Text selection handler with debouncing
   const handleTextSelection = () => {
     if (selectionTimeoutRef.current) {
       clearTimeout(selectionTimeoutRef.current);
@@ -260,26 +226,27 @@ const useBlogTextSelectionHandler = (
       try {
         let text = '';
         let rect: DOMRect | null = null;
+        let startPos = 0;
+        let endPos = 0;
 
         const el = contentRef.current;
         if (el instanceof HTMLTextAreaElement) {
           const start = el.selectionStart;
           const end = el.selectionEnd;
+          startPos = start;
+          endPos = end;
           if (start !== end) {
             text = el.value.substring(start, end).trim();
             try {
-              const { selectionStart, selectionEnd } = el;
-              if (selectionStart !== null && selectionEnd !== null) {
-                const textRect = el.getBoundingClientRect();
-                const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
-                const linesBefore = el.value.substring(0, selectionStart).split('\n').length - 1;
-                rect = new DOMRect(
-                  textRect.left + 10,
-                  textRect.top + (linesBefore * lineHeight) + 10,
-                  100,
-                  20
-                );
-              }
+              const textRect = el.getBoundingClientRect();
+              const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+              const linesBefore = el.value.substring(0, start).split('\n').length - 1;
+              rect = new DOMRect(
+                textRect.left + 10,
+                textRect.top + (linesBefore * lineHeight) + 10,
+                100,
+                20
+              );
             } catch (_) {}
           }
         } else {
@@ -302,7 +269,7 @@ const useBlogTextSelectionHandler = (
             const elRect = el.getBoundingClientRect();
             const x = Math.max(8, Math.min(elRect.left + (elRect.width / 2), window.innerWidth - 280));
             const y = Math.max(8, elRect.top + window.scrollY - 60);
-            setSelectionMenu({ x, y, text });
+            setSelectionMenu({ x, y, text, start: startPos, end: endPos });
             return;
           }
           setSelectionMenu(null);
@@ -312,7 +279,7 @@ const useBlogTextSelectionHandler = (
         const x = Math.max(8, Math.min(rect.left + (rect.width / 2), window.innerWidth - 280));
         const y = Math.max(8, rect.top + window.scrollY - 60);
 
-        setSelectionMenu({ x, y, text });
+        setSelectionMenu({ x, y, text, start: startPos, end: endPos });
       } catch (error) {
         console.error('Text selection error:', error);
         setSelectionMenu(null);
@@ -330,51 +297,57 @@ const useBlogTextSelectionHandler = (
     handleCheckFacts,
     handleCloseFactCheckResults,
     handleQuickEdit,
-    // Smart typing assist functionality from extracted hook
     ...smartTypingAssist,
-    // Render the selection menu and fact-check components
     renderSelectionMenu: () => (
       <>
-        <TextSelectionMenu
-        selectionMenu={selectionMenu}
-        factCheckResults={factCheckResults}
-        isFactChecking={isFactChecking}
-        factCheckProgress={factCheckProgress}
-        smartSuggestion={smartTypingAssist.smartSuggestion}
-        isGeneratingSuggestion={smartTypingAssist.isGeneratingSuggestion}
-        allSuggestions={smartTypingAssist.allSuggestions}
-        suggestionIndex={smartTypingAssist.suggestionIndex}
-        showContinueWritingPrompt={smartTypingAssist.showContinueWritingPrompt}
-        onCheckFacts={handleCheckFacts}
-        onGenerateChart={handleGenerateChart}
-        onFindLinks={handleFindLinks}
-        onCloseFactCheckResults={handleCloseFactCheckResults}
-        onQuickEdit={handleQuickEdit}
-        onAcceptSuggestion={smartTypingAssist.handleAcceptSuggestion}
-        onRejectSuggestion={smartTypingAssist.handleRejectSuggestion}
-        onNextSuggestion={smartTypingAssist.handleNextSuggestion}
-        onRequestSuggestion={smartTypingAssist.handleRequestSuggestion}
-        onDismissPrompt={smartTypingAssist.handleDismissPrompt}
-      />
-      {chartModalOpen && (
-        <ChartGeneratorModal
-          isOpen={chartModalOpen}
-          onClose={() => setChartModalOpen(false)}
-          defaultText={chartModalText}
-          onChartGenerated={handleChartGenerated}
+        <CompactSelectionMenu
+          selectionMenu={selectionMenu}
+          factCheckResults={factCheckResults}
+          isFactChecking={isFactChecking}
+          factCheckProgress={factCheckProgress}
+          smartSuggestion={smartTypingAssist.smartSuggestion}
+          isGeneratingSuggestion={smartTypingAssist.isGeneratingSuggestion}
+          allSuggestions={smartTypingAssist.allSuggestions}
+          suggestionIndex={smartTypingAssist.suggestionIndex}
+          showContinueWritingPrompt={smartTypingAssist.showContinueWritingPrompt}
+          onCheckFacts={handleCheckFacts}
+          onGenerateChart={handleGenerateChart}
+          onFindLinks={handleFindLinks}
+          onCloseFactCheckResults={handleCloseFactCheckResults}
+          onQuickEdit={handleQuickEdit}
+          onAcceptSuggestion={smartTypingAssist.handleAcceptSuggestion}
+          onRejectSuggestion={smartTypingAssist.handleRejectSuggestion}
+          onNextSuggestion={smartTypingAssist.handleNextSuggestion}
+          onRequestSuggestion={smartTypingAssist.handleRequestSuggestion}
+          onDismissPrompt={smartTypingAssist.handleDismissPrompt}
+          onFormatText={(type: string) => {
+            if (selectionMenu) {
+              onFormatText?.(type, selectionMenu.start, selectionMenu.end);
+            } else {
+              onFormatText?.(type);
+            }
+            setSelectionMenu(null);
+          }}
         />
-      )}
-      {linkModalOpen && (
-        <LinkSearchModal
-          isOpen={linkModalOpen}
-          onClose={() => setLinkModalOpen(false)}
-          sectionHeading=""
-          sectionText={linkModalText}
-          selectedText={linkModalText}
-          onRewordAccept={handleLinkRewordAccept}
-        />
-      )}
-    </>
+        {chartModalOpen && (
+          <ChartGeneratorModal
+            isOpen={chartModalOpen}
+            onClose={() => setChartModalOpen(false)}
+            defaultText={chartModalText}
+            onChartGenerated={handleChartGenerated}
+          />
+        )}
+        {linkModalOpen && (
+          <LinkSearchModal
+            isOpen={linkModalOpen}
+            onClose={() => setLinkModalOpen(false)}
+            sectionHeading=""
+            sectionText={linkModalText}
+            selectedText={linkModalText}
+            onRewordAccept={handleLinkRewordAccept}
+          />
+        )}
+      </>
     )
   };
 };

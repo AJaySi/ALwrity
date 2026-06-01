@@ -21,6 +21,7 @@ import { SEOProcessor } from './SEO';
 import TaskProgressModals from './BlogWriterUtils/TaskProgressModals';
 import { SEOAnalysisModal } from './SEOAnalysisModal';
 import { SEOMetadataModal } from './SEOMetadataModal';
+import { DiffPreviewModal } from './DiffPreviewModal/DiffPreviewModal';
 import { usePhaseNavigation } from '../../hooks/usePhaseNavigation';
 import HeaderBar from './BlogWriterUtils/HeaderBar';
 import PhaseContent from './BlogWriterUtils/PhaseContent';
@@ -65,6 +66,7 @@ const BlogWriter: React.FC = () => {
     titleOptions,
     selectedTitle,
     sections,
+    introduction,
     seoAnalysis,
     seoMetadata,
     continuityRefresh,
@@ -84,6 +86,7 @@ const BlogWriter: React.FC = () => {
     setTitleOptions,
     setSelectedTitle,
     setSections,
+    setIntroduction,
     setSeoAnalysis,
     setSeoMetadata,
     setContinuityRefresh,
@@ -134,8 +137,13 @@ const BlogWriter: React.FC = () => {
     handleSEOAnalysisComplete,
     handleSEOModalClose,
     confirmBlogContent,
+    isDiffModalOpen,
+    diffPreviewData,
+    acceptDiffChanges,
+    rejectDiffChanges,
   } = useSEOManager({
     sections,
+    introduction,
     research,
     outline,
     selectedTitle,
@@ -148,6 +156,7 @@ const BlogWriter: React.FC = () => {
     setSeoMetadata,
     setSections,
     setSelectedTitle: setSelectedTitle as (title: string | null) => void,
+    setIntroduction,
     setContinuityRefresh,
     setFlowAnalysisCompleted,
     setFlowAnalysisResults,
@@ -497,6 +506,7 @@ const BlogWriter: React.FC = () => {
       localStorage.removeItem('blogwriter_user_selected_phase');
       localStorage.removeItem('blog_content_confirmed');
       localStorage.removeItem('blog_seo_recommendations_applied');
+      localStorage.removeItem('blog_publish_completed');
       localStorage.removeItem('blog_last_asset_id');
     } catch {
       // ignore localStorage errors
@@ -725,7 +735,7 @@ const BlogWriter: React.FC = () => {
         outlineConfirmed={outlineConfirmed}
         hasContent={hasContent}
         contentConfirmed={contentConfirmed}
-        hasSEOAnalysis={!!seoAnalysis}
+        hasSEOAnalysis={!!seoAnalysis && (seoRecommendationsApplied || !!seoMetadata)}
         seoRecommendationsApplied={seoRecommendationsApplied}
         hasSEOMetadata={!!seoMetadata}
         onNewBlog={confirmNewBlog}
@@ -764,6 +774,8 @@ const BlogWriter: React.FC = () => {
         researchCoverage={researchCoverage}
         setOutline={setOutline}
         sections={sections}
+        introduction={introduction}
+        onIntroductionUpdate={setIntroduction}
         handleContentUpdate={handleContentUpdate}
         handleContentSave={handleContentSave}
         continuityRefresh={continuityRefresh}
@@ -825,6 +837,14 @@ const BlogWriter: React.FC = () => {
         researchData={research}
         onApplyRecommendations={handleApplySeoRecommendations}
         onAnalysisComplete={wrappedHandleSEOAnalysisComplete}
+      />
+
+      {/* Diff Preview Modal */}
+      <DiffPreviewModal
+        isOpen={isDiffModalOpen}
+        diffData={diffPreviewData}
+        onAccept={acceptDiffChanges}
+        onReject={rejectDiffChanges}
       />
 
       {/* SEO Metadata Modal */}

@@ -19,7 +19,7 @@ from services.seo import SEODashboardService
 from middleware.auth_middleware import get_current_user
 from services.llm_providers.main_text_generation import llm_text_gen
 from api.content_planning.services.content_strategy.onboarding import OnboardingDataIntegrationService
-from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession
+from models.onboarding import SEOPageAudit, WebsiteAnalysis, OnboardingSession, CompetitorAnalysis
 from sqlalchemy.orm.attributes import flag_modified
 
 from sqlalchemy import desc
@@ -750,6 +750,391 @@ async def get_keyword_gaps(
     except Exception as e:
         logger.error(f"Failed to get keyword gaps: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get keyword gaps: {str(e)}")
+
+
+async def get_serp_gaps(
+    current_user: dict = Depends(get_current_user),
+    topics: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Get SERP gap analysis — detect which competitors rank for given topics.
+
+    Uses Google Custom Search `site:` queries per competitor domain to detect
+    ranking presence. Topics can be provided explicitly or derived from the
+    user's latest SIF semantic gap analysis.
+
+    Args:
+        topics: Optional list of topic phrases. If omitted, uses the user's
+                latest SIF semantic gaps (up to 12 topics).
+
+    Returns:
+        Dict with gaps list and metadata.
+    """
+    try:
+        user_id = str(current_user.get("id"))
+
+        # If no topics provided, fetch from SIF semantic gaps
+        if not topics:
+            try:
+                from services.intelligence.agents.specialized import StrategyArchitectAgent
+                from services.intelligence.txtai_service import TxtaiIntelligenceService
+
+                integration = OnboardingDataIntegrationService()
+                db_session = get_session_for_user(user_id)
+                if db_session:
+                    try:
+                        integrated = integration.get_integrated_data_sync(
+                            user_id, db_session
+                        )
+                        competitor_indices = []
+                        if integrated and integrated.get("competitor_analysis"):
+                            competitor_indices = [
+                                i
+                                for i, _ in enumerate(
+                                    integrated["competitor_analysis"]
+                                )
+                            ]
+                        agent = StrategyArchitectAgent(
+                            TxtaiIntelligenceService(user_id), user_id
+                        )
+                        gaps = await agent.find_semantic_gaps(competitor_indices)
+                        topics = [g["topic"] for g in gaps[:12]]
+                    finally:
+                        db_session.close()
+            except Exception as e:
+                logger.warning(
+                    f"Could not derive topics from SIF gaps: {e}. "
+                    "Pass topics explicitly."
+                )
+                return {
+                    "gaps": [],
+                    "message": "No topics provided and unable to derive from SIF gaps.",
+                }
+
+        if not topics:
+            return {
+                "gaps": [],
+                "message": "No topics to analyze. Complete onboarding and SIF indexing first.",
+            }
+
+        # Get competitor domains from onboarding
+        competitor_domains = []
+        db_session = get_session_for_user(user_id)
+        if db_session:
+            try:
+                analyses = (
+                    db_session.query(CompetitorAnalysis)
+                    .join(
+                        OnboardingSession,
+                        CompetitorAnalysis.session_id == OnboardingSession.id,
+                    )
+                    .filter(OnboardingSession.user_id == user_id)
+                    .filter(CompetitorAnalysis.competitor_domain.isnot(None))
+                    .all()
+                )
+                competitor_domains = list(
+                    set(a.competitor_domain for a in analyses if a.competitor_domain)
+                )
+            finally:
+                db_session.close()
+
+        if not competitor_domains:
+            return {
+                "gaps": [],
+                "message": "No competitor domains found. Complete onboarding Step 3.",
+            }
+
+        # Run SERP gap analysis
+        from services.seo_tools.serp_gap_service import SerpGapService
+
+        service = SerpGapService()
+        result = await service.analyze_topic_gaps(topics, competitor_domains)
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get SERP gaps: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get SERP gaps: {str(e)}"
+        )
+
+
+async def get_competitor_content(
+    current_user: dict = Depends(get_current_user),
+    topics: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Get competitor content deep-dive for gap topics using Exa.
+
+    Scopes Exa neural search to known competitor domains (from onboarding Step 3)
+    and returns full text, highlights, and summaries for competitive analysis.
+
+    Args:
+        topics: Optional list of topic phrases. If omitted, uses the user's
+                latest SIF semantic gaps (up to 6 topics — Exa is paid).
+
+    Returns:
+        Dict with per-topic competitor content results.
+    """
+    try:
+        user_id = str(current_user.get("id"))
+
+        # If no topics provided, fetch from SIF semantic gaps
+        if not topics:
+            try:
+                from services.intelligence.agents.specialized import StrategyArchitectAgent
+                from services.intelligence.txtai_service import TxtaiIntelligenceService
+
+                integration = OnboardingDataIntegrationService()
+                db_session = get_session_for_user(user_id)
+                if db_session:
+                    try:
+                        integrated = integration.get_integrated_data_sync(
+                            user_id, db_session
+                        )
+                        competitor_indices = []
+                        if integrated and integrated.get("competitor_analysis"):
+                            competitor_indices = [
+                                i
+                                for i, _ in enumerate(
+                                    integrated["competitor_analysis"]
+                                )
+                            ]
+                        agent = StrategyArchitectAgent(
+                            TxtaiIntelligenceService(user_id), user_id
+                        )
+                        gaps = await agent.find_semantic_gaps(competitor_indices)
+                        # Fewer topics for Exa (paid API)
+                        topics = [g["topic"] for g in gaps[:6]]
+                    finally:
+                        db_session.close()
+            except Exception as e:
+                logger.warning(
+                    f"Could not derive topics from SIF gaps: {e}. "
+                    "Pass topics explicitly."
+                )
+                return {
+                    "results": [],
+                    "message": "No topics provided and unable to derive from SIF gaps.",
+                }
+
+        if not topics:
+            return {
+                "results": [],
+                "message": "No topics to analyze. Complete onboarding and SIF indexing first.",
+            }
+
+        # Get competitor domains from onboarding
+        competitor_domains = []
+        db_session = get_session_for_user(user_id)
+        if db_session:
+            try:
+                analyses = (
+                    db_session.query(CompetitorAnalysis)
+                    .join(
+                        OnboardingSession,
+                        CompetitorAnalysis.session_id == OnboardingSession.id,
+                    )
+                    .filter(OnboardingSession.user_id == user_id)
+                    .filter(CompetitorAnalysis.competitor_domain.isnot(None))
+                    .all()
+                )
+                competitor_domains = list(
+                    set(a.competitor_domain for a in analyses if a.competitor_domain)
+                )
+            finally:
+                db_session.close()
+
+        if not competitor_domains:
+            return {
+                "results": [],
+                "message": "No competitor domains found. Complete onboarding Step 3.",
+            }
+
+        # Run Exa competitor deep-dive
+        from services.seo_tools.competitor_content_service import (
+            CompetitorContentService,
+        )
+
+        service = CompetitorContentService()
+        result = await service.deep_dive(topics, competitor_domains)
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get competitor content: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get competitor content: {str(e)}"
+        )
+
+
+async def get_content_gap_radar(
+    current_user: dict = Depends(get_current_user),
+    bypass_cache: bool = False,
+) -> Dict[str, Any]:
+    """
+    Run the Content Gap Radar pipeline — the full Phase 3 agent.
+
+    Orchestrates SIF semantic gap analysis, SERP ranking presence detection,
+    Exa competitor content deep-dive, and trend momentum scoring into a
+    single ROI-ranked list of content opportunities.
+
+    Returns scored gaps with per-topic evidence and a summary.
+    """
+    try:
+        user_id = str(current_user.get("id"))
+
+        # Fetch competitor domains + indices from onboarding data
+        competitor_domains = []
+        competitor_indices = []
+
+        db_session = get_session_for_user(user_id)
+        if db_session:
+            try:
+                # Competitor domains
+                analyses = (
+                    db_session.query(CompetitorAnalysis)
+                    .join(
+                        OnboardingSession,
+                        CompetitorAnalysis.session_id == OnboardingSession.id,
+                    )
+                    .filter(OnboardingSession.user_id == user_id)
+                    .filter(CompetitorAnalysis.competitor_domain.isnot(None))
+                    .all()
+                )
+                competitor_domains = list(
+                    set(
+                        a.competitor_domain
+                        for a in analyses
+                        if a.competitor_domain
+                    )
+                )
+
+                # Competitor indices from integrated data
+                integration = OnboardingDataIntegrationService()
+                integrated = integration.get_integrated_data_sync(
+                    user_id, db_session
+                )
+                if integrated and integrated.get("competitor_analysis"):
+                    competitor_indices = [
+                        i
+                        for i, _ in enumerate(
+                            integrated["competitor_analysis"]
+                        )
+                    ]
+            finally:
+                db_session.close()
+
+        if not competitor_domains:
+            return {
+                "gaps": [],
+                "summary": {},
+                "message": "No competitor domains found. Complete onboarding Step 3.",
+            }
+
+        # Run the agent
+        from services.intelligence.agents import ContentGapRadarAgent
+        from services.intelligence.txtai_service import TxtaiIntelligenceService
+
+        agent = ContentGapRadarAgent(
+            TxtaiIntelligenceService(user_id), user_id
+        )
+        result = await agent.analyze(
+            competitor_domains=competitor_domains,
+            competitor_indices=competitor_indices,
+            bypass_cache=bypass_cache,
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to run content gap radar: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run content gap radar: {str(e)}",
+        )
+
+
+class GenerateContentRequest(BaseModel):
+    topic: str
+    recommended_action: str = ""
+    scoring: Optional[Dict[str, float]] = None
+    serp_evidence: Optional[Dict[str, Any]] = None
+    sif_gap: Optional[Dict[str, Any]] = None
+
+
+async def generate_content_from_gap(
+    request: GenerateContentRequest,
+    current_user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Generate a content brief from a content gap radar item and save it
+    as a blog ContentAsset so the user can resume in the Blog Writer.
+    """
+    try:
+        user_id = str(current_user.get("id"))
+        from services.intelligence.agents import ContentGapRadarAgent
+        from services.intelligence.txtai_service import TxtaiIntelligenceService
+
+        agent = ContentGapRadarAgent(
+            TxtaiIntelligenceService(user_id), user_id
+        )
+        brief_result = await agent.generate_content_brief(
+            topic=request.topic,
+            recommended_action=request.recommended_action,
+            scoring=request.scoring,
+            serp_evidence=request.serp_evidence,
+            sif_gap=request.sif_gap,
+        )
+
+        # Create blog ContentAsset so user can resume in Blog Writer
+        from services.content_asset_service import ContentAssetService
+        from models.content_asset_models import AssetType, AssetSource
+        from services.database import get_db_session
+
+        session = get_db_session()
+        asset_id = None
+        if session:
+            try:
+                svc = ContentAssetService(session)
+                asset = svc.create_asset(
+                    user_id=user_id,
+                    asset_type=AssetType.TEXT,
+                    source_module=AssetSource.BLOG_WRITER,
+                    filename=f"gap_{int(time.time())}.md",
+                    file_url=f"/api/blog/content/pending",
+                    title=request.topic,
+                    description=f"Content brief from gap analysis: {request.topic}",
+                    tags=["content-gap", "seo-dashboard"],
+                    asset_metadata={
+                        "phase": "research",
+                        "research_keywords": request.topic,
+                        "topic": request.topic,
+                        "research_data": brief_result,
+                        "outline_data": None,
+                        "content_data": None,
+                        "seo_data": None,
+                        "publish_data": None,
+                    },
+                )
+                asset_id = asset.id
+                logger.info(
+                    f"Created blog asset {asset_id} for gap topic '{request.topic}'"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create blog asset: {e}")
+            finally:
+                session.close()
+
+        return {
+            "success": True,
+            "brief": brief_result["brief"],
+            "asset_id": asset_id,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to generate content from gap: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate content brief: {str(e)}",
+        )
 
 
 async def get_onboarding_task_health(

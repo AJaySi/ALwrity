@@ -123,13 +123,15 @@ def _is_coverage_guardrail_enabled(grounding: Dict[str, Any]) -> bool:
     return True
 
 
-def _sanitize_task(task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _sanitize_task(task: Dict[str, Any], agent_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     if not isinstance(task, dict):
         return None
 
     pillar_id = str(task.get("pillarId") or "").lower().strip()
     title = str(task.get("title") or "").strip()
     if pillar_id not in PILLAR_IDS or not title:
+        reason = "empty title" if not title else f"invalid pillar_id={pillar_id!r}"
+        logger.warning(f"Rejected task from agent {agent_name or 'unknown'}: {reason}")
         return None
 
     sanitized = dict(task)
@@ -418,6 +420,7 @@ async def generate_agent_enhanced_plan(
             orchestrator.agents.get('seo'),          # SEOOptimizationAgent
             orchestrator.agents.get('social'),       # SocialAmplificationAgent
             orchestrator.agents.get('competitor'),   # CompetitorResponseAgent
+            orchestrator.agents.get('content_gap_radar'),  # ContentGapRadarAgent
         ]
         
         # Filter out None agents (disabled/failed init)
@@ -466,7 +469,118 @@ async def generate_agent_enhanced_plan(
         
         # Phase 3: Check memory for rejections (Semantic Filter)
         agent_tasks = await memory_service.filter_redundant_proposals(agent_tasks)
-                
+
+        # Log committee meeting event for frontend transparency
+        try:
+            accepted_ids = {f"{p.pillar_id}:{p.title}" for p in agent_tasks}
+            proposals_log = []
+            for p in raw_proposals:
+                valid = p.pillar_id in PILLAR_IDS
+                key = f"{p.pillar_id}:{p.title}"
+                proposals_log.append({
+                    "agent": p.source_agent,
+                    "title": p.title,
+                    "pillar_id": p.pillar_id,
+                    "priority": p.priority,
+                    "valid": valid,
+                    "accepted": key in accepted_ids,
+                    "rejected_reason": None if valid else f"pillar_id '{p.pillar_id}' not in {PILLAR_IDS}",
+                    "reasoning": p.reasoning,
+                    "estimated_time": p.estimated_time,
+                    "action_type": p.action_type,
+                })
+                if not valid:
+                    logger.warning(
+                        f"Rejected proposal from agent {p.source_agent}: "
+                        f"invalid pillar_id={p.pillar_id!r} (title={p.title!r}). "
+                        f"Must be one of {PILLAR_IDS}"
+                    )
+            activity.log_event(
+                event_type="committee_meeting",
+                message=f"Committee: {len(agent_tasks)}/{len(raw_proposals)} tasks accepted from {len(active_agents)} agents",
+                payload={
+                    "agents_polled": len(active_agents),
+                    "total_proposals": len(raw_proposals),
+                    "accepted_count": len(agent_tasks),
+                    "rejected_count": len(raw_proposals) - len(agent_tasks),
+                    "proposals": proposals_log,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log committee meeting event: {e}")
+
+        # --- Committee Watchdog Audit (ContentGuardianAgent) ---
+        try:
+            guardian_agent = orchestrator.agents.get('guardian')
+            if guardian_agent and hasattr(guardian_agent, 'audit_committee'):
+                # Build proposals list from committee data (same format as proposals_log above)
+                accepted_ids = {f"{p.pillar_id}:{p.title}" for p in agent_tasks}
+                audit_input = []
+                for p in raw_proposals:
+                    key = f"{p.pillar_id}:{p.title}"
+                    audit_input.append({
+                        "agent": p.source_agent,
+                        "title": p.title,
+                        "pillar_id": p.pillar_id,
+                        "priority": p.priority,
+                        "reasoning": p.reasoning or "",
+                        "accepted": key in accepted_ids,
+                        "valid": p.pillar_id in PILLAR_IDS,
+                        "rejected_reason": None if p.pillar_id in PILLAR_IDS else f"pillar_id '{p.pillar_id}' not in {PILLAR_IDS}",
+                    })
+
+                audit_report = await guardian_agent.audit_committee(audit_input)
+
+                activity.log_event(
+                    event_type="quality_audit",
+                    message=f"Committee audit: {audit_report['health_score']}/100 health — {len(audit_report['alerts'])} findings",
+                    payload=audit_report,
+                )
+                logger.info(
+                    f"Committee audit: health={audit_report['health_score']}, "
+                    f"critiques={len(audit_report['agent_critiques'])}, "
+                    f"gaps={len(audit_report['coverage_gaps'])}, "
+                    f"overlaps={len(audit_report['overlaps'])}"
+                )
+
+                # Create alerts for serious watchdog findings
+                for alert in audit_report.get("alerts", []):
+                    sev = alert.get("severity", "warning")
+                    dedupe_key = f"guardian:{alert['type']}:{alert.get('agent','')}:{alert.get('title','')}"
+                    try:
+                        activity.create_alert(
+                            alert_type=f"guardian_{alert['type']}",
+                            title=alert["title"],
+                            message=alert["message"],
+                            severity="error" if sev == "error" else "warning",
+                            cta_path=alert.get("cta_path"),
+                            payload={"guardian_agent": alert.get("agent"), "type": alert["type"]},
+                            dedupe_key=dedupe_key,
+                        )
+                    except Exception as ae:
+                        logger.warning(f"Failed to create guardian alert: {ae}")
+        except Exception as e:
+            logger.warning(f"Committee watchdog audit failed: {e}")
+
+        # --- Trend Signals (TrendSurferAgent) ---
+        try:
+            trend_agent = orchestrator.agents.get('trend')
+            if trend_agent and hasattr(trend_agent, 'surf_trends'):
+                opportunities = await trend_agent.surf_trends()
+                if opportunities:
+                    activity.log_event(
+                        event_type="trend_signals",
+                        message=f"Trend signals: {len(opportunities)} opportunities detected",
+                        payload={
+                            "opportunities": opportunities[:5],
+                            "total_detected": len(opportunities),
+                            "scan_timestamp": datetime.utcnow().isoformat(),
+                        },
+                    )
+                    logger.info(f"Logged trend_signals event with {len(opportunities)} opportunities")
+        except Exception as e:
+            logger.warning(f"Trend signal phase failed: {e}")
+
     except Exception as e:
         logger.error(f"Committee proposal phase failed: {e}")
         # Continue to fallback or LLM generation if committee fails
@@ -669,6 +783,12 @@ async def get_or_create_daily_workflow_plan(
         for t in tasks:
             pillar_id = str(t.get("pillarId") or "").lower().strip()
             if pillar_id not in PILLAR_IDS:
+                agent = None
+                metadata = t.get("metadata")
+                if isinstance(metadata, dict):
+                    agent = metadata.get("source_agent")
+                logger.warning(f"Skipping task persistence for invalid pillar_id={pillar_id!r} "
+                               f"from agent {agent or 'unknown'}: title={t.get('title', '')}")
                 continue
             task = DailyWorkflowTask(
                 plan_id=plan.id,

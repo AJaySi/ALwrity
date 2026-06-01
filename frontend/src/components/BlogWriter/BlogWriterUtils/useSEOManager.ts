@@ -3,6 +3,7 @@ import { debug } from '../../../utils/debug';
 import { hashContent, getSeoCacheKey } from '../../../utils/contentHash';
 import { blogWriterApi, BlogSEOActionableRecommendation } from '../../../services/blogWriterApi';
 import { blogWriterCache } from '../../../services/blogWriterCache';
+import { getSectionDiffs, DiffPreviewData } from '../../../utils/getSectionDiffs';
 
 const registerContentKey = (map: Map<string, string>, key: any, content?: string) => {
   if (key === undefined || key === null) {
@@ -179,6 +180,7 @@ const resolveContentForOutlineSection = (
 
 interface UseSEOManagerProps {
   sections: Record<string, string>;
+  introduction?: string;
   research: any;
   outline: any[];
   selectedTitle: string | null;
@@ -191,6 +193,7 @@ interface UseSEOManagerProps {
   setSeoMetadata: (metadata: any) => void;
   setSections: (sections: Record<string, string>) => void;
   setSelectedTitle: (title: string | null) => void;
+  setIntroduction: (intro: string) => void;
   setContinuityRefresh: (timestamp: number) => void;
   setFlowAnalysisCompleted: (completed: boolean) => void;
   setFlowAnalysisResults: (results: any) => void;
@@ -198,6 +201,7 @@ interface UseSEOManagerProps {
 
 export const useSEOManager = ({
   sections,
+  introduction,
   research,
   outline,
   selectedTitle,
@@ -210,6 +214,7 @@ export const useSEOManager = ({
   setSeoMetadata,
   setSections,
   setSelectedTitle,
+  setIntroduction,
   setContinuityRefresh,
   setFlowAnalysisCompleted,
   setFlowAnalysisResults,
@@ -218,6 +223,17 @@ export const useSEOManager = ({
   const [isSEOMetadataModalOpen, setIsSEOMetadataModalOpen] = useState(false);
   const [seoRecommendationsApplied, setSeoRecommendationsApplied] = useState(false);
   const lastSEOModalOpenRef = useRef<number>(0);
+
+  // Diff preview state
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [diffPreviewData, setDiffPreviewData] = useState<DiffPreviewData | null>(null);
+  const pendingSectionsRef = useRef<Record<string, string> | null>(null);
+  const pendingSectionsKeysRef = useRef<string[] | null>(null);
+  const pendingIntroductionRef = useRef<string | null>(null);
+  const pendingTitleRef = useRef<string | null>(null);
+  const pendingAppliedRef = useRef<any>(null);
+  const originalSectionsRef = useRef<Record<string, string> | null>(null);
+  const originalIntroductionRef = useRef<string | null>(null);
 
   // Restore cached SEO analysis on mount when sections are available
   useEffect(() => {
@@ -322,6 +338,10 @@ export const useSEOManager = ({
       throw new Error('An outline is required before applying recommendations.');
     }
 
+    // Capture originals before API call for diff preview
+    originalSectionsRef.current = { ...(sections || {}) };
+    originalIntroductionRef.current = introduction || '';
+
     const existingContentMap = buildExistingContentMap(sections || {});
     const emptyMap = new Map<string, string>();
 
@@ -348,6 +368,7 @@ export const useSEOManager = ({
 
     const response = await blogWriterApi.applySeoRecommendations({
       title: selectedTitle || outline[0]?.heading || 'Untitled Blog',
+      introduction: introduction || undefined,
       sections: sectionPayload,
       outline,
       research: (research as any) || {},
@@ -360,6 +381,13 @@ export const useSEOManager = ({
 
     if (!response.sections || !Array.isArray(response.sections)) {
       throw new Error('Recommendation response did not include updated sections.');
+    }
+
+    if (response.sections.length !== outline.length) {
+      debug.log('[BlogWriter] WARNING: API returned different section count', {
+        apiCount: response.sections.length,
+        outlineCount: outline.length,
+      });
     }
 
     const { byId: responseById, byHeading: responseByHeading } = buildResponseContentMaps(response.sections);
@@ -403,48 +431,112 @@ export const useSEOManager = ({
       totalContentLength: Object.values(normalizedSections).reduce((sum, c) => sum + (c?.length || 0), 0)
     });
 
-    setSections(normalizedSections);
+    debug.log('[BlogWriter] handleApplySeoRecommendations: computed diffs, showing preview', {
+      keys: Object.keys(normalizedSections),
+    });
 
+    // Store pending changes (don't apply yet)
+    pendingSectionsRef.current = normalizedSections;
+    pendingSectionsKeysRef.current = uniqueSectionKeys;
+    pendingIntroductionRef.current = response.introduction ?? null;
+    pendingTitleRef.current = response.title ?? null;
+    pendingAppliedRef.current = response.applied ?? null;
+
+    // Build diff data from originals vs pending
+    const outlineHeadings = outline.map((s: any) => ({ id: getPrimaryKeyForOutlineSection(s, outline.indexOf(s)), heading: s.heading || s.title || `Section ${outline.indexOf(s) + 1}` }));
+    const diffData = getSectionDiffs(
+      outlineHeadings,
+      originalSectionsRef.current,
+      normalizedSections,
+      originalIntroductionRef.current || undefined,
+      response.introduction || undefined
+    );
+    setDiffPreviewData(diffData);
+    setIsDiffModalOpen(true);
+
+    // Cache the pending content
     try {
       blogWriterCache.cacheContent(normalizedSections, uniqueSectionKeys);
     } catch (cacheError) {
       debug.log('[BlogWriter] Failed to cache SEO-applied content', cacheError);
     }
+  }, [outline, research, sections, introduction, selectedTitle, setSections]);
 
-    // Force a delay to ensure React processes the state update before proceeding
-    // This gives React time to re-render with new sections before phase navigation checks
-    await new Promise(resolve => setTimeout(resolve, 200));
+  const acceptDiffChanges = useCallback(() => {
+    const normalizedSections = pendingSectionsRef.current;
+    const uniqueSectionKeys = pendingSectionsKeysRef.current;
+    if (!normalizedSections || !uniqueSectionKeys) {
+      debug.log('[BlogWriter] acceptDiffChanges: no pending changes to apply');
+      return;
+    }
 
+    debug.log('[BlogWriter] Accepting diff changes, applying sections', {
+      keys: Object.keys(normalizedSections),
+    });
+
+    setSections(normalizedSections);
     setContinuityRefresh(Date.now());
     setFlowAnalysisCompleted(false);
     setFlowAnalysisResults(null);
 
-    if (response.title && response.title !== selectedTitle) {
-      setSelectedTitle(response.title);
+    const pendingIntro = pendingIntroductionRef.current;
+    if (pendingIntro !== null && pendingIntro !== introduction) {
+      setIntroduction(pendingIntro);
+      debug.log('[BlogWriter] Introduction updated from SEO response', {
+        length: pendingIntro.length,
+        preview: pendingIntro.substring(0, 80),
+      });
     }
 
-    if (response.applied) {
-      setSeoAnalysis((prev: any) => prev ? { ...prev, applied_recommendations: response.applied } : prev);
+    const pendingTitle = pendingTitleRef.current;
+    if (pendingTitle && pendingTitle !== selectedTitle) {
+      setSelectedTitle(pendingTitle);
+    }
+
+    if (pendingAppliedRef.current) {
+      setSeoAnalysis((prev: any) => prev ? { ...prev, applied_recommendations: pendingAppliedRef.current } : prev);
       debug.log('[BlogWriter] SEO analysis state updated with applied recommendations');
     }
 
-    // Mark recommendations as applied (this will trigger phase navigation check)
-    // But we'll stay in SEO phase to show updated content
     setSeoRecommendationsApplied(true);
     try {
       localStorage.setItem('blog_seo_recommendations_applied', 'true');
     } catch {}
     debug.log('[BlogWriter] seoRecommendationsApplied set to true');
 
-    // Ensure we stay in SEO phase to show updated content
-    // Force navigation to SEO phase if we're not already there (safeguard)
     if (currentPhase !== 'seo') {
       navigateToPhase('seo');
-      debug.log('[BlogWriter] Forced navigation to SEO phase after applying recommendations');
+      debug.log('[BlogWriter] Forced navigation to SEO phase after accepting changes');
     } else {
       debug.log('[BlogWriter] Already in SEO phase, staying to show updated content');
     }
-  }, [outline, research, sections, selectedTitle, setSections, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setSelectedTitle, setSeoAnalysis, setSeoRecommendationsApplied, currentPhase, navigateToPhase]);
+
+    // Clean up pending and close
+    pendingSectionsRef.current = null;
+    pendingSectionsKeysRef.current = null;
+    pendingIntroductionRef.current = null;
+    pendingTitleRef.current = null;
+    pendingAppliedRef.current = null;
+    originalSectionsRef.current = null;
+    originalIntroductionRef.current = null;
+    setIsDiffModalOpen(false);
+    setDiffPreviewData(null);
+  }, [setSections, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setIntroduction, introduction, setSelectedTitle, selectedTitle, setSeoAnalysis, setSeoRecommendationsApplied, currentPhase, navigateToPhase]);
+
+  const rejectDiffChanges = useCallback(() => {
+    debug.log('[BlogWriter] Rejecting diff changes, discarding pending content');
+
+    // Clean up pending without applying
+    pendingSectionsRef.current = null;
+    pendingSectionsKeysRef.current = null;
+    pendingIntroductionRef.current = null;
+    pendingTitleRef.current = null;
+    pendingAppliedRef.current = null;
+    originalSectionsRef.current = null;
+    originalIntroductionRef.current = null;
+    setIsDiffModalOpen(false);
+    setDiffPreviewData(null);
+  }, []);
 
   // Handle SEO analysis completion
   const handleSEOAnalysisComplete = useCallback((analysis: any) => {
@@ -518,6 +610,10 @@ export const useSEOManager = ({
     handleSEOAnalysisComplete,
     handleSEOModalClose,
     confirmBlogContent,
+    isDiffModalOpen,
+    diffPreviewData,
+    acceptDiffChanges,
+    rejectDiffChanges,
   };
 };
 

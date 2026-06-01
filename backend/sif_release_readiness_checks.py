@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
 
 from services.intelligence.monitoring.semantic_dashboard import RealTimeSemanticMonitor, SemanticHealthMetric
 from services.today_workflow_service import _ensure_pillar_coverage, PILLAR_IDS, validate_plan_contextuality
-from services.intelligence.sif_agents import ContentGuardianAgent as SifGuardian
+from services.intelligence.agents.specialized import ContentGuardianAgent as SifGuardian
 from services.intelligence.agents.specialized_agents import ContentGuardianAgent as SpecializedGuardian
 
 

@@ -12,7 +12,8 @@ import {
   Stack,
   CircularProgress,
   Card,
-  CardContent
+  CardContent,
+  LinearProgress,
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import {
@@ -24,6 +25,11 @@ import {
   SkipNext as SkipIcon,
   NavigateNext,
   Psychology as AgentIcon,
+  TrendingUp as TrendUpIcon,
+  TrendingDown as TrendDownIcon,
+  TrendingFlat as TrendFlatIcon,
+  GpsFixed as GapIcon,
+  BarChart as VolumeIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../../../stores/workflowStore';
@@ -155,7 +161,78 @@ const EnhancedTodayModal: React.FC<EnhancedTodayModalProps> = ({
   const isLastPillar = currentPillarIndex === pillarOrder.length - 1;
   const nextPillarId = !isLastPillar ? pillarOrder[currentPillarIndex + 1] : null;
 
-  const getTaskStatus = (task: TodayTask) => {
+  const MetricBar = ({ label, value, color }: { label: string; value: number; color: string }) => (
+  <Box sx={{ mb: 1 }}>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+      <Typography variant="caption" sx={{ color: '#888', fontWeight: 600 }}>{label}</Typography>
+      <Typography variant="caption" sx={{ color, fontWeight: 700 }}>{(value * 100).toFixed(0)}%</Typography>
+    </Box>
+    <LinearProgress
+      variant="determinate"
+      value={value * 100}
+      sx={{
+        height: 6,
+        borderRadius: 3,
+        bgcolor: '#e8e8e8',
+        '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 3 },
+      }}
+    />
+  </Box>
+);
+
+const GapScoringBreakdown = ({ scoring }: { scoring: Record<string, number> }) => {
+  const roi = scoring.roi_score ?? scoring.roi ?? 0;
+  const roiColor = roi >= 0.6 ? '#2e7d32' : roi >= 0.3 ? '#f57c00' : '#9e9e9e';
+
+  return (
+    <Box sx={{ mt: 2, p: 1.5, bgcolor: '#f5f7fa', borderRadius: 2, border: '1px solid #e0e4e8' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+        <GapIcon sx={{ fontSize: 18, color: roiColor }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#333', flexGrow: 1 }}>
+          Opportunity Score
+        </Typography>
+        <Chip
+          label={`${(roi * 100).toFixed(0)}% ROI`}
+          size="small"
+          sx={{
+            fontWeight: 800,
+            bgcolor: `${roiColor}18`,
+            color: roiColor,
+            border: `1px solid ${roiColor}40`,
+          }}
+        />
+      </Box>
+      <MetricBar label="Gap Size" value={scoring.gap_size ?? 0} color="#1565C0" />
+      <MetricBar label="Search Volume" value={scoring.volume ?? 0} color="#7b1fa2" />
+      <MetricBar label="Competition" value={scoring.competition ?? 0} color="#c62828" />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+        {(() => {
+          const t = scoring.trend ?? 0.5;
+          const Icon = t > 0.6 ? TrendUpIcon : t < 0.4 ? TrendDownIcon : TrendFlatIcon;
+          const tColor = t > 0.6 ? '#2e7d32' : t < 0.4 ? '#c62828' : '#f57c00';
+          return <Icon sx={{ fontSize: 16, color: tColor }} />;
+        })()}
+        <Typography variant="caption" sx={{ color: '#888', fontWeight: 600 }}>
+          Trend: {(scoring.trend ?? 0.5) >= 0.6 ? 'Rising' : (scoring.trend ?? 0.5) <= 0.4 ? 'Declining' : 'Stable'}
+        </Typography>
+        <Chip
+          label={scoring.intent && scoring.intent >= 0.7 ? 'Commercial' : scoring.intent && scoring.intent >= 0.5 ? 'Transactional' : 'Informational'}
+          size="small"
+          sx={{
+            ml: 'auto',
+            height: 20,
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            bgcolor: '#e3f2fd',
+            color: '#1565C0',
+          }}
+        />
+      </Box>
+    </Box>
+  );
+};
+
+const getTaskStatus = (task: TodayTask) => {
     if (task.status === 'completed') return 'completed';
     if (task.status === 'in_progress') return 'active';
     if (task.status === 'skipped') return 'skipped';
@@ -367,7 +444,7 @@ const EnhancedTodayModal: React.FC<EnhancedTodayModalProps> = ({
                           gap: 1.5
                         }}>
                           <AgentIcon sx={{ fontSize: 16, color: pillarColor, mt: 0.3 }} />
-                          <Box>
+                          <Box sx={{ flexGrow: 1 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                               <Typography variant="caption" sx={{ fontWeight: 700, color: '#444' }}>
                                 Suggested by {task.metadata.source_agent.replace('Agent', '')}
@@ -377,6 +454,10 @@ const EnhancedTodayModal: React.FC<EnhancedTodayModalProps> = ({
                               <Typography variant="caption" sx={{ color: '#666', display: 'block', lineHeight: 1.4 }}>
                                 "{task.metadata.reasoning}"
                               </Typography>
+                            )}
+                            {/* Gap scoring breakdown for ContentGapRadarAgent tasks */}
+                            {task.metadata.source_agent === 'ContentGapRadarAgent' && task.metadata.context_data?.gap?.scoring && (
+                              <GapScoringBreakdown scoring={task.metadata.context_data.gap.scoring} />
                             )}
                           </Box>
                         </Box>

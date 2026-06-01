@@ -294,21 +294,95 @@ class ContentStrategyAgent(BaseALwrityAgent):
 
     async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
         """
-        Propose strategic tasks based on content analysis.
+        Propose strategic tasks based on user onboarding context.
+        Derives content pillars, industry, and competitor info to
+        generate personalized daily content suggestions.
         """
         proposals = []
-        
-        # 1. Content Refresh
+
+        onboarding = context.get("onboarding_data", {})
+        if not isinstance(onboarding, dict):
+            return proposals
+
+        # Extract user profile hints from onboarding data
+        industry = ""
+        content_pillars = []
+        competitor_domains = []
+        try:
+            cp = onboarding.get("core_persona") or {}
+            if isinstance(cp, dict):
+                industry = str(cp.get("industry") or cp.get("company_type") or "")
+            step2 = onboarding.get("step2_summary") or onboarding.get("industry_context") or {}
+            if isinstance(step2, dict):
+                content_pillars = (
+                    step2.get("content_pillars")
+                    or step2.get("topics")
+                    or onboarding.get("content_pillars")
+                    or []
+                )
+            cf = onboarding.get("competitor_focus") or {}
+            if isinstance(cf, dict):
+                competitor_domains = cf.get("top_competitor_domains") or []
+        except Exception:
+            pass
+
+        # Task 1: Create content for a key pillar (generate)
+        if content_pillars:
+            pillar_topic = content_pillars[0] if isinstance(content_pillars[0], str) else (
+                content_pillars[0].get("topic") or content_pillars[0].get("name") or "your audience"
+            )
+            proposals.append(TaskProposal(
+                title=f"Create content for '{pillar_topic}'",
+                description=f"Write a blog post or social content around your {pillar_topic} content pillar.",
+                pillar_id="generate",
+                priority="high",
+                estimated_time=45,
+                source_agent="ContentStrategyAgent",
+                reasoning=f"'{pillar_topic}' is a core content pillar in your strategy. Regular publishing keeps your topical authority growing.",
+                action_type="navigate",
+                action_url="/blog-writer",
+                context_data={"pillar_topic": pillar_topic, "industry": industry},
+            ))
+        else:
+            proposals.append(TaskProposal(
+                title="Define your content pillars",
+                description="Set up your core content topics to get personalized daily suggestions.",
+                pillar_id="plan",
+                priority="high",
+                estimated_time=20,
+                source_agent="ContentStrategyAgent",
+                reasoning="Content pillars drive every other task in your workflow. Defining them unlocks the full agent committee.",
+                action_type="navigate",
+                action_url="/content-planning-dashboard",
+            ))
+
+        # Task 2: Competitor content review (analyze)
+        if competitor_domains:
+            domain = competitor_domains[0]
+            proposals.append(TaskProposal(
+                title=f"Review competitor: {domain}",
+                description=f"Analyze recently published content from {domain} to find gaps and opportunities.",
+                pillar_id="analyze",
+                priority="medium",
+                estimated_time=25,
+                source_agent="ContentStrategyAgent",
+                reasoning=f"{domain} is your top tracked competitor. Regular reviews help you stay ahead of their content strategy moves.",
+                action_type="navigate",
+                action_url="/seo-dashboard",
+                context_data={"competitor_domain": domain},
+            ))
+
+        # Task 3: Content audit (analyze) — always suggested
         proposals.append(TaskProposal(
-            title="Refresh 'SEO Basics'",
-            description="Update your SEO basics guide with 2024 trends.",
-            pillar_id="create",
-            priority="high",
-            estimated_time=45,
+            title="Quick content performance audit",
+            description="Review your top 3 pieces from last month. Identify what worked and what to update.",
+            pillar_id="analyze",
+            priority="medium",
+            estimated_time=20,
             source_agent="ContentStrategyAgent",
-            reasoning="Declining traffic and outdated references.",
+            reasoning="Regular audits surface declining pages that need refreshing and winning formats to double down on.",
             action_type="navigate",
-            action_url="/content-planning-dashboard"
+            action_url="/content-planning-dashboard",
         ))
-        
+
         return proposals

@@ -22,3 +22,12 @@ export interface FinalStepProps {
   onContinue: () => void;
   updateHeaderContent: (content: { title: string; description: string }) => void;
 }
+
+export interface OnboardingCompletionResult {
+  message: string;
+  completed_at: string;
+  completion_percentage: number;
+  persona_generated: boolean;
+  scheduled_tasks: string[];
+  failed_tasks: Array<{ task: string; error: string }> | null;
+}

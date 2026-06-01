@@ -375,9 +375,13 @@ def llm_text_gen(
                         system_prompt=system_instructions
                     )
             elif gpt_provider == "wavespeed":
-                llm_start = time.time()
+                t0 = time.time()
+                logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: Starting provider init for user {user_id}")
                 if json_struct:
+                    logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: Importing wavespeed_provider module (lazy import) for user {user_id}")
                     from services.llm_providers.wavespeed_provider import wavespeed_structured_json_response
+                    logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: Import done, making API call for user {user_id}, import_took={(time.time()-t0)*1000:.0f}ms")
+                    t1 = time.time()
                     response_text = wavespeed_structured_json_response(
                         prompt=prompt,
                         schema=json_struct,
@@ -387,7 +391,10 @@ def llm_text_gen(
                         system_prompt=system_instructions
                     )
                 else:
+                    logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: Importing wavespeed_provider module (lazy import) for user {user_id}")
                     from services.llm_providers.wavespeed_provider import wavespeed_text_response
+                    logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: Import done, making API call for user {user_id}, import_took={(time.time()-t0)*1000:.0f}ms")
+                    t1 = time.time()
                     response_text = wavespeed_text_response(
                         prompt=prompt,
                         model=model or "openai/gpt-oss-120b",
@@ -396,8 +403,9 @@ def llm_text_gen(
                         top_p=top_p,
                         system_prompt=system_instructions
                     )
-                llm_ms = (time.time() - llm_start) * 1000
-                logger.warning(f"[llm_text_gen][{flow_tag}] LLM API call took {llm_ms:.0f}ms for user {user_id} (wavespeed)")
+                api_took_ms = (time.time() - t1) * 1000
+                total_ms = (time.time() - t0) * 1000
+                logger.warning(f"[llm_text_gen][{flow_tag}] wavespeed: user={user_id} import_took={(t1-t0)*1000:.0f}ms api_took={api_took_ms:.0f}ms total={total_ms:.0f}ms")
             else:
                 logger.error(f"[llm_text_gen] Unknown provider: {gpt_provider}")
                 raise RuntimeError(f"Unknown LLM provider: {gpt_provider}. Supported providers: google, huggingface, wavespeed")

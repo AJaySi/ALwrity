@@ -40,6 +40,7 @@ from .specialized_agents import (
 )
 
 from .trend_surfer_agent import TrendSurferAgent
+from .content_gap_radar_agent import ContentGapRadarAgent
 
 # Agent Orchestrator
 from .agent_orchestrator import (
@@ -67,6 +68,7 @@ __all__ = [
     'SEOOptimizationAgent',
     'SocialAmplificationAgent',
     'TrendSurferAgent',
+    'ContentGapRadarAgent',
     'ALwrityAgentOrchestrator',
     'orchestration_service'
 ]

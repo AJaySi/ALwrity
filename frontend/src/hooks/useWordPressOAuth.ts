@@ -102,9 +102,11 @@ export const useWordPressOAuth = (): UseWordPressOAuthReturn => {
         const messageHandler = (event: MessageEvent) => {
           
           // Accept messages only from the popup we opened and from trusted origins
-          const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
+          const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || '';
           const productionOrigin = 'https://alwrity-ai.vercel.app';
-          const trustedOrigins = [window.location.origin, ngrokOrigin, productionOrigin];
+          const trustedOrigins = [window.location.origin];
+          if (ngrokOrigin) trustedOrigins.push(ngrokOrigin);
+          trustedOrigins.push(productionOrigin);
           
           if (event.source !== popup) return;
           if (!trustedOrigins.includes(event.origin)) {

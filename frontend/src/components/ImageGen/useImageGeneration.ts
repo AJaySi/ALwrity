@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { apiClient } from '../../api/client';
+import { apiClient, aiApiClient } from '../../api/client';
 
 export interface ImageGenerationRequest {
   prompt: string;
@@ -87,9 +87,9 @@ export async function fetchPromptSuggestions(payload: {
   research?: any;
   persona?: any;
 }): Promise<PromptSuggestion[]> {
-  // Use apiClient directly (same pattern as SEO analysis in SEOAnalysisModal.tsx)
-  // The apiClient interceptor will handle auth token injection automatically
-  const response = await apiClient.post('/api/images/suggest-prompts', payload);
+  // Use aiApiClient (3-minute timeout) because suggest-prompts calls an LLM
+  // which can take 30-60+ seconds to respond via WaveSpeed
+  const response = await aiApiClient.post('/api/images/suggest-prompts', payload);
   return response.data.suggestions || [];
 }
 

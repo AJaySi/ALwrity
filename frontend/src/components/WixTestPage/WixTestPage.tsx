@@ -18,6 +18,7 @@ import {
 import { apiClient } from '../../api/client';
 import { createClient, OAuthStrategy } from '@wix/sdk';
 import { categories as blogCategoriesModule, tags as blogTagsModule } from '@wix/blog';
+import { WIX_CLIENT_ID, getWixRedirectOrigin } from '../../config/wixConfig';
 
 interface WixConnectionStatus {
   connected: boolean;
@@ -108,11 +109,10 @@ This integration opens up new possibilities for content creators who want to lev
     setLoading(true);
     try {
       const wixClient = createClient({
-        auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
+        auth: OAuthStrategy({ clientId: WIX_CLIENT_ID })
       });
 
-      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
+      const redirectOrigin = getWixRedirectOrigin();
       const redirectUri = `${redirectOrigin}/wix/callback`;
       const oauthData = await wixClient.auth.generateOAuthData(redirectUri);
       // Use sessionStorage to ensure data is scoped to this tab/session
@@ -131,7 +131,7 @@ This integration opens up new possibilities for content creators who want to lev
       const tokensRaw = sessionStorage.getItem('wix_tokens');
       if (!tokensRaw) throw new Error('Missing Wix tokens');
       const tokens = JSON.parse(tokensRaw);
-      const wixClient = createClient({ modules: { categories: blogCategoriesModule }, auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' }) });
+      const wixClient = createClient({ modules: { categories: blogCategoriesModule }, auth: OAuthStrategy({ clientId: WIX_CLIENT_ID }) });
       wixClient.auth.setTokens(tokens);
       const result = await wixClient.categories.queryCategories().find();
       const cats = (result.items || []).map((c: any) => ({ id: c.id, name: c.name || '', description: c.description || '' }));
@@ -147,7 +147,7 @@ This integration opens up new possibilities for content creators who want to lev
       const tokensRaw = sessionStorage.getItem('wix_tokens');
       if (!tokensRaw) throw new Error('Missing Wix tokens');
       const tokens = JSON.parse(tokensRaw);
-      const wixClient = createClient({ modules: { tags: blogTagsModule }, auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' }) });
+      const wixClient = createClient({ modules: { tags: blogTagsModule }, auth: OAuthStrategy({ clientId: WIX_CLIENT_ID }) });
       wixClient.auth.setTokens(tokens);
       const result = await wixClient.tags.queryTags().find();
       const t = (result.items || []).map((it: any) => ({ id: it.id, label: it.label || '' }));

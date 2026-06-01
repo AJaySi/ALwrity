@@ -42,11 +42,15 @@ export const usePhaseRestoration = ({
       const restoredPhase = localStorage.getItem('blogwriter_current_phase');
       const userSelectedPhase = localStorage.getItem('blogwriter_user_selected_phase') === 'true';
       
+      // Determine if we should restore based on user selection OR publish completion
+      const publishCompleted = localStorage.getItem('blog_publish_completed') === 'true';
+      const shouldRestore = restoredPhase && restoredPhase !== currentPhase && (userSelectedPhase || publishCompleted);
+
       // Only restore if:
       // 1. A phase was saved (restoredPhase exists)
-      // 2. User had manually selected a phase (indicates they were actively working)
+      // 2. User had manually selected a phase OR publish was completed (indicates they were actively working)
       // 3. The phase is different from current (to avoid unnecessary updates)
-      if (restoredPhase && userSelectedPhase && restoredPhase !== currentPhase) {
+      if (shouldRestore) {
         const targetPhase = phases.find(p => p.id === restoredPhase);
         if (targetPhase && !targetPhase.disabled) {
           console.log('[BlogWriter] Restoring phase from navigation state:', restoredPhase);

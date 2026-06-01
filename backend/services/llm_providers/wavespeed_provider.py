@@ -38,6 +38,7 @@ Last Updated: March 2026
 
 import os
 import sys
+import time as _time
 from pathlib import Path
 import json
 import re
@@ -46,15 +47,16 @@ from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 
 # Fix the environment loading path - load from backend directory
+_mod_start = _time.time()
 current_dir = Path(__file__).parent.parent  # services directory
 backend_dir = current_dir.parent  # backend directory
 env_path = backend_dir / '.env'
 
 if env_path.exists():
     load_dotenv(env_path)
-    print(f"Loaded .env from: {env_path}")
+    _dotenv_ms = (_time.time() - _mod_start) * 1000
+    print(f"Loaded .env from: {env_path} (took {_dotenv_ms:.0f}ms)")
 else:
-    # Fallback to current directory
     load_dotenv()
     print(f"No .env found at {env_path}, using current directory")
 
@@ -64,6 +66,7 @@ from utils.logger_utils import get_service_logger
 # Use service-specific logger to avoid conflicts
 logger = get_service_logger("wavespeed_provider")
 
+_import_start = _time.time()
 from tenacity import (
     retry,
     retry_if_exception,
@@ -79,6 +82,8 @@ except ImportError:
     OPENAI_AVAILABLE = False
     NotFoundError = Exception
     logger.warn("OpenAI library not available. Install with: pip install openai")
+
+logger.warning(f"[wavespeed_provider] Module import completed in {(_time.time()-_import_start)*1000:.0f}ms (openai_available={OPENAI_AVAILABLE})")
 
 # Default WaveSpeed models for fallback
 WAVESPEED_FALLBACK_MODELS = [
@@ -276,12 +281,13 @@ def wavespeed_text_response(
         if not api_key:
             raise Exception("WAVESPEED_API_KEY not found in environment variables")
             
+        _t0 = _time.time()
         # Initialize WaveSpeed client
         client = OpenAI(
             base_url="https://llm.wavespeed.ai/v1",
             api_key=api_key,
         )
-        logger.info("✅ WaveSpeed client initialized for text response")
+        logger.warning(f"[wavespeed_text_response] OpenAI client init took {(_time.time()-_t0)*1000:.0f}ms")
 
         # Prepare input for the API
         messages = []
@@ -311,6 +317,7 @@ def wavespeed_text_response(
         
         logger.info("🚀 Making WaveSpeed API call (chat completion)...")
         
+        _api_t0 = _time.time()
         # Call exactly the requested model; no retries, no fallbacks, no variants
         response = client.chat.completions.create(
             model=model,
@@ -319,6 +326,7 @@ def wavespeed_text_response(
             top_p=top_p,
             max_tokens=max_tokens
         )
+        logger.warning(f"[wavespeed_text_response] API call took {(_time.time()-_api_t0)*1000:.0f}ms")
         
         # Extract text from response
         generated_text = response.choices[0].message.content
@@ -422,13 +430,15 @@ def wavespeed_structured_json_response(
         
         if not api_key:
             raise Exception("WAVESPEED_API_KEY not found in environment variables")
-            
+        
+        _fn_start = _time.time()
         # Initialize OpenAI client with WaveSpeed base URL
         client = OpenAI(
             base_url="https://llm.wavespeed.ai/v1",
             api_key=api_key,
         )
-        logger.info("✅ WaveSpeed client initialized for structured JSON response")
+        _client_init_ms = (_time.time() - _fn_start) * 1000
+        logger.warning(f"[wavespeed_structured_json_response] OpenAI client init took {_client_init_ms:.0f}ms")
 
         # Prepare input for the API
         messages = []
@@ -463,11 +473,13 @@ def wavespeed_structured_json_response(
         json_schema_str = json.dumps(schema, indent=2)
         messages[-1]["content"] += f"\n\nJSON Schema:\n{json_schema_str}"
         
+        _api_start = _time.time()
         try:
             response = None
             last_error = None
             for candidate_model in _fallback_model_sequence(model, fallback_models):
                 try:
+                    logger.info(f"[wavespeed_structured_json_response] Calling model={candidate_model}...")
                     response = client.chat.completions.create(
                         model=candidate_model,
                         messages=messages,
@@ -475,8 +487,10 @@ def wavespeed_structured_json_response(
                         max_tokens=max_tokens,
                         response_format={"type": "json_object"} # Try to enforce JSON mode if supported
                     )
+                    _api_ms = (_time.time() - _api_start) * 1000
                     if candidate_model != model:
                         logger.warning("WaveSpeed structured generation switched to fallback model: {}", candidate_model)
+                    logger.warning(f"[wavespeed_structured_json_response] First API call completed in {_api_ms:.0f}ms (model={candidate_model})")
                     break
                 except NotFoundError as nf_err:
                     last_error = nf_err

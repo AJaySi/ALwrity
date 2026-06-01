@@ -39,6 +39,15 @@ export const usePhaseNavigation = (
     initialPhase: adjustedInitialPhase,
   });
 
+  // Read publish completion flag (persists across refreshes)
+  const publishCompleted = ((): boolean => {
+    try {
+      return localStorage.getItem('blog_publish_completed') === 'true';
+    } catch {
+      return false;
+    }
+  })();
+
   // Determine phase states based on current data
   const phases = useMemo((): Phase[] => {
     const researchCompleted = !!research;
@@ -88,13 +97,13 @@ export const usePhaseNavigation = (
         name: 'Publish',
         icon: '🚀',
         description: 'Publish your blog post',
-        completed: false,
+        completed: publishCompleted,
         current: core.currentPhase === 'publish',
-        disabled: !seoCompleted,
+        disabled: !seoCompleted && !publishCompleted,
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase]);
+  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase, publishCompleted]);
 
   // Shared validation: redirect if current phase is disabled
   usePhaseValidation(
@@ -114,6 +123,11 @@ export const usePhaseNavigation = (
     }
 
     if (!research && core.currentPhase === '') {
+      return;
+    }
+
+    // If publish was already completed, don't auto-nav away from it
+    if (publishCompleted && core.currentPhase === 'publish') {
       return;
     }
 
@@ -149,7 +163,7 @@ export const usePhaseNavigation = (
         core.setCurrentPhase('publish');
       }
     }
-  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase, core.userSelectedPhase, phases]);
+  }, [research, outline, outlineConfirmed, hasContent, contentConfirmed, seoAnalysis, seoMetadata, seoRecommendationsApplied, core.currentPhase, core.userSelectedPhase, phases, publishCompleted]);
 
   const navigateToPhase = useCallback(
     (phaseId: string) => core.navigateToPhase(phaseId, phases),

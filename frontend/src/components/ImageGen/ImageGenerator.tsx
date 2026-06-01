@@ -214,6 +214,8 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
   }, [negative]);
 
   const suggestPrompt = async () => {
+    console.time('[suggestPrompt] total');
+    console.time('[suggestPrompt] pre-call');
     setLoadingSuggestions(true);
     setSuggestionError(null);
     try {
@@ -225,7 +227,10 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
         research: context?.research || undefined,
         persona: context?.persona || undefined,
       };
+      console.timeLog('[suggestPrompt] pre-call', 'calling fetchPromptSuggestions');
+      console.time('[suggestPrompt] fetchPromptSuggestions');
       const suggs = await fetchPromptSuggestions(payload);
+      console.timeLog('[suggestPrompt] fetchPromptSuggestions', 'response received');
       setSuggestions(suggs);
       if (suggs.length > 0) {
         setPrompt(suggs[0].prompt || '');
@@ -238,10 +243,13 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
       setSuggestionError(e instanceof Error ? e.message : 'Failed to optimize prompt. The API is unavailable.');
     } finally {
       setLoadingSuggestions(false);
+      console.timeLog('[suggestPrompt] total', 'done');
+      console.timeEnd('[suggestPrompt] total');
     }
   };
 
   const onGenerate = async () => {
+    console.time('[onGenerate] total');
     if (width > MAX_DIMENSIONS.maxWidth || height > MAX_DIMENSIONS.maxHeight) {
       alert(`Resolution ${width}x${height} exceeds maximum ${MAX_DIMENSIONS.maxWidth}x${MAX_DIMENSIONS.maxHeight} for model ${model}. Please adjust the dimensions.`);
       return;
@@ -256,12 +264,15 @@ export const ImageGenerator = React.forwardRef<ImageGeneratorHandle, ImageGenera
       height,
       overlay_text: suggestion?.overlay_text || undefined,
     };
+    console.time('[onGenerate] generate');
     const res = await generate(req);
+    console.timeLog('[onGenerate] generate', 'done');
     if (res && onImageReady) onImageReady(res.image_base64);
     try {
       const { publishImage } = await import('../../utils/imageBus');
       publishImage({ base64: res.image_base64, provider: res.provider, model: res.model });
     } catch {}
+    console.timeEnd('[onGenerate] total');
   };
 
   useImperativeHandle(ref, () => ({

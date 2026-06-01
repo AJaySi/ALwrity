@@ -16,6 +16,7 @@ import { useMarkdownProcessor } from '../../../hooks/useMarkdownProcessor';
 import BlogPreviewModal from '../BlogPreviewModal';
 import PlayAllTTSButton from '../PlayAllTTSButton';
 import OnThisPageNav from './OnThisPageNav';
+import { debug } from '../../../utils/debug';
 
 const theme = createTheme({
   typography: {
@@ -34,8 +35,10 @@ interface BlogEditorProps {
   researchTitles?: string[];
   aiGeneratedTitles?: string[];
   sections?: Record<string, string>;
+  introduction?: string;
   onContentUpdate?: (sections: any[]) => void;
   onSave?: (content: any) => void;
+  onIntroductionUpdate?: (intro: string) => void;
   continuityRefresh?: number;
   flowAnalysisResults?: any;
   sectionImages?: Record<string, string>;
@@ -51,8 +54,10 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   researchTitles = [],
   aiGeneratedTitles = [],
   sections: parentSections,
+  introduction: parentIntroduction,
   onContentUpdate, 
   onSave,
+  onIntroductionUpdate,
   continuityRefresh,
   flowAnalysisResults,
   sectionImages = {},
@@ -60,7 +65,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   groundingInsights
 }) => {
   const [blogTitle, setBlogTitle] = useState(initialTitle || 'Your Amazing Blog Title');
-  const [introduction, setIntroduction] = useState('');
+  const [introduction, setIntroduction] = useState(parentIntroduction || '');
   const [sections, setSections] = useState<any[]>([]);
   const [isIntroductionLoading, setIsIntroductionLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<any>>(new Set());
@@ -72,6 +77,8 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   const [titleMenuAnchor, setTitleMenuAnchor] = useState<HTMLElement | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [currentSectionId, setCurrentSectionId] = useState<string | number | null>(null);
+  const sectionsRef = useRef(sections);
+  useEffect(() => { sectionsRef.current = sections; }, [sections]);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const introInputRef = useRef<HTMLInputElement>(null);
   const contentContainerRef = useRef<HTMLDivElement>(null);
@@ -132,66 +139,114 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
     }
   }, []);
 
+  // Match the key generation used by getPrimaryKeyForOutlineSection in useSEOManager
+  const getOutlineKey = useCallback((section: any, index: number): string => {
+    const raw = section?.id ?? section?.section_id ?? section?.sectionId ?? section?.sectionID ?? `section_${index + 1}`;
+    return String(raw).trim();
+  }, []);
+
   useEffect(() => {
     if (outline && outline.length > 0) {
-      const initialSections = outline.map((section, index) => ({
-        id: section.id || index + 1,
-        title: section.heading,
-        content: parentSections?.[section.id] || section.key_points?.join(' ') || '',
-        wordCount: section.target_words || 0,
-        sources: section.references?.length || 0,
-        outlineData: {
-          subheadings: section.subheadings || [],
-          keyPoints: section.key_points || [],
-          keywords: section.keywords || [],
-          references: section.references || [],
-          targetWords: section.target_words || 0
-        }
-      }));
+      const initialSections = outline.map((section, index) => {
+        const key = getOutlineKey(section, index);
+        return {
+          id: key,
+          title: section.heading,
+          content: parentSections?.[key] || parentSections?.[section.id] || parentSections?.[index + 1] || parentSections?.[`section_${index + 1}`] || section.key_points?.join(' ') || '',
+          wordCount: section.target_words || 0,
+          sources: section.references?.length || 0,
+          outlineData: {
+            subheadings: section.subheadings || [],
+            keyPoints: section.key_points || [],
+            keywords: section.keywords || [],
+            references: section.references || [],
+            targetWords: section.target_words || 0
+          }
+        };
+      });
       setSections(initialSections);
     }
-  }, [outline, parentSections]);
+  }, [outline, parentSections, getOutlineKey]);
 
   const prevParentSectionsRef = useRef<string>('');
-  const prevContinuityRefreshRef = useRef<number | undefined>(undefined);
+  const lastSyncKeyRef = useRef<number>(0);
   
-  useEffect(() => {
-    if (!parentSections || !outline || outline.length === 0) return;
-
-    const parentSectionsString = JSON.stringify(parentSections);
-    const continuityRefreshChanged = continuityRefresh !== prevContinuityRefreshRef.current;
-    
-    if (parentSectionsString === prevParentSectionsRef.current && !continuityRefreshChanged) {
-      return;
-    }
-    
-    prevParentSectionsRef.current = parentSectionsString;
-    prevContinuityRefreshRef.current = continuityRefresh;
-
-    setSections(prevSections => {
-      const updatedSections = prevSections.map(section => {
-        const sectionIdStr = String(section.id);
-        const parentContent = parentSections[section.id] || 
-                              parentSections[sectionIdStr] || 
-                              parentSections[Number(section.id)];
-        
-        if (parentContent !== undefined && parentContent !== section.content) {
-          return { ...section, content: parentContent };
+  // Generate all candidate keys that getIdCandidatesForSection might produce
+  const getSectionCandidates = useCallback((sectionId: string, index: number): string[] => {
+    const candidates: string[] = [sectionId, sectionId.toLowerCase()];
+    candidates.push(`section_${index + 1}`, `Section ${index + 1}`, `section${index + 1}`, `s${index + 1}`, `S${index + 1}`, `${index + 1}`);
+    const asNum = Number(sectionId);
+    if (!isNaN(asNum)) candidates.push(String(asNum));
+    return Array.from(new Set(candidates));
+  }, []);
+  
+  // Helper: sync local sections from parentSections, returns true if any content changed
+  const syncFromParentSections = useCallback(() => {
+    if (!parentSections || !outline || outline.length === 0) return false;
+    const currentSections = sectionsRef.current;
+    let didSync = false;
+    const updatedSections = currentSections.map((section, index) => {
+      const candidates = getSectionCandidates(String(section.id), index);
+      let parentContent: string | undefined;
+      for (const candidate of candidates) {
+        if (parentSections[candidate] !== undefined) {
+          parentContent = parentSections[candidate];
+          break;
         }
-        return section;
-      });
-      
-      const hasUpdates = updatedSections.some((section, index) => 
-        section.content !== prevSections[index]?.content
-      );
-      
-      if (onContentUpdate && hasUpdates) {
+      }
+      if (parentContent !== undefined && parentContent !== section.content) {
+        didSync = true;
+        return { ...section, content: parentContent };
+      }
+      return section;
+    });
+    if (didSync) {
+      setSections(updatedSections);
+      if (onContentUpdate) {
         onContentUpdate(updatedSections);
       }
-      
-      return updatedSections;
-    });
-  }, [parentSections, outline, continuityRefresh, onContentUpdate]);
+    }
+    return didSync;
+  }, [parentSections, outline, onContentUpdate, getSectionCandidates]);
+  
+  // Effect 1: sync when parentSections content reference changes
+  useEffect(() => {
+    if (!parentSections || !outline || outline.length === 0) return;
+    const parentSectionsString = JSON.stringify(parentSections);
+    if (parentSectionsString === prevParentSectionsRef.current) return;
+    prevParentSectionsRef.current = parentSectionsString;
+    const synced = syncFromParentSections();
+    // Diagnostic: log key alignment between parentSections and outline-derived keys
+    const parentKeys = Object.keys(parentSections);
+    const outlineKeys = outline.map((s: any, i: number) => getOutlineKey(s, i));
+    if (!synced) {
+      debug.log('[BlogEditor] parentSections changed but sync found no updates', {
+        parentKeys,
+        outlineKeys,
+        notInParent: outlineKeys.filter(k => !parentKeys.includes(k)),
+        notInOutline: parentKeys.filter(k => !outlineKeys.includes(k)),
+      });
+    }
+  }, [parentSections, syncFromParentSections]);
+  
+  // Sync introduction from parent when it changes
+  useEffect(() => {
+    if (parentIntroduction !== undefined && parentIntroduction !== introduction) {
+      setIntroduction(parentIntroduction);
+      debug.log('[BlogEditor] Introduction synced from parent', {
+        length: parentIntroduction.length,
+      });
+    }
+  }, [parentIntroduction]);
+
+  // Effect 2: explicit forced sync via continuityRefresh (bypasses content-equality guard)
+  useEffect(() => {
+    if (continuityRefresh === undefined || continuityRefresh === 0) return;
+    if (lastSyncKeyRef.current === continuityRefresh) return;
+    lastSyncKeyRef.current = continuityRefresh;
+    const synced = syncFromParentSections();
+    debug.log('[BlogEditor] continuityRefresh sync', { key: continuityRefresh, synced });
+  }, [continuityRefresh, syncFromParentSections]);
 
   useEffect(() => {
     if (initialTitle && initialTitle.trim().length > 0) {
@@ -272,8 +327,9 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
 
   const handleIntroductionSelect = useCallback((selectedIntroduction: string) => {
     setIntroduction(selectedIntroduction);
+    onIntroductionUpdate?.(selectedIntroduction);
     setShowIntroductionModal(false);
-  }, []);
+  }, [onIntroductionUpdate]);
 
   const toggleSectionExpansion = useCallback((sectionId: any) => {
     setExpandedSections(prev => {
@@ -297,7 +353,7 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
   return (
     <ThemeProvider theme={theme}>
       <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-[2%] py-6">
           <div className="flex gap-8">
             {/* Main editor column */}
             <div className="flex-1 min-w-0 max-w-4xl" ref={contentContainerRef}>
@@ -367,7 +423,10 @@ const BlogEditor: React.FC<BlogEditorProps> = ({
                           multiline
                           minRows={2}
                           value={introduction}
-                          onChange={(e) => setIntroduction(e.target.value)}
+                          onChange={(e) => {
+                            setIntroduction(e.target.value);
+                            onIntroductionUpdate?.(e.target.value);
+                          }}
                           onBlur={() => setEditingIntro(false)}
                           placeholder="Write an engaging introduction..."
                           InputProps={{

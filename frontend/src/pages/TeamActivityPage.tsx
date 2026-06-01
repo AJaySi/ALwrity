@@ -1,64 +1,83 @@
-import React from 'react';
-import { Box, Card, CardContent, Chip, Divider, Grid, List, ListItem, ListItemText, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Typography, Chip, Button } from '@mui/material';
 import { useAgentHuddleFeed } from '../hooks/useAgentHuddleFeed';
+import CommitteeSummary from '../components/TeamActivity/CommitteeSummary';
+import CommitteeAuditTable from '../components/TeamActivity/CommitteeAuditTable';
+import AlertBanner from '../components/TeamActivity/AlertBanner';
+import AgentStatusPanel from '../components/TeamActivity/AgentStatusPanel';
+import ActivityLog from '../components/TeamActivity/ActivityLog';
+import QualityAuditPanel from '../components/TeamActivity/QualityAuditPanel';
+import TrendSignalsPanel from '../components/TeamActivity/TrendSignalsPanel';
+import AgentHelpModal from '../components/TeamActivity/AgentHelpModal';
 
 const TeamActivityPage: React.FC = () => {
   const { runs, events, alerts, approvals, connectionMode } = useAgentHuddleFeed();
+  const [auditMode, setAuditMode] = useState(false);
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Team Activity</Typography>
-        <Chip label={connectionMode === 'sse' ? 'Live stream' : 'Polling fallback'} color={connectionMode === 'sse' ? 'success' : 'warning'} />
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.95)' }}>
+          Team Activity
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+          <Chip
+            label={connectionMode === 'sse' ? 'Live' : 'Polling'}
+            size="small"
+            sx={{ height: 24, fontSize: 11, fontWeight: 600, bgcolor: connectionMode === 'sse' ? 'rgba(76,175,80,0.15)' : 'rgba(255,152,0,0.15)', color: connectionMode === 'sse' ? '#4caf50' : '#ff9800' }}
+          />
+          <Button
+            size="small"
+            variant={auditMode ? 'contained' : 'outlined'}
+            onClick={() => setAuditMode(!auditMode)}
+            sx={{
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: 2,
+              ...(auditMode
+                ? {
+                    background: 'linear-gradient(135deg, rgba(102,126,234,0.8), rgba(118,75,162,0.8))',
+                    color: '#fff',
+                    boxShadow: '0 4px 15px rgba(102,126,234,0.3)',
+                  }
+                : {
+                    color: 'rgba(255,255,255,0.7)',
+                    borderColor: 'rgba(255,255,255,0.2)',
+                    '&:hover': { borderColor: 'rgba(255,255,255,0.4)', bgcolor: 'rgba(255,255,255,0.05)' },
+                  }),
+            }}
+          >
+            {auditMode ? '← Summary' : 'Advanced Audit ▾'}
+          </Button>
+          <AgentHelpModal />
+        </Box>
       </Box>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Card><CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Run lifecycle updates</Typography>
-            <List dense>
-              {runs.slice(0, 20).map((run) => (
-                <ListItem key={run.id}><ListItemText primary={`${run.agent_type || 'agent'} · ${run.status}`} secondary={run.result_summary || run.finished_at || 'In progress'} /></ListItem>
-              ))}
-            </List>
-          </CardContent></Card>
-        </Grid>
+      {auditMode ? (
+        <CommitteeAuditTable events={events} />
+      ) : (
+        <>
+          {/* 1. Alerts + Approvals need attention */}
+          <AlertBanner alerts={alerts} approvals={approvals} />
 
-        <Grid item xs={12} md={6}>
-          <Card><CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>New events</Typography>
-            <List dense>
-              {events.slice(0, 20).map((event) => (
-                <ListItem key={event.id}><ListItemText primary={`${event.agent_type || 'agent'} · ${event.event_type}`} secondary={event.message || event.created_at} /></ListItem>
-              ))}
-            </List>
-          </CardContent></Card>
-        </Grid>
+          {/* 2. Committee decision brief */}
+          <CommitteeSummary events={events} />
 
-        <Grid item xs={12}><Divider /></Grid>
+          {/* 3. Quality audit (ContentGuardianAgent) */}
+          <QualityAuditPanel events={events} />
 
-        <Grid item xs={12} md={6}>
-          <Card><CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Alert deltas</Typography>
-            <List dense>
-              {alerts.slice(0, 20).map((alert) => (
-                <ListItem key={alert.id}><ListItemText primary={alert.title || 'Alert'} secondary={alert.message} /></ListItem>
-              ))}
-            </List>
-          </CardContent></Card>
-        </Grid>
+          {/* 4. Trend signals (TrendSurferAgent) */}
+          <TrendSignalsPanel events={events} />
 
-        <Grid item xs={12} md={6}>
-          <Card><CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Approval deltas</Typography>
-            <List dense>
-              {approvals.slice(0, 20).map((approval) => (
-                <ListItem key={approval.id}><ListItemText primary={`${approval.action_type || 'Action'} · ${approval.status}`} secondary={approval.created_at} /></ListItem>
-              ))}
-            </List>
-          </CardContent></Card>
-        </Grid>
-      </Grid>
+          {/* 5. Agent health at a glance */}
+          <AgentStatusPanel events={events} runs={runs} alerts={alerts} />
+
+          {/* 6. Raw activity feed (collapsed by default) */}
+          <ActivityLog runs={runs} events={events} />
+        </>
+      )}
     </Box>
   );
 };

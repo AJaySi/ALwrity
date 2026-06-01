@@ -27,6 +27,7 @@ class BlogSEORecommendationApplier:
             raise ValueError("user_id is required for subscription checking. Please provide Clerk user ID.")
 
         title = payload.get("title", "Untitled Blog")
+        introduction = payload.get("introduction") or ""
         sections: List[Dict[str, Any]] = payload.get("sections", [])
         outline = payload.get("outline", [])
         research = payload.get("research", {})
@@ -44,6 +45,7 @@ class BlogSEORecommendationApplier:
 
         prompt = self._build_prompt(
             title=title,
+            introduction=introduction,
             sections=sections,
             outline=outline,
             research=research,
@@ -57,6 +59,7 @@ class BlogSEORecommendationApplier:
             "type": "object",
             "properties": {
                 "title": {"type": "string"},
+                "introduction": {"type": "string"},
                 "sections": {
                     "type": "array",
                     "items": {
@@ -102,6 +105,13 @@ class BlogSEORecommendationApplier:
 
         raw_sections = result.get("sections", []) or []
         normalized_sections: List[Dict[str, Any]] = []
+
+        # Warn if LLM returned different number of sections (may miss intro/conclusion added as new sections)
+        if len(raw_sections) != len(sections):
+            logger.warning(
+                f"LLM returned {len(raw_sections)} sections but {len(sections)} were sent. "
+                "Extra sections will be ignored; missing sections fall back to original content."
+            )
 
         # Build lookup table from updated sections using their identifiers
         updated_map: Dict[str, Dict[str, Any]] = {}
@@ -180,9 +190,17 @@ class BlogSEORecommendationApplier:
 
         logger.info("SEO recommendations applied successfully")
 
+        # Extract updated introduction from LLM response if available
+        updated_introduction = result.get("introduction") or ""
+        if updated_introduction and updated_introduction != introduction:
+            logger.info(f"Introduction updated: {len(updated_introduction)} chars")
+        elif not updated_introduction:
+            updated_introduction = introduction  # fall back to original
+
         return {
             "success": True,
             "title": result.get("title", title),
+            "introduction": updated_introduction,
             "sections": normalized_sections,
             "applied": applied,
         }
@@ -191,6 +209,7 @@ class BlogSEORecommendationApplier:
         self,
         *,
         title: str,
+        introduction: str,
         sections: List[Dict[str, Any]],
         outline: List[Dict[str, Any]],
         research: Dict[str, Any],
@@ -244,6 +263,9 @@ You are an expert SEO content strategist. Update the blog content to apply the a
 
 Current Title: {title}
 
+Current Introduction:
+{introduction if introduction else '(No introduction exists — write a compelling one if the recommendations require it)'}
+
 Primary Keywords (for context): {primary_keywords}
 
 Outline Overview:
@@ -260,10 +282,15 @@ Actionable Recommendations to Apply:
 
 Instructions:
 1. Carefully apply the recommendations while preserving factual accuracy and research alignment.
-2. Keep section identifiers (IDs) unchanged so the frontend can map updates correctly.
-3. Improve clarity, flow, and SEO optimization per the guidance.
-4. Return updated sections in the requested JSON format.
-5. Provide a short summary of which recommendations were addressed.
+2. You MUST return EXACTLY the same number of sections, with EXACTLY the same IDs as provided above. Do NOT add or remove sections.
+3. If a recommendation says content is MISSING (e.g. missing introduction or conclusion), incorporate that missing content into the MOST APPROPRIATE existing section:
+   - Missing introduction → PREPEND introductory content to the FIRST section's existing content.
+   - Missing conclusion → APPEND concluding content to the LAST section's existing content.
+   - For other missing content, add it to the section whose heading best matches the recommendation.
+4. Additionally, if an introduction is missing or weak, write a compelling introduction in the "introduction" field of your response. If the current introduction is adequate, return it unchanged.
+5. Improve clarity, flow, and SEO optimization per the guidance.
+6. Return updated sections in the requested JSON format.
+7. Provide a short summary of which recommendations were addressed.
 """
 
         return prompt

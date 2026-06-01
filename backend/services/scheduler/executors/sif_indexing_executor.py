@@ -103,7 +103,7 @@ class SIFIndexingExecutor(TaskExecutor):
             guardian_report = None
             if content_synced:
                 try:
-                    from services.intelligence.sif_agents import ContentGuardianAgent
+                    from services.intelligence.agents.specialized import ContentGuardianAgent
                     # Re-use the intelligence service from sif_service
                     guardian_agent = ContentGuardianAgent(
                         intelligence_service=sif_service.intelligence_service,

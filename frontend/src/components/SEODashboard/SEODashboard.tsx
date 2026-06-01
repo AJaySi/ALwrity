@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -69,6 +70,7 @@ import { AdvertoolsInsights } from './components/AdvertoolsInsights';
 import SemanticHealthCard from './components/SemanticHealthCard';
 import SemanticInsights from './components/SemanticInsights';
 import KeywordGapAnalysis from './components/KeywordGapAnalysis';
+import ContentGapRadarCard from './components/ContentGapRadarCard';
 
 // Phase 2A: Enterprise SEO Analysis
 import SEOAnalysisController from './SEOAnalysisController';
@@ -118,7 +120,19 @@ const SEODashboard: React.FC = () => {
   
   // Dashboard Tab State for Enterprise Analysis
   const [dashboardTab, setDashboardTab] = useState<number>(0);
-  
+  const location = useLocation();
+
+  // Hash-based deep-link scroll (e.g. #content-gap-radar from workflow tasks)
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.replace('#', '');
+      const el = document.getElementById(id);
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+      }
+    }
+  }, [location.hash]);
+
   // Competitor analysis data from onboarding step 3
   const [competitorAnalysisData, setCompetitorAnalysisData] = useState<any>(null);
   const [deepCompetitorAnalysisData, setDeepCompetitorAnalysisData] = useState<any>(null);
@@ -932,6 +946,11 @@ const SEODashboard: React.FC = () => {
 
               {/* Keyword Gap Analysis */}
               <KeywordGapAnalysis />
+
+              {/* Content Gap Radar */}
+              <Box id="content-gap-radar">
+                <ContentGapRadarCard />
+              </Box>
 
               {/* Full Site Technical SEO Audit (from onboarding background job) */}
               {data.technical_seo_audit && (

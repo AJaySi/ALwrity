@@ -126,21 +126,85 @@ class SocialAmplificationAgent(BaseALwrityAgent):
 
     async def propose_daily_tasks(self, context: Dict[str, Any]) -> List[TaskProposal]:
         """
-        Propose social media tasks.
+        Propose social media tasks based on user's onboarding context.
+        Derives platforms and content types from user data.
         """
         proposals = []
-        
-        # 1. Social Post Creation
+
+        onboarding = context.get("onboarding_data", {})
+        if not isinstance(onboarding, dict):
+            return proposals
+
+        # Extract selected platforms from onboarding step 5
+        selected_platforms = []
+        try:
+            step5 = onboarding.get("step5_summary") or onboarding.get("distribution_channels") or {}
+            if isinstance(step5, dict):
+                sp = step5.get("selected_platforms") or step5.get("platforms") or []
+                selected_platforms = [p for p in sp if isinstance(p, str)]
+            if not selected_platforms:
+                # Fallback: check top-level keys
+                for key in ("selected_platforms", "platforms", "social_platforms"):
+                    val = onboarding.get(key)
+                    if isinstance(val, list):
+                        selected_platforms = [p for p in val if isinstance(p, str)]
+                        break
+        except Exception:
+            pass
+
+        platform_urls = {
+            "linkedin": "/linkedin-writer",
+            "facebook": "/facebook-writer",
+            "twitter": "/linkedin-writer",  # no dedicated twitter writer, use linkedin as fallback
+            "instagram": "/linkedin-writer",
+            "tiktok": "/linkedin-writer",
+            "youtube": "/linkedin-writer",
+        }
+
+        target_platforms = [p for p in selected_platforms if p.lower() in platform_urls]
+        if not target_platforms:
+            # No known platforms configured — generic engage task
+            proposals.append(TaskProposal(
+                title="Share content on social media",
+                description="Promote your latest published piece across your social channels.",
+                pillar_id="engage",
+                priority="medium",
+                estimated_time=20,
+                source_agent="SocialAmplificationAgent",
+                reasoning="Social distribution drives referral traffic and builds audience engagement.",
+                action_type="navigate",
+                action_url="/linkedin-writer",
+            ))
+            return proposals
+
+        platform = target_platforms[0]
+        platform_label = platform.capitalize()
         proposals.append(TaskProposal(
-            title="Create LinkedIn Thread",
-            description="Summarize your latest blog post into a 5-tweet thread.",
-            pillar_id="distribute",
+            title=f"Share content on {platform_label}",
+            description=f"Adapt and publish your latest content as a {platform_label} post to drive engagement.",
+            pillar_id="engage",
             priority="medium",
             estimated_time=20,
             source_agent="SocialAmplificationAgent",
-            reasoning="Repurpose existing content.",
+            reasoning=f"Consistent {platform_label} posting maintains audience engagement and extends content reach.",
             action_type="navigate",
-            action_url="/content-planning-dashboard"
+            action_url=platform_urls[platform.lower()],
+            context_data={"platform": platform.lower()},
         ))
-        
+
+        if len(target_platforms) > 1:
+            platform2 = target_platforms[1]
+            proposals.append(TaskProposal(
+                title=f"Cross-post to {platform2.capitalize()}",
+                description=f"Repurpose your latest content for your {platform2.capitalize()} audience.",
+                pillar_id="engage",
+                priority="low",
+                estimated_time=15,
+                source_agent="SocialAmplificationAgent",
+                reasoning=f"Cross-posting to {platform2.capitalize()} increases reach without additional content creation cost.",
+                action_type="navigate",
+                action_url=platform_urls[platform2.lower()],
+                context_data={"platform": platform2.lower()},
+            ))
+
         return proposals

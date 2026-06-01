@@ -9,6 +9,8 @@ from .on_page_seo_service import OnPageSEOService
 from .technical_seo_service import TechnicalSEOService
 from .enterprise_seo_service import EnterpriseSEOService
 from .content_strategy_service import ContentStrategyService
+from .serp_gap_service import SerpGapService
+from .competitor_content_service import CompetitorContentService
 
 __all__ = [
     'MetaDescriptionService',
@@ -20,4 +22,6 @@ __all__ = [
     'TechnicalSEOService',
     'EnterpriseSEOService',
     'ContentStrategyService',
+    'SerpGapService',
+    'CompetitorContentService',
 ]

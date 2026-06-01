@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -15,6 +16,9 @@ from services.seo.deep_competitor_analysis_service import DeepCompetitorAnalysis
 from utils.logger_utils import get_service_logger
 
 logger = get_service_logger("deep_competitor_analysis_executor")
+
+DEEP_COMPETITOR_TIMEOUT_SECONDS = 300  # 5-minute hard timeout
+DEEP_COMPETITOR_MAX_COMPETITORS = 10   # cap to reduce API pressure
 
 
 class DeepCompetitorAnalysisExecutor(TaskExecutor):
@@ -82,17 +86,23 @@ class DeepCompetitorAnalysisExecutor(TaskExecutor):
                     retryable=False
                 )
 
-            max_competitors = int(payload.get("max_competitors") or 25)
+            max_competitors = min(int(payload.get("max_competitors") or 25), DEEP_COMPETITOR_MAX_COMPETITORS)
             crawl_concurrency = int(payload.get("crawl_concurrency") or 4)
             mode = payload.get("mode", "deep_analysis")
 
             if mode == "strategic_insights":
                 logger.info(f"Executing weekly strategic insights for user {user_id}")
-                report = await self.analysis_service.generate_weekly_strategy_brief(
-                    user_id=user_id,
-                    website_analysis=website_analysis if isinstance(website_analysis, dict) else {},
-                    competitors=competitors
-                )
+                try:
+                    report = await asyncio.wait_for(
+                        self.analysis_service.generate_weekly_strategy_brief(
+                            user_id=user_id,
+                            website_analysis=website_analysis if isinstance(website_analysis, dict) else {},
+                            competitors=competitors
+                        ),
+                        timeout=DEEP_COMPETITOR_TIMEOUT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"Strategic insights timed out after {DEEP_COMPETITOR_TIMEOUT_SECONDS}s for user {user_id}")
                 
                 # Persist to WebsiteAnalysis history
                 analysis_id = website_analysis.get('id')
@@ -110,13 +120,19 @@ class DeepCompetitorAnalysisExecutor(TaskExecutor):
                         flag_modified(wa, "strategic_insights_history")
                         db.commit()
             else:
-                report = await self.analysis_service.run(
-                    user_id=user_id,
-                    website_analysis=website_analysis if isinstance(website_analysis, dict) else {},
-                    competitors=competitors,
-                    max_competitors=max_competitors,
-                    crawl_concurrency=crawl_concurrency
-                )
+                try:
+                    report = await asyncio.wait_for(
+                        self.analysis_service.run(
+                            user_id=user_id,
+                            website_analysis=website_analysis if isinstance(website_analysis, dict) else {},
+                            competitors=competitors,
+                            max_competitors=max_competitors,
+                            crawl_concurrency=crawl_concurrency
+                        ),
+                        timeout=DEEP_COMPETITOR_TIMEOUT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"Deep competitor analysis timed out after {DEEP_COMPETITOR_TIMEOUT_SECONDS}s for user {user_id}")
 
             task.last_executed = datetime.utcnow()
             task.last_success = datetime.utcnow()

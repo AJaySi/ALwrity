@@ -85,24 +85,45 @@ def decode_wix_token(access_token: str) -> Dict[str, Any]:
     if token_str.startswith('OauthNG.JWS.'):
         jwt_part = token_str[12:]
         return jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
+    if token_str.startswith('IST.'):
+        jwt_part = token_str[4:]
+        return jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
     return jwt.decode(token_str, options={"verify_signature": False, "verify_aud": False})
+
+
+def _extract_data_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    data_payload = payload.get('data', {})
+    if isinstance(data_payload, str):
+        try:
+            data_payload = json.loads(data_payload)
+        except Exception:
+            data_payload = {}
+    return data_payload if isinstance(data_payload, dict) else {}
 
 
 def extract_meta_from_token(access_token: str) -> Dict[str, Optional[str]]:
     try:
         payload = decode_wix_token(access_token)
-        data_payload = payload.get('data', {})
-        if isinstance(data_payload, str):
-            try:
-                data_payload = json.loads(data_payload)
-            except Exception:
-                pass
-        instance = (data_payload or {}).get('instance', {})
-        return {
+        data_payload = _extract_data_payload(payload)
+        instance = (data_payload or {}).get('instance', {}) or {}
+        result = {
             'siteMemberId': instance.get('siteMemberId'),
             'metaSiteId': instance.get('metaSiteId'),
             'permissions': instance.get('permissions'),
         }
+        # Only fall back to tenant.id for OAuth tokens (not IST. API keys)
+        # IST. tokens have tenant.id = account_id, which is NOT the site metaSiteId
+        token_str = str(access_token)
+        if not result.get('metaSiteId') and not token_str.startswith('IST.'):
+            tenant = data_payload.get('tenant', {}) or {}
+            tenant_id = tenant.get('id')
+            if tenant_id:
+                result['metaSiteId'] = tenant_id
+        if not result.get('metaSiteId'):
+            meta_site_id = payload.get('metaSiteId') or payload.get('site_id')
+            if meta_site_id:
+                result['metaSiteId'] = meta_site_id
+        return result
     except Exception:
         return {'siteMemberId': None, 'metaSiteId': None, 'permissions': None}
 

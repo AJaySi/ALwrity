@@ -66,6 +66,7 @@ class RecommendationItem(BaseModel):
 
 class SEOApplyRecommendationsRequest(BaseModel):
     title: str = Field(..., description="Current blog title")
+    introduction: str | None = Field(default=None, description="Current blog introduction text")
     sections: List[Dict[str, Any]] = Field(..., description="Array of sections with id, heading, content")
     outline: List[Dict[str, Any]] = Field(default_factory=list, description="Outline structure for context")
     research: Dict[str, Any] = Field(default_factory=dict, description="Research data used for the blog")
@@ -122,7 +123,7 @@ async def section_originality_tools(
             raise HTTPException(status_code=401, detail="User ID not found in authentication token")
 
         from services.intelligence.sif_integration import SIFIntegrationService
-        from services.intelligence.sif_agents import ContentGuardianAgent
+        from services.intelligence.agents.specialized import ContentGuardianAgent
 
         sif_service = SIFIntegrationService(user_id)
         intelligence = sif_service.intelligence_service

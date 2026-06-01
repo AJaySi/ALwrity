@@ -50,6 +50,8 @@ interface PhaseContentProps {
   onAngleSelect?: (angle: string) => void;
   selectedCompetitiveAdvantage?: string;
   onCompetitiveAdvantageSelect?: (advantage: string) => void;
+  introduction?: string;
+  onIntroductionUpdate?: (intro: string) => void;
 }
 
 export const PhaseContent: React.FC<PhaseContentProps> = ({
@@ -95,6 +97,8 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   onAngleSelect,
   selectedCompetitiveAdvantage,
   onCompetitiveAdvantageSelect,
+  introduction,
+  onIntroductionUpdate,
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -173,8 +177,10 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                 researchTitles={researchTitles}
                 aiGeneratedTitles={aiGeneratedTitles}
                 sections={sections}
+                introduction={introduction}
                 onContentUpdate={handleContentUpdate}
                 onSave={handleContentSave}
+                onIntroductionUpdate={onIntroductionUpdate}
                 continuityRefresh={continuityRefresh || undefined}
                 flowAnalysisResults={flowAnalysisResults}
                 sectionImages={sectionImages}
@@ -199,7 +205,7 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
             )}
           </>
         )}
-
+        
         {currentPhase === 'seo' && contentConfirmed && outline.length > 0 && outlineConfirmed && (
           <>
             {Object.keys(sections).length > 0 && Object.values(sections).some(content => content && content.trim().length > 0) ? (
@@ -211,8 +217,10 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
                 researchTitles={researchTitles}
                 aiGeneratedTitles={aiGeneratedTitles}
                 sections={sections}
+                introduction={introduction}
                 onContentUpdate={handleContentUpdate}
                 onSave={handleContentSave}
+                onIntroductionUpdate={onIntroductionUpdate}
                 continuityRefresh={continuityRefresh || undefined}
                 flowAnalysisResults={flowAnalysisResults}
                 sectionImages={sectionImages}

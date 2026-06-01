@@ -14,4 +14,5 @@ export { default as SEOAnalysisError } from './SEOAnalysisError';
 export { default as PlatformStatus } from './PlatformStatus';
 export { default as AIInsightsPanel } from './AIInsightsPanel';
 export { default as MetricCard } from './MetricCard';
-export { default as HealthScore } from './HealthScore'; 
+export { default as HealthScore } from './HealthScore';
+export { default as ContentGapRadarCard } from './ContentGapRadarCard'; 

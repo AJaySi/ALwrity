@@ -13,7 +13,7 @@ builtins.Union = typing.Union
 from models.onboarding import APIKey, WebsiteAnalysis, ResearchPreferences, PersonaData, CompetitorAnalysis
 
 
-from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Request, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -137,6 +137,11 @@ from api.seo_dashboard import (
     get_sif_indexing_health,
     get_guardian_audit,
     get_keyword_gaps,
+    get_serp_gaps,
+    get_competitor_content,
+    get_content_gap_radar,
+    generate_content_from_gap,
+    GenerateContentRequest,
 )
 
 # Initialize FastAPI app
@@ -389,6 +394,64 @@ async def keyword_gaps_endpoint(
     for the user's site, derived from last 30 days of GSC search analytics.
     """
     return await get_keyword_gaps(current_user, site_url)
+
+
+@app.get("/api/seo-dashboard/serp-gaps")
+async def serp_gaps_endpoint(
+    current_user: dict = Depends(get_current_user),
+    topics: Optional[List[str]] = None,
+):
+    """
+    Get SERP gap analysis — detect which competitors rank for given topics.
+
+    Uses Google Custom Search `site:` queries per competitor domain to detect
+    ranking presence. If no topics are provided, derives them from the user's
+    latest SIF semantic gap analysis (up to 12 topics).
+    """
+    return await get_serp_gaps(current_user, topics)
+
+
+@app.get("/api/seo-dashboard/competitor-content")
+async def competitor_content_endpoint(
+    current_user: dict = Depends(get_current_user),
+    topics: Optional[List[str]] = None,
+):
+    """
+    Get competitor content deep-dive for gap topics using Exa.
+
+    Scopes Exa neural search to known competitor domains and returns
+    full text, highlights, and summaries for competitive analysis.
+    If no topics provided, derives up to 6 from the latest SIF semantic gaps.
+    """
+    return await get_competitor_content(current_user, topics)
+
+
+@app.get("/api/seo-dashboard/content-gap-radar")
+async def content_gap_radar_endpoint(
+    current_user: dict = Depends(get_current_user),
+    bypass_cache: bool = Query(False, description="Bypass 24h cache"),
+):
+    """
+    Run the Content Gap Radar pipeline — full Phase 3 agent.
+
+    Orchestrates SIF semantic gap analysis, SERP ranking presence (Google CSE),
+    competitor content deep-dive (Exa), and trend momentum scoring into a single
+    ROI-ranked list of content opportunities.
+    """
+    return await get_content_gap_radar(current_user, bypass_cache=bypass_cache)
+
+
+@app.post("/api/seo-dashboard/content-gap-radar/generate-content")
+async def generate_content_from_gap_endpoint(
+    request: GenerateContentRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate a content brief from a content gap radar item and save it
+    as a blog ContentAsset. Navigate to /blog-writer with the returned
+    asset_id to resume in the full Blog Writer workflow.
+    """
+    return await generate_content_from_gap(request, current_user)
 
 
 # Comprehensive SEO Analysis endpoints

@@ -168,25 +168,25 @@ class SEOOptimizationAgent(BaseALwrityAgent):
             proposals.append(TaskProposal(
                 title="Review SEO Issues",
                 description=f"SIF indexed content suggests {issues_found} areas that may need SEO attention.",
-                pillar_id="distribute",
+                pillar_id="analyze",
                 priority="high",
                 estimated_time=30,
                 source_agent="SEOOptimizationAgent",
                 reasoning="Addressing SEO gaps improves organic visibility.",
                 action_type="navigate",
-                action_url="/content-planning-dashboard"
+                action_url="/seo-dashboard"
             ))
         else:
             proposals.append(TaskProposal(
                 title="Run SEO Audit",
                 description="Perform a comprehensive SEO audit to identify optimization opportunities.",
-                pillar_id="distribute",
+                pillar_id="analyze",
                 priority="medium",
                 estimated_time=15,
                 source_agent="SEOOptimizationAgent",
                 reasoning="Regular audits prevent SEO degradation.",
                 action_type="navigate",
-                action_url="/content-planning-dashboard"
+                action_url="/seo-dashboard"
             ))
 
         return proposals

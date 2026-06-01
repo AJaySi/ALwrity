@@ -318,7 +318,7 @@ class SIFIndexingTask(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     user_id = Column(String(255), nullable=False, index=True)
-    website_url = Column(String(500), nullable=False, index=True)
+    website_url = Column(String(500), nullable=True, index=True)
 
     status = Column(String(50), default='active', index=True)
 
@@ -331,7 +331,7 @@ class SIFIndexingTask(Base):
     failure_pattern = Column(JSON, nullable=True)
 
     next_execution = Column(DateTime, nullable=True, index=True)
-    frequency_hours = Column(Integer, default=48)  # Default 48 hours
+    frequency_hours = Column(Integer, default=48)
 
     payload = Column(JSON, nullable=True)
 
@@ -346,6 +346,7 @@ class SIFIndexingTask(Base):
 
     __table_args__ = (
         Index('idx_sif_indexing_tasks_user_site', 'user_id', 'website_url'),
+        Index('idx_sif_indexing_tasks_user_only', 'user_id'),
         Index('idx_sif_indexing_tasks_next_execution', 'next_execution'),
         Index('idx_sif_indexing_tasks_status', 'status'),
     )
@@ -387,7 +388,7 @@ class MarketTrendsTask(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     user_id = Column(String(255), nullable=False, index=True)
-    website_url = Column(String(500), nullable=False, index=True)
+    website_url = Column(String(500), nullable=True, index=True)
 
     status = Column(String(50), default="active", index=True)
 
@@ -415,6 +416,7 @@ class MarketTrendsTask(Base):
 
     __table_args__ = (
         Index("idx_market_trends_tasks_user_site", "user_id", "website_url"),
+        Index("idx_market_trends_tasks_user_only", "user_id"),
         Index("idx_market_trends_tasks_next_execution", "next_execution"),
         Index("idx_market_trends_tasks_status", "status"),
     )

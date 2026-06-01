@@ -5,6 +5,7 @@ Handles blog post creation, validation, and publishing to Wix.
 """
 
 import json
+import os
 import re
 import uuid
 import requests
@@ -193,6 +194,7 @@ def create_blog_post(
     tag_ids: List[str] = None,
     publish: bool = True,
     seo_metadata: Dict[str, Any] = None,
+    site_id: str = None,
     import_image_func = None,
     lookup_categories_func = None,
     lookup_tags_func = None,
@@ -220,111 +222,50 @@ def create_blog_post(
     Returns:
         Created blog post information
     """
-    if not member_id:
-        raise ValueError("memberId is required for third-party apps creating blog posts")
+    # ===== PRE-FLIGHT VALIDATION =====
+    errors = []
     
-    # Ensure access_token is a string (handle cases where it might be int, dict, or other type)
-    # Use normalize_token_string to handle various token formats (dict with accessToken.value, etc.)
+    if not member_id:
+        errors.append("memberId is required for third-party apps creating blog posts")
+    
+    title_clean = str(title).strip() if title else ""
+    if not title_clean:
+        errors.append("Title is required")
+    elif len(title_clean) > 200:
+        errors.append(f"Title is too long ({len(title_clean)} chars, max 200)")
+    
+    # Ensure access_token is a string
     normalized_token = normalize_token_string(access_token)
     if not normalized_token:
-        raise ValueError("access_token is required and must be a valid string or token object")
-    access_token = normalized_token.strip()
-    if not access_token:
-        raise ValueError("access_token cannot be empty")
+        errors.append("access_token is required and must be a valid string or token object")
+    else:
+        access_token = normalized_token.strip()
+        if not access_token:
+            errors.append("access_token cannot be empty")
     
-    # BACK TO BASICS MODE: Try simplest possible structure FIRST
-    # Since posting worked before Ricos/SEO, let's test with absolute minimum
-    BACK_TO_BASICS_MODE = False  # Disabled: full Ricos conversion now produces valid output
+    content_clean = str(content).strip() if content else ""
+    if not content_clean:
+        logger.warning("Content was empty, using default text")
+        content = "This is a post from ALwrity."
+    elif len(content_clean) > 100000:
+        errors.append(f"Content is too long ({len(content_clean)} chars, max 100,000)")
+    
+    if errors:
+        raise ValueError(f"Wix publish validation failed: {'; '.join(errors)}")
     
     wix_logger.reset()
     wix_logger.log_operation_start("Blog Post Creation", title=title[:50] if title else None, member_id=member_id[:20] if member_id else None)
     
-    if BACK_TO_BASICS_MODE:
-        logger.info("🔧 Wix: BACK TO BASICS MODE - Testing minimal structure")
-        
-        # Import auth utilities for proper token handling
-        from .auth_utils import get_wix_headers
-        
-        # Create absolute minimal Ricos structure
-        minimal_ricos = {
-            'nodes': [{
-                'id': str(uuid.uuid4()),
-                'type': 'PARAGRAPH',
-                'nodes': [{
-                    'id': str(uuid.uuid4()),
-                    'type': 'TEXT',
-                    'nodes': [],
-                    'textData': {
-                        'text': (content[:500] if content else "This is a post from ALwrity.").strip(),
-                        'decorations': []
-                    }
-                }]
-            }]
-        }
-        
-        # Extract wix-site-id from token if possible
-        extra_headers = {}
-        try:
-            token_str = str(access_token)
-            if token_str and token_str.startswith('OauthNG.JWS.'):
-                import jwt
-                import json
-                jwt_part = token_str[12:]
-                payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
-                data_payload = payload.get('data', {})
-                if isinstance(data_payload, str):
-                    try:
-                        data_payload = json.loads(data_payload)
-                    except:
-                        pass
-                instance_data = data_payload.get('instance', {})
-                meta_site_id = instance_data.get('metaSiteId')
-                if isinstance(meta_site_id, str) and meta_site_id:
-                    extra_headers['wix-site-id'] = meta_site_id
-        except Exception:
-            pass
-        
-        # Build minimal payload
-        minimal_blog_data = {
-            'draftPost': {
-                'title': str(title).strip() if title else "Untitled",
-                'memberId': str(member_id).strip(),
-                'richContent': minimal_ricos
-            },
-            'publish': False,
-            'fieldsets': ['URL']
-        }
-        
-        try:
-            from .blog import WixBlogService
-            blog_service_test = WixBlogService('https://www.wixapis.com', None)
-            result = blog_service_test.create_draft_post(access_token, minimal_blog_data, extra_headers if extra_headers else None)
-            logger.success("✅✅✅ Wix: BACK TO BASICS SUCCEEDED! Issue is with Ricos/SEO structure")
-            wix_logger.log_operation_result("Back to Basics Test", True, result)
-            return result
-        except Exception as e:
-            logger.error(f"❌ Wix: BACK TO BASICS FAILED - {str(e)[:100]}")
-            logger.error("   ⚠️ Issue is NOT with Ricos/SEO - likely permissions/token")
-            wix_logger.add_error(f"Back to Basics: {str(e)[:100]}")
-    
-    # Import auth utilities for proper token handling
     from .auth_utils import get_wix_headers
     
     # Headers for blog post creation (use user's OAuth token)
     headers = get_wix_headers(access_token)
     
-    # Build valid Ricos rich content
-    # Ensure content is not empty
-    if not content or not content.strip():
-        content = "This is a post from ALwrity."
-        logger.warning("⚠️ Content was empty, using default text")
-    
     # Quick token/permission check (only log if issues found)
     has_blog_scope = None
     meta_site_id = None
     try:
-        from .utils import decode_wix_token
-        import json
+        from .utils import decode_wix_token, extract_meta_from_token
         token_data = decode_wix_token(access_token)
         if 'scope' in token_data:
             scopes = token_data.get('scope')
@@ -332,17 +273,9 @@ def create_blog_post(
                 scope_list = scopes.split(',') if ',' in scopes else [scopes]
                 has_blog_scope = any('BLOG' in s.upper() for s in scope_list)
                 if not has_blog_scope:
-                    logger.error("❌ Wix: Token missing BLOG scopes - verify OAuth app permissions")
-        if 'data' in token_data:
-            data = token_data.get('data')
-            if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except:
-                    pass
-            if isinstance(data, dict) and 'instance' in data:
-                instance = data.get('instance', {})
-                meta_site_id = instance.get('metaSiteId')
+                    logger.error("Wix: Token missing BLOG scopes - verify OAuth app permissions")
+        meta_info = extract_meta_from_token(access_token)
+        meta_site_id = meta_info.get('metaSiteId')
     except Exception:
         pass
     
@@ -352,13 +285,12 @@ def create_blog_post(
         import requests
         test_response = requests.get(f"{base_url}/blog/v3/categories", headers=test_headers, timeout=5)
         if test_response.status_code == 403:
-            logger.error("❌ Wix: Permission denied - OAuth app missing BLOG.CREATE-DRAFT")
+            logger.error("Wix: Permission denied - OAuth app missing BLOG.CREATE-DRAFT")
         elif test_response.status_code == 401:
-            logger.error("❌ Wix: Unauthorized - token may be expired")
+            logger.error("Wix: Unauthorized - token may be expired")
     except Exception:
         pass
     
-    # Safely get token length (access_token is already validated as string above)
     token_length = len(access_token) if access_token else 0
     wix_logger.log_token_info(token_length, has_blog_scope, meta_site_id)
     
@@ -470,19 +402,20 @@ def create_blog_post(
     if cover_image_url and import_image_func:
         try:
             media_id = import_image_func(access_token, cover_image_url, f'Cover: {title}')
-            # Ensure media_id is a string and not None
-            if media_id and isinstance(media_id, str):
+            # import_image_to_wix now returns Optional[str] — None means failure
+            if media_id and isinstance(media_id, str) and media_id.strip():
                 blog_data['draftPost']['media'] = {
                     'wixMedia': {
-                        'image': {'id': str(media_id).strip()}
+                        'image': {'id': media_id.strip()}
                     },
                     'displayed': True,
                     'custom': True
                 }
+                logger.info(f"Cover image imported: {media_id[:16]}...")
             else:
-                logger.warning(f"Invalid media_id type or value: {type(media_id)}, skipping media")
+                logger.warning(f"Cover image import returned no valid media_id (type={type(media_id)}). Continuing without cover image.")
         except Exception as e:
-            logger.warning(f"Failed to import cover image: {e}")
+            logger.warning(f"Cover image import failed (non-fatal): {e}. Continuing without cover image.")
     
     # Handle categories - can be either IDs (list of strings) or names (for lookup)
     category_ids_to_use = None
@@ -558,34 +491,33 @@ def create_blog_post(
         logger.debug("No SEO metadata provided to create_blog_post")
     
     try:
-        # Extract wix-site-id from token if possible
+        # Extract wix-site-id from token, parameter, or env var
         extra_headers = {}
-        try:
+        wix_site_id = site_id or os.getenv('WIX_SITE_ID')
+        if not wix_site_id:
+            from .utils import extract_meta_from_token
+            meta_info = extract_meta_from_token(access_token)
+            wix_site_id = meta_info.get('metaSiteId')
+        if wix_site_id:
+            extra_headers['wix-site-id'] = wix_site_id
+            logger.info(f"Using wix-site-id: {wix_site_id[:8]}... (source: {'param' if site_id else 'env' if os.getenv('WIX_SITE_ID') else 'token'})")
+        else:
             token_str = str(access_token)
-            if token_str and token_str.startswith('OauthNG.JWS.'):
-                import jwt
-                import json
-                jwt_part = token_str[12:]
-                payload = jwt.decode(jwt_part, options={"verify_signature": False, "verify_aud": False})
-                data_payload = payload.get('data', {})
-                if isinstance(data_payload, str):
-                    try:
-                        data_payload = json.loads(data_payload)
-                    except:
-                        pass
-                instance_data = data_payload.get('instance', {})
-                meta_site_id = instance_data.get('metaSiteId')
-                if isinstance(meta_site_id, str) and meta_site_id:
-                    extra_headers['wix-site-id'] = meta_site_id
-        except Exception:
-            pass
-        
+            if token_str.startswith('IST.'):
+                logger.error("❌ IST. API key requires WIX_SITE_ID environment variable or site_id parameter. "
+                           "The token's tenant.id is the account ID, not the site ID. "
+                           "Please set WIX_SITE_ID in your .env file to your Wix site's metaSiteId.")
+            else:
+                logger.warning("No wix-site-id found — API calls may fail if token requires it")
+    except Exception as e:
+        logger.debug(f"Could not extract wix-site-id from token: {e}")
+
+    try:
         # Validate payload structure before sending
         draft_post = blog_data.get('draftPost', {})
         if not isinstance(draft_post, dict):
             raise ValueError("draftPost must be a dict object")
-        
-        # Validate richContent structure
+
         if 'richContent' in draft_post:
             rc = draft_post['richContent']
             if not isinstance(rc, dict):
@@ -595,8 +527,7 @@ def create_blog_post(
             if not isinstance(rc['nodes'], list):
                 raise ValueError(f"richContent.nodes must be a list, got {type(rc['nodes'])}")
             logger.debug(f"✅ richContent validation passed: {len(rc.get('nodes', []))} nodes")
-        
-        # Validate seoData structure if present
+
         if 'seoData' in draft_post:
             seo = draft_post['seoData']
             if not isinstance(seo, dict):
@@ -606,46 +537,40 @@ def create_blog_post(
             if 'settings' in seo and not isinstance(seo['settings'], dict):
                 raise ValueError(f"seoData.settings must be a dict, got {type(seo.get('settings'))}")
             logger.debug(f"✅ seoData validation passed: {len(seo.get('tags', []))} tags")
-        
-        # Final validation: Ensure no None values in any nested objects
-        # Wix API rejects None values and expects proper types
+
         try:
             validate_payload_no_none(blog_data, "blog_data")
             logger.debug("✅ Payload validation passed: No None values found")
         except ValueError as e:
             logger.error(f"❌ Payload validation failed: {e}")
             raise
-        
-        # Log payload summary
+
         logger.debug(f"Payload: draftPost keys={list(draft_post.keys())}, "
                      f"nodes={len(draft_post.get('richContent', {}).get('nodes', []))}, "
                      f"has_seo={'seoData' in draft_post}")
-        
-        # Final deep validation: Serialize and deserialize to catch any JSON-serialization issues
+
         try:
             import json
             json.dumps(blog_data, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             logger.error(f"❌ Payload JSON serialization failed: {e}")
             raise ValueError(f"Payload contains non-serializable data: {e}")
-        
-        # Clean up None values that Wix API would reject
+
         rc = blog_data['draftPost']['richContent']
         for field in ['documentStyle', 'metadata']:
             if field in rc and (rc[field] is None or rc[field] == "" or not isinstance(rc[field], dict)):
                 del rc[field]
-        
+
         logger.info(f"📤 Publishing to Wix: title='{blog_data['draftPost'].get('title', '')}', "
                      f"nodes={len(rc.get('nodes', []))}")
-        
+
         result = blog_service.create_draft_post(access_token, blog_data, extra_headers or None)
-        
-        # Log success
+
         draft_post = result.get('draftPost', {})
         post_id = draft_post.get('id', 'N/A')
         wix_logger.log_operation_result("Create Draft Post", True, result)
         logger.success(f"✅ Wix: Blog post created - ID: {post_id}")
-        
+
         return result
     except TypeError as e:
         import traceback

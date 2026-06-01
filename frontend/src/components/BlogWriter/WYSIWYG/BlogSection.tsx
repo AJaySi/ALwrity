@@ -77,6 +77,101 @@ const BlogSection: React.FC<BlogSectionProps> = ({
 
   const wordCount_ = useMemo(() => content.split(/\s+/).filter(Boolean).length, [content]);
 
+  const handleFormatText = useCallback((formatType: string, startPos?: number, endPos?: number) => {
+    const textarea = contentRef.current;
+    if (!textarea) return;
+
+    const start = startPos ?? textarea.selectionStart;
+    const end = endPos ?? textarea.selectionEnd;
+    const selected = content.substring(start, end);
+    const trimmed = selected.trim();
+    let replacement: string;
+    let cursorPos: number;
+
+    switch (formatType) {
+      case 'bold': {
+        const outerMatch = trimmed.match(/^\*\*(.+)\*\*$/s);
+        if (outerMatch) {
+          replacement = outerMatch[1];
+        } else {
+          replacement = `**${trimmed.replace(/\*\*/g, '')}**`;
+        }
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'italic': {
+        const outerMatch = trimmed.match(/^\*(?!\*)(.+)(?<!\*)\*$/s);
+        if (outerMatch) {
+          replacement = outerMatch[1];
+        } else {
+          replacement = `*${trimmed.replace(/\*/g, '')}*`;
+        }
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'link': {
+        replacement = trimmed ? `[${trimmed}](url)` : `[text](url)`;
+        cursorPos = trimmed ? start + replacement.length - 5 : start + 1;
+        break;
+      }
+      case 'heading-2': {
+        replacement = trimmed ? `## ${trimmed}` : `## Heading`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'heading-3': {
+        replacement = trimmed ? `### ${trimmed}` : `### Heading`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'bullet-list': {
+        replacement = trimmed ? `- ${trimmed}` : `- List item`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'numbered-list': {
+        replacement = trimmed ? `1. ${trimmed}` : `1. List item`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'blockquote': {
+        replacement = trimmed ? `> ${trimmed}` : `> Quote`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'code': {
+        const outerMatch = trimmed.match(/^`(.+)`$/s);
+        if (outerMatch) {
+          replacement = outerMatch[1];
+        } else {
+          replacement = `\`${trimmed.replace(/`/g, '')}\``;
+        }
+        cursorPos = start + replacement.length;
+        break;
+      }
+      case 'hr': {
+        replacement = `\n\n---\n\n`;
+        cursorPos = start + replacement.length;
+        break;
+      }
+      default:
+        return;
+    }
+
+    const newContent = content.substring(0, start) + replacement + content.substring(end);
+    setContent(newContent);
+    if (onContentUpdate) onContentUpdate([{ id, content: newContent }]);
+
+    window.dispatchEvent(new CustomEvent('blogwriter:replaceSelectedText', {
+      detail: { originalText: selected, editedText: replacement, editType: 'format' }
+    }));
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(cursorPos, cursorPos);
+    });
+  }, [content, id, onContentUpdate]);
+
   const assistiveWriting = useBlogTextSelectionHandler(
     contentRef,
     (originalText: string, newText: string, editType: string) => {
@@ -91,7 +186,8 @@ const BlogSection: React.FC<BlogSectionProps> = ({
         setContent(updatedContent);
         if (onContentUpdate) onContentUpdate([{ id, content: updatedContent }]);
       }
-    }
+    },
+    handleFormatText
   );
 
   const formatContent = (rawContent: string) => {
@@ -352,11 +448,11 @@ const BlogSection: React.FC<BlogSectionProps> = ({
 
 {sectionImage && (
         <div className="mb-4">
-          <div className="rounded-lg overflow-hidden border border-gray-100 bg-white">
+          <div className="rounded-lg overflow-hidden border border-gray-100 bg-white max-w-full mx-auto" style={{ maxWidth: 'min(100%, 720px)' }}>
             <img 
               src={sectionImage.startsWith('http') || sectionImage.startsWith('/api/') ? sectionImage : `data:image/png;base64,${sectionImage}`}
               alt={`Image for ${sectionTitle}`}
-              className="w-full h-auto max-h-96 object-contain"
+              className="block w-full max-w-full h-auto max-h-96 object-contain mx-auto"
             />
           </div>
         </div>
@@ -382,6 +478,9 @@ const BlogSection: React.FC<BlogSectionProps> = ({
               color: '#1f2937',
               '& h1, & h2, & h3': { color: '#111827', mt: 2, mb: 1 },
               '& h2': { fontSize: '1.5rem', fontWeight: 600, borderBottom: '1px solid #e5e7eb', pb: 1 },
+              '& h3': { fontSize: '1.25rem', fontWeight: 600 },
+              '& h4': { fontSize: '1.15rem', fontWeight: 600, color: '#1e293b', mt: 1.5, mb: 0.5 },
+              '& h5, & h6': { fontSize: '1rem', fontWeight: 600, color: '#334155', mt: 1.5, mb: 0.5 },
               '& p': { mb: 1.5 },
               '& strong': { fontWeight: 600 },
               '& em': { fontStyle: 'italic' },
@@ -402,10 +501,39 @@ const BlogSection: React.FC<BlogSectionProps> = ({
                 fontFamily: 'monospace',
                 fontSize: '0.9em',
               },
+              '& kbd': {
+                bgcolor: '#f1f5f9',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                px: 1,
+                py: 0.25,
+                fontFamily: 'monospace',
+                fontSize: '0.85em',
+                boxShadow: '0 1px 0 #d1d5db',
+              },
+              '& mark': { bgcolor: '#fef3c7', color: '#92400e', px: 0.5, borderRadius: 0.25 },
+              '& sub, & sup': { fontSize: '0.75em', lineHeight: 1 },
+              '& details': { mb: 1.5 },
+              '& details summary': { cursor: 'pointer', fontWeight: 600, color: '#1e293b' },
+              '& details summary:hover': { color: '#4f46e5' },
+              '& dl': { mb: 1.5 },
+              '& dl dt': { fontWeight: 600, color: '#1e293b', mt: 1 },
+              '& dl dd': { ml: 2, color: '#4b5563' },
+              '& abbr': { cursor: 'help', textDecoration: 'underline dotted #94a3b8' },
               '& ul, & ol': { pl: 2, mb: 1.5 },
               '& li': { mb: 0.5 },
               '& hr': { borderColor: '#e5e7eb', my: 2 },
               '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1 },
+              '& table': { borderCollapse: 'collapse', width: '100%', mb: 2, fontSize: '0.95rem' },
+              '& th, & td': { border: '1px solid #d1d5db', px: 2, py: 1, textAlign: 'left' },
+              '& th': { bgcolor: '#f3f4f6', fontWeight: 600 },
+              '& tr:nth-of-type(even)': { bgcolor: '#f9fafb' },
+              '& .table-wrapper': { overflowX: 'auto', mb: 2 },
+              '& .table-wrapper table': { mb: 0 },
+              '& pre': { bgcolor: '#1e293b', color: '#e2e8f0', p: 2.5, borderRadius: 1, overflowX: 'auto', fontFamily: 'monospace', fontSize: '0.875rem', lineHeight: 1.5, mb: 2 },
+              '& pre code': { bgcolor: 'transparent', color: 'inherit', p: 0, fontSize: 'inherit', lineHeight: 'inherit' },
+              '& del': { color: '#991b1b', textDecoration: 'line-through' },
+              '& input[type="checkbox"]': { mr: 1, transform: 'scale(1.1)', accentColor: '#4f46e5' },
             }}
             dangerouslySetInnerHTML={{ __html: convertMarkdownToHTML(content) }}
           />
@@ -417,7 +545,7 @@ const BlogSection: React.FC<BlogSectionProps> = ({
             multiline
             fullWidth
             variant="outlined"
-            placeholder="Start writing..."
+            placeholder="Start writing... Use the toolbar above to format text, or type markdown directly."
             value={content}
             onChange={handleContentChange}
             onFocus={handleFocus}
@@ -426,14 +554,19 @@ const BlogSection: React.FC<BlogSectionProps> = ({
             inputRef={contentRef}
             minRows={5}
             InputProps={{
-              className: `font-serif text-base leading-relaxed text-gray-700 p-0 ${isFocused ? 'bg-white' : 'bg-transparent'}`,
-              style: { lineHeight: '1.8' }
+              className: `font-serif text-base leading-relaxed text-gray-700 ${isFocused ? 'bg-white' : 'bg-gray-50/30'}`,
+              style: { lineHeight: '1.8', padding: '12px 16px' },
             }}
             sx={{
-              '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              '& .MuiOutlinedInput-notchedOutline': {
+                border: '1px solid #e2e8f0',
+                borderTopLeftRadius: 0,
+                borderTopRightRadius: 0,
+              },
               '& .MuiOutlinedInput-root': { padding: 0 },
-              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { border: 'none' },
-              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { border: 'none' },
+              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#cbd5e1' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4f46e5', borderWidth: 2 },
+              '& .MuiInputBase-input': { padding: '12px 16px !important' },
             }}
           />
         </div>

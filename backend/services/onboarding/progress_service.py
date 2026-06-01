@@ -168,3 +168,74 @@ class OnboardingProgressService:
         except Exception as e:
             logger.error(f"Error completing onboarding: {e}")
             return False
+    
+    def reset_onboarding(self, user_id: str) -> bool:
+        """Reset onboarding progress and cancel/pause all scheduled tasks for the user."""
+        try:
+            db = get_session_for_user(user_id)
+            try:
+                # Reset the onboarding session
+                session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
+                if session:
+                    session.current_step = 1
+                    session.progress = 0.0
+                    session.updated_at = datetime.utcnow()
+                db.commit()
+            finally:
+                db.close()
+
+            # Cancel/pause all scheduled tasks for this user
+            self._cancel_scheduled_tasks(user_id)
+
+            logger.info(f"Reset onboarding for user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error resetting onboarding for user {user_id}: {e}")
+            return False
+    
+    def _cancel_scheduled_tasks(self, user_id: str):
+        """Pause all DB-backed scheduled tasks for a user after onboarding reset."""
+        try:
+            from models.website_analysis_monitoring_models import (
+                OnboardingFullWebsiteAnalysisTask,
+                DeepCompetitorAnalysisTask,
+                SIFIndexingTask,
+                MarketTrendsTask,
+                WebsiteAnalysisTask,
+            )
+            from models.advertools_monitoring_models import AdvertoolsTask
+            
+            db = get_session_for_user(user_id)
+            try:
+                task_models = [
+                    OnboardingFullWebsiteAnalysisTask,
+                    DeepCompetitorAnalysisTask,
+                    SIFIndexingTask,
+                    MarketTrendsTask,
+                    WebsiteAnalysisTask,
+                ]
+                try:
+                    task_models.append(AdvertoolsTask)
+                except Exception:
+                    pass
+
+                paused_count = 0
+                for model_cls in task_models:
+                    try:
+                        active_tasks = db.query(model_cls).filter(
+                            model_cls.user_id == user_id,
+                            model_cls.status == "active"
+                        ).all()
+                        for task in active_tasks:
+                            task.status = "paused"
+                            paused_count += 1
+                    except Exception as e:
+                        logger.warning(f"Could not pause {model_cls.__tablename__} tasks for user {user_id}: {e}")
+
+                db.commit()
+                if paused_count > 0:
+                    logger.info(f"Paused {paused_count} scheduled tasks for user {user_id} after onboarding reset")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to cancel scheduled tasks for user {user_id}: {e}")

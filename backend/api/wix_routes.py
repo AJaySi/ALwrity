@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import os
 import uuid
 import requests
+import time
 
 from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
@@ -40,25 +41,80 @@ def _get_current_user_id(current_user: dict) -> str:
 
 
 def _map_wix_error(exc: Exception, fallback: str = "Wix API request failed") -> HTTPException:
+    """Map Wix API exceptions to proper HTTP responses with actionable guidance."""
+    import traceback
+    
     if isinstance(exc, HTTPException):
         return exc
+    
+    # Try to extract meaningful error from Wix API response
+    wix_error_detail = None
+    wix_error_code = None
+    
+    if hasattr(exc, 'response') and exc.response is not None:
+        try:
+            err_body = exc.response.json()
+            if isinstance(err_body, dict):
+                wix_error_detail = err_body.get('message') or err_body.get('error') or err_body.get('details')
+                wix_error_code = err_body.get('code') or err_body.get('errorCode')
+        except:
+            wix_error_detail = exc.response.text[:300] if exc.response.text else None
+    
     if isinstance(exc, requests.HTTPError):
         status = exc.response.status_code if exc.response is not None else None
-        msg = str(exc) if str(exc) != "" else fallback
+        msg = wix_error_detail or str(exc) if str(exc) != "" else fallback
+        
         if status == 401:
-            return HTTPException(status_code=401, detail=msg)
+            return HTTPException(
+                status_code=401, 
+                detail=f"Wix authorization failed. Please reconnect your Wix account."
+            )
         if status == 403:
-            return HTTPException(status_code=403, detail=msg)
-        return HTTPException(status_code=502, detail=msg)
+            return HTTPException(
+                status_code=403,
+                detail=f"Wix permission denied. Ensure your OAuth app has blog permissions (BLOG.CREATE-DRAFT)."
+            )
+        if status == 404:
+            return HTTPException(
+                status_code=502,
+                detail=f"Wix API endpoint not found. The blog feature may not be enabled on this site."
+            )
+        if status == 429:
+            return HTTPException(
+                status_code=429,
+                detail=f"Wix rate limit exceeded. Please wait a moment and try again."
+            )
+        if status == 500:
+            return HTTPException(
+                status_code=502,
+                detail=f"Wix server error. This is usually temporary — please try again."
+            )
+        if status == 502 or status == 503 or status == 504:
+            return HTTPException(
+                status_code=502,
+                detail=f"Wix service temporarily unavailable. Please try again in a moment."
+            )
+        return HTTPException(status_code=502, detail=msg or fallback)
+    
     if isinstance(exc, requests.RequestException):
-        return HTTPException(status_code=502, detail=str(exc) or fallback)
-    return HTTPException(status_code=500, detail=str(exc))
+        return HTTPException(
+            status_code=502, 
+            detail="Network error connecting to Wix. Please check your connection and try again."
+        )
+    
+    # For validation errors from blog_publisher
+    error_str = str(exc)
+    if "validation failed" in error_str.lower():
+        return HTTPException(status_code=400, detail=error_str)
+    
+    return HTTPException(status_code=500, detail=f"{fallback}: {error_str}")
 
 
 def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
     user_id = _get_current_user_id(current_user)
     tokens = wix_oauth_service.get_user_tokens(user_id)
     if tokens:
+        logger.info(f"Wix token resolved from DB for user {user_id[:8]}...")
         return tokens[0]
 
     token_status = wix_oauth_service.get_user_token_status(user_id)
@@ -66,14 +122,25 @@ def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
     if not expired_tokens:
         raise HTTPException(status_code=401, detail="Wix account not connected")
 
+    MAX_REFRESH_ATTEMPTS = 3
+    attempt = 0
     for candidate in expired_tokens:
+        if attempt >= MAX_REFRESH_ATTEMPTS:
+            logger.warning(f"Wix token refresh: reached max {MAX_REFRESH_ATTEMPTS} attempts for user {user_id[:8]}...")
+            break
         refresh_token = candidate.get("refresh_token")
         token_id = candidate.get("id")
         if not refresh_token:
             continue
+        attempt += 1
+        if attempt > 1:
+            backoff = min(2 ** (attempt - 1), 8)
+            logger.info(f"Wix token refresh: attempt {attempt}/{MAX_REFRESH_ATTEMPTS}, waiting {backoff}s...")
+            time.sleep(backoff)
         try:
             refreshed = wix_service.refresh_access_token(refresh_token)
         except Exception as exc:
+            logger.warning(f"Wix token refresh attempt {attempt} failed: {str(exc)[:120]}")
             continue
 
         wix_oauth_service.update_tokens(
@@ -83,7 +150,7 @@ def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
             expires_in=refreshed.get("expires_in"),
             token_id=token_id,
         )
-
+        logger.info(f"Wix token refreshed successfully on attempt {attempt} for user {user_id[:8]}...")
         return {
             "access_token": refreshed.get("access_token"),
             "refresh_token": refreshed.get("refresh_token", refresh_token),
@@ -95,9 +162,18 @@ def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
 
 
 class WixAuthRequest(BaseModel):
-    """Request model for Wix authentication"""
-    code: str
-    state: str
+    """Request model for Wix authentication.
+    Supports two modes:
+    1. Backend exchanges code: requires code + code_verifier
+    2. Frontend already exchanged: provides access_token directly
+    """
+    code: Optional[str] = None
+    state: Optional[str] = None
+    code_verifier: Optional[str] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    token_type: Optional[str] = "Bearer"
 
 
 class WixPublishRequest(BaseModel):
@@ -112,6 +188,7 @@ class WixPublishRequest(BaseModel):
     publish: bool = True
     access_token: Optional[str] = None
     member_id: Optional[str] = None
+    site_id: Optional[str] = None
     seo_metadata: Optional[Dict[str, Any]] = None
 class WixCreateCategoryRequest(BaseModel):
     access_token: str
@@ -217,39 +294,91 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
         
-        if not request.state:
-            raise HTTPException(status_code=400, detail="Missing OAuth state")
-        code_verifier = wix_oauth_service.consume_pkce_verifier(user_id=user_id, state=request.state)
-        if not code_verifier:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or expired OAuth state. Please restart Wix connection."
-            )
-        # Exchange code for tokens
-        tokens = wix_service.exchange_code_for_tokens(request.code, code_verifier=code_verifier)
+        access_token: str | None = None
+        refresh_token: str | None = None
+        expires_in: int | None = None
+        token_type: str = "Bearer"
+        site_info: dict = {}
+        site_id: str | None = None
+        member_id: str | None = None
+        permissions: dict = {}
         
-        # Get site information to extract site_id and member_id
-        site_info = wix_service.get_site_info(tokens['access_token'])
-        site_id = site_info.get('siteId') or site_info.get('site_id')
+        # MODE 2: Frontend already exchanged the code (preferred — avoids PKCE verifier mismatch)
+        if request.access_token:
+            logger.info(f"Wix callback mode=FRONTEND_TOKEN for user {user_id}")
+            access_token = request.access_token
+            refresh_token = request.refresh_token
+            expires_in = request.expires_in
+            token_type = request.token_type or "Bearer"
+            
+            # Non-fatal enrichment
+            try:
+                site_info = wix_service.get_site_info(access_token)
+                site_id = site_info.get('siteId') or site_info.get('site_id')
+            except Exception as e:
+                logger.warning(f"get_site_info failed (non-fatal): {e}")
+            try:
+                member_id = wix_service.extract_member_id_from_access_token(access_token)
+            except Exception:
+                pass
+            try:
+                permissions = wix_service.check_blog_permissions(access_token)
+            except Exception as e:
+                logger.warning(f"check_blog_permissions failed (non-fatal): {e}")
         
-        # Extract member_id from token if possible
-        member_id = None
-        try:
-            member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
-        except Exception:
-            pass
+        # MODE 1: Backend exchanges code (legacy / requires correct code_verifier)
+        elif request.code:
+            if not request.state:
+                raise HTTPException(status_code=400, detail="Missing OAuth state")
+            code_verifier = request.code_verifier
+            if not code_verifier:
+                code_verifier = wix_oauth_service.consume_pkce_verifier(user_id=user_id, state=request.state)
+                if code_verifier:
+                    logger.info(f"Fallback: using DB-stored code_verifier for user {user_id}")
+            if not code_verifier:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired OAuth state. Please restart Wix connection."
+                )
+            logger.info(f"Wix callback mode=BACKEND_EXCHANGE for user {user_id}")
+            tokens = wix_service.exchange_code_for_tokens(request.code, code_verifier=code_verifier)
+            logger.info(f"Token exchange succeeded for user {user_id}")
+            access_token = tokens['access_token']
+            refresh_token = tokens.get('refresh_token')
+            expires_in = tokens.get('expires_in')
+            token_type = tokens.get('token_type', 'Bearer')
+            
+            try:
+                site_info = wix_service.get_site_info(access_token)
+                site_id = site_info.get('siteId') or site_info.get('site_id')
+            except Exception as e:
+                logger.warning(f"get_site_info failed (non-fatal): {e}")
+            try:
+                from services.integrations.wix.utils import extract_meta_from_token
+                site_id = extract_meta_from_token(access_token) or site_id
+            except Exception:
+                pass
+            try:
+                member_id = wix_service.extract_member_id_from_access_token(access_token)
+            except Exception:
+                pass
+            try:
+                permissions = wix_service.check_blog_permissions(access_token)
+            except Exception as e:
+                logger.warning(f"check_blog_permissions failed (non-fatal): {e}")
+        else:
+            raise HTTPException(status_code=400, detail="Missing code or access_token")
         
-        # Check permissions
-        permissions = wix_service.check_blog_permissions(tokens['access_token'])
+        if not access_token:
+            raise HTTPException(status_code=500, detail="No access_token available")
         
         # Store tokens securely in database
         stored = wix_oauth_service.store_tokens(
             user_id=user_id,
-            access_token=tokens['access_token'],
-            refresh_token=tokens.get('refresh_token'),
-            expires_in=tokens.get('expires_in'),
-            token_type=tokens.get('token_type', 'Bearer'),
-            scope=tokens.get('scope'),
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in,
+            token_type=token_type,
             site_id=site_id,
             member_id=member_id
         )
@@ -260,10 +389,10 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
         return {
             "success": True,
             "tokens": {
-                "access_token": tokens['access_token'],
-                "refresh_token": tokens.get('refresh_token'),
-                "expires_in": tokens.get('expires_in'),
-                "token_type": tokens.get('token_type', 'Bearer')
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": expires_in,
+                "token_type": token_type
             },
             "site_info": site_info,
             "permissions": permissions,
@@ -288,11 +417,22 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
         if not code_verifier:
             raise HTTPException(status_code=400, detail="Invalid or expired OAuth state. Please reconnect Wix.")
         tokens = wix_service.exchange_code_for_tokens(code, code_verifier=code_verifier)
-        site_info = wix_service.get_site_info(tokens['access_token'])
-        permissions = wix_service.check_blog_permissions(tokens['access_token'])
+        
+        # Non-fatal: get site info and permissions
+        site_info = {}
+        permissions = {}
+        site_id = None
+        try:
+            site_info = wix_service.get_site_info(tokens['access_token'])
+            site_id = site_info.get('siteId') or site_info.get('site_id')
+        except Exception as e:
+            logger.warning(f"GET callback: get_site_info non-fatal: {e}")
+        try:
+            permissions = wix_service.check_blog_permissions(tokens['access_token'])
+        except Exception as e:
+            logger.warning(f"GET callback: check_blog_permissions non-fatal: {e}")
         
         # Store tokens in database if we have user_id
-        site_id = site_info.get('siteId') or site_info.get('site_id')
         member_id = None
         try:
             member_id = wix_service.extract_member_id_from_access_token(tokens['access_token'])
@@ -406,13 +546,18 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
     access_token unless they want to override the stored one.
     """
     try:
+        site_id = request.site_id
         if request.access_token:
             from services.integrations.wix.utils import normalize_token_string
             access_token = normalize_token_string(request.access_token)
+            logger.info(f"Wix publish: using frontend-fallback token for user {_get_current_user_id(current_user)[:8]}...")
         else:
             try:
                 token_info = _resolve_valid_wix_token(current_user)
                 access_token = token_info["access_token"]
+                if not site_id:
+                    site_id = token_info.get("site_id")
+                logger.info(f"Wix publish: using backend DB token for user {_get_current_user_id(current_user)[:8]}...")
             except HTTPException:
                 access_token = None
 
@@ -422,19 +567,41 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
                 "error": "Wix account not connected. Connect your Wix account first.",
             }
 
+        if not request.content or not request.content.strip():
+            return {
+                "success": False,
+                "error": "Content cannot be empty. Please write your blog post before publishing.",
+            }
+
+        content_length = len(request.content.strip())
+        if content_length > 50000:
+            return {
+                "success": False,
+                "error": f"Content is {content_length // 1000}K characters — maximum is 50K. Please shorten your content.",
+            }
+
+        content_warning = None
+        if content_length > 30000:
+            content_warning = f"Content is {content_length // 1000}K characters. Very long posts may take longer to publish on Wix."
+            logger.warning(f"Wix publish: large content ({content_length} chars) for user {_get_current_user_id(current_user)[:8]}...")
+
         member_id = request.member_id
         if not member_id:
             member_id = wix_service.extract_member_id_from_access_token(access_token)
         if not member_id:
-            member_info = wix_service.get_current_member(access_token)
-            member_id = (member_info.get("member") or {}).get("id") or member_info.get("id")
+            try:
+                member_info = wix_service.get_current_member(access_token)
+                if member_info and isinstance(member_info, dict):
+                    member_id = (member_info.get("member") or {}).get("id") or member_info.get("id")
+            except Exception as e:
+                logger.warning(f"Wix: could not resolve member ID from token: {e}")
         if not member_id:
             return {
                 "success": False,
                 "error": "Unable to resolve Wix member ID. Please reconnect your Wix account.",
             }
 
-        # Resolve categories: accept IDs or names (looked up/created)
+        # Resolve categories/tags: precedence is top-level params > seo_metadata fallback
         category_ids = request.category_ids or request.category_names
         tag_ids = request.tag_ids or request.tag_names
 
@@ -444,6 +611,9 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
                 category_ids = seo_metadata.get("blog_categories")
             if not tag_ids and seo_metadata.get("blog_tags"):
                 tag_ids = seo_metadata.get("blog_tags")
+
+            if seo_metadata.get("url_slug"):
+                logger.info(f"Wix publish: using SEO url_slug for post slug: {seo_metadata.get('url_slug')[:50]}")
 
         # Ensure category_ids and tag_ids are lists of strings (not ints)
         if category_ids:
@@ -461,6 +631,7 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
             publish=request.publish,
             member_id=member_id,
             seo_metadata=seo_metadata,
+            site_id=site_id,
         )
         post = result.get("draftPost") or result.get("post") or result
         raw_url = post.get("url")
@@ -474,7 +645,8 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
             "success": True,
             "post_id": str(post.get("id", "")),
             "url": post_url,
-            "publish_state": "PUBLISHED" if request.publish else "DRAFT"
+            "publish_state": "PUBLISHED" if request.publish else "DRAFT",
+            **({"warning": content_warning} if content_warning else {}),
         }
     except Exception as e:
         logger.error(f"Failed to publish to Wix: {e}")

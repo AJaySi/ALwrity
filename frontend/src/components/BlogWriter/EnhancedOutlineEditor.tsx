@@ -910,16 +910,25 @@ const EnhancedOutlineEditor: React.FC<Props> = ({
           defaultPrompt={getSectionHeading(imageModalState.sectionId)}
           context={getSectionContext(imageModalState.sectionId)}
           onImageGenerated={(imageBase64, sectionId) => { 
+            console.time('[SectionImages] onImageGenerated');
             if (sectionId && setSectionImages) { 
               setSectionImages((prev: Record<string, string>) => ({ ...prev, [sectionId]: imageBase64 })); 
               try {
                 const existing = JSON.parse(localStorage.getItem('blog_section_images') || '{}');
                 existing[sectionId] = imageBase64;
-                localStorage.setItem('blog_section_images', JSON.stringify(existing));
+                const serialized = JSON.stringify(existing);
+                if (serialized.length > 4_000_000) {
+                  console.warn(`[SectionImages] Approaching localStorage quota: ${(serialized.length / 1024 / 1024).toFixed(1)}MB`);
+                }
+                localStorage.setItem('blog_section_images', serialized);
+                console.timeLog('[SectionImages] onImageGenerated', `saved sectionId=${sectionId} base64_len=${imageBase64.length}`);
               } catch (e) {
                 console.warn('[SectionImages] Failed to persist to localStorage:', e);
               }
-            } 
+            } else {
+              console.warn('[SectionImages] Skipped: sectionId=', sectionId, 'setSectionImages=', !!setSectionImages);
+            }
+            console.timeEnd('[SectionImages] onImageGenerated');
           }}
         />
       )}

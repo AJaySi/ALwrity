@@ -144,25 +144,25 @@ class CompetitorResponseAgent(BaseALwrityAgent):
             proposals.append(TaskProposal(
                 title="Review Competitor Content",
                 description=f"SIF found {competitor_count} competitor pages. Review for gap opportunities.",
-                pillar_id="create",
+                pillar_id="analyze",
                 priority="high",
                 estimated_time=45,
                 source_agent="CompetitorResponseAgent",
                 reasoning="SIF-detected competitor activity presents content gap opportunities.",
                 action_type="navigate",
-                action_url="/content-planning-dashboard"
+                action_url="/seo-dashboard"
             ))
         else:
             proposals.append(TaskProposal(
                 title="Research Competitor Topics",
                 description="Search for competitor content in your niche to identify coverage gaps.",
-                pillar_id="create",
+                pillar_id="analyze",
                 priority="medium",
                 estimated_time=30,
                 source_agent="CompetitorResponseAgent",
                 reasoning="Understanding competitor positioning improves content strategy.",
                 action_type="navigate",
-                action_url="/content-planning-dashboard"
+                action_url="/seo-dashboard"
             ))
 
         return proposals

@@ -225,9 +225,9 @@ class WixService:
                 'error': str(e)
             }
     
-    def import_image_to_wix(self, access_token: str, image_url: str, display_name: str = None) -> str:
+    def import_image_to_wix(self, access_token: str, image_url: str, display_name: str = None) -> Optional[str]:
         """
-        Import external image to Wix Media Manager
+        Import external image to Wix Media Manager.
         
         Args:
             access_token: Valid access token
@@ -235,7 +235,7 @@ class WixService:
             display_name: Optional display name for the image
             
         Returns:
-            Wix media ID
+            Wix media ID string, or None if import failed
         """
         try:
             result = self.media_service.import_image(
@@ -243,10 +243,15 @@ class WixService:
                 image_url,
                 display_name or f'Imported Image {datetime.now().strftime("%Y%m%d_%H%M%S")}'
             )
-            return result['file']['id']
-        except requests.RequestException as e:
-            logger.error(f"Failed to import image to Wix: {e}")
-            raise
+            if result and isinstance(result, dict) and 'file' in result:
+                media_id = result['file'].get('id')
+                if media_id:
+                    return str(media_id)
+            logger.warning(f"Image import returned unexpected result structure: {type(result)}")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to import image to Wix (non-fatal): {e}")
+            return None
     
     def convert_content_to_ricos(self, content: str, images: List[str] = None, 
                                  use_wix_api: bool = False, access_token: str = None) -> Dict[str, Any]:
@@ -276,7 +281,8 @@ class WixService:
     def create_blog_post(self, access_token: str, title: str, content: str, 
                         cover_image_url: str = None, category_ids: List[str] = None,
                         tag_ids: List[str] = None, publish: bool = True, 
-                        member_id: str = None, seo_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+                        member_id: str = None, seo_metadata: Dict[str, Any] = None,
+                        site_id: str = None) -> Dict[str, Any]:
         """
         Create and optionally publish a blog post on Wix
         
@@ -322,6 +328,7 @@ class WixService:
             tag_ids=tag_ids,
             publish=publish,
             seo_metadata=seo_metadata,
+            site_id=site_id,
             import_image_func=self.import_image_to_wix,
             lookup_categories_func=self.lookup_or_create_categories,
             lookup_tags_func=self.lookup_or_create_tags,

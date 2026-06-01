@@ -47,7 +47,10 @@ class WixAuthService:
             'code_verifier': code_verifier,
         }
         token_url = f'{self.base_url}/oauth2/token'
+        logger.info(f"Wix token exchange: client_id={self.client_id}, redirect_uri={self.redirect_uri}, code_verifier_prefix={code_verifier[:10]}...")
         response = requests.post(token_url, headers=headers, data=data)
+        if response.status_code != 200:
+            logger.error(f"Wix token exchange failed: {response.status_code} {response.text}")
         response.raise_for_status()
         return response.json()
 

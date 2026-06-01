@@ -4,6 +4,7 @@ import { wordpressAPI, WordPressSite, WordPressPublishRequest } from '../../../a
 import { BlogSEOMetadataResponse } from '../../../services/blogWriterApi';
 import WixConnectModal from './WixConnectModal';
 import { useWixPublish } from '../../../hooks/useWixPublish';
+import { useTextToSpeech } from '../../../hooks/useTextToSpeech';
 
 const saveCompleteBlogAsset = async (
   title: string,
@@ -48,6 +49,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
     setShowWixConnectModal,
     closeWixConnectModal,
     handleWixConnectionSuccess,
+    validateWixContent,
   } = useWixPublish();
 
   const [wordpressSites, setWordpressSites] = useState<WordPressSite[]>([]);
@@ -55,6 +57,39 @@ export const PublishContent: React.FC<PublishContentProps> = ({
   const [publishing, setPublishing] = useState<string | null>(null);
   const [publishResult, setPublishResult] = useState<{ platform: string; success: boolean; message: string; url?: string } | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [wixContentWarning, setWixContentWarning] = useState<string | null>(null);
+
+  // Audio / TTS
+  const { speak, stop, isSpeaking, isSupported } = useTextToSpeech();
+  const [isListening, setIsListening] = useState(false);
+
+  const stripMarkdown = (md: string) => {
+    return md
+      .replace(/[#*_~`]/g, '')
+      .replace(/\[(.*?)\]\(.*\)/g, '$1')
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+  };
+
+  const handleListen = () => {
+    if (isSpeaking) {
+      stop();
+      setIsListening(false);
+      return;
+    }
+    const md = buildFullMarkdown();
+    const plainText = stripMarkdown(md);
+    if (!plainText) return;
+    setIsListening(true);
+    speak(plainText, { rate: 1 });
+  };
+
+  useEffect(() => {
+    if (isListening && !isSpeaking) {
+      setIsListening(false);
+    }
+  }, [isSpeaking, isListening]);
 
   useEffect(() => {
     checkWPStatus();
@@ -105,6 +140,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
       const result = await wordpressAPI.publishContent(request);
       if (result.success) {
         setPublishResult({ platform: 'wordpress', success: true, message: `Published to "${activeSite.site_name}"!`, url: result.post_url });
+        try { localStorage.setItem('blog_publish_completed', 'true'); } catch {}
       } else {
         setPublishResult({ platform: 'wordpress', success: false, message: result.error || 'Publish failed' });
       }
@@ -118,10 +154,24 @@ export const PublishContent: React.FC<PublishContentProps> = ({
   const handlePublishToWix = async () => {
     const md = buildFullMarkdown();
     setPublishResult(null);
+    setWixContentWarning(null);
+    const validation = validateWixContent(md);
+    if (!validation.valid) {
+      setPublishResult({ platform: 'wix', success: false, message: validation.warning || 'Content validation failed.' });
+      return;
+    }
+    if (validation.warning) {
+      setWixContentWarning(validation.warning);
+    }
     const result = await publishToWix(md, seoMetadata, blogTitle);
+    setPublishResult({ platform: 'wix', success: result.success, message: result.message, url: result.url });
+    if (result.warning && result.success) {
+      setWixContentWarning(result.warning);
+    }
     setPublishResult({ platform: 'wix', success: result.success, message: result.message, url: result.url });
     if (result.success) {
       saveCompleteBlogAsset(blogTitle || seoMetadata?.seo_title || 'Blog Post', md, seoMetadata);
+      try { localStorage.setItem('blog_publish_completed', 'true'); } catch {}
     }
   };
 
@@ -227,6 +277,11 @@ export const PublishContent: React.FC<PublishContentProps> = ({
               Site: {wixStatus.site_info.name || wixStatus.site_info.displayName}
             </div>
           )}
+          {wixContentWarning && (
+            <div style={{ marginTop: 8, padding: '6px 10px', fontSize: '0.8rem', color: '#92400e', background: '#fef3c7', borderRadius: 6, border: '1px solid #fcd34d' }}>
+              {wixContentWarning}
+            </div>
+          )}
         </div>
 
         {/* Export card */}
@@ -235,7 +290,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
           <p style={{ margin: '4px 0 12px 0', fontSize: '0.85rem', color: '#64748b' }}>
             Copy your blog content for use elsewhere
           </p>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={handleCopyMarkdown}
               style={{ ...btnStyle, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}
@@ -248,6 +303,19 @@ export const PublishContent: React.FC<PublishContentProps> = ({
             >
               {copyDone ? 'Copied!' : 'Copy HTML'}
             </button>
+            {isSupported && (
+              <button
+                onClick={handleListen}
+                style={{
+                  ...btnStyle,
+                  background: isListening ? '#fef2f2' : '#f1f5f9',
+                  color: isListening ? '#991b1b' : '#334155',
+                  border: `1px solid ${isListening ? '#fecaca' : '#e2e8f0'}`,
+                }}
+              >
+                {isListening ? '🔊 Stop Listening' : '🔈 Listen to Blog'}
+              </button>
+            )}
           </div>
         </div>
       </div>

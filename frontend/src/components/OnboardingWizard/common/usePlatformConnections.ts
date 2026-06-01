@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createClient, OAuthStrategy } from '@wix/sdk';
+import { WIX_CLIENT_ID, getWixRedirectOrigin, getWixTrustedOrigins } from '../../../config/wixConfig';
+import { markConnectionHandled, isAlreadyHandled, clearConnectionHandled } from '../../../utils/wixConnectionDedup';
 
 export const usePlatformConnections = () => {
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
@@ -7,15 +9,15 @@ export const usePlatformConnections = () => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Handle Wix OAuth popup messages
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const trusted = [window.location.origin, ngrokOrigin];
+      const trusted = getWixTrustedOrigins();
       if (!trusted.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
       if (event.data.type === 'WIX_OAUTH_SUCCESS') {
+        if (isAlreadyHandled()) return;
+        markConnectionHandled();
         setConnectedPlatforms(prev => {
           const updated = [...prev.filter(id => id !== 'wix'), 'wix'];
           return updated;
@@ -36,6 +38,8 @@ export const usePlatformConnections = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('wix_connected') === 'true') {
+      if (isAlreadyHandled()) return;
+      markConnectionHandled();
       setConnectedPlatforms(prev => {
         const updated = [...prev.filter(id => id !== 'wix'), 'wix'];
         return updated;
@@ -47,6 +51,7 @@ export const usePlatformConnections = () => {
 
   const handleWixConnect = async () => {
     try {
+      clearConnectionHandled();
       // Store current page URL BEFORE redirecting (critical for proper redirect back)
       // This ensures we can redirect back to the correct page (e.g., Blog Writer) after OAuth
       // Only store if not already set (allows WixConnectModal to override if needed)
@@ -60,22 +65,25 @@ export const usePlatformConnections = () => {
         // Ignore storage errors
       }
 
+      if (!WIX_CLIENT_ID) {
+        throw new Error('WIX_CLIENT_ID is not configured. Please check your .env file and restart the dev server.');
+      }
+      console.log('[handleWixConnect] Using WIX_CLIENT_ID:', WIX_CLIENT_ID.substring(0, 8) + '...');
+
       // Use the working Wix OAuth flow from WixTestPage
       const wixClient = createClient({
-        auth: OAuthStrategy({ clientId: '75d88e36-1c76-4009-b769-15f4654556df' })
+        auth: OAuthStrategy({ clientId: WIX_CLIENT_ID })
       });
 
-      const NGROK_ORIGIN = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const redirectOrigin = window.location.origin.includes('localhost') ? NGROK_ORIGIN : window.location.origin;
+      const redirectOrigin = getWixRedirectOrigin();
       const redirectUri = `${redirectOrigin}/wix/callback`;
+      console.log('[handleWixConnect] Redirect URI:', redirectUri);
+
       const oauthData = await wixClient.auth.generateOAuthData(redirectUri);
-      
+
       // Persist OAuth data robustly so callback can always recover it
-      // 1) SessionStorage for same-origin same-tab flows
       try { sessionStorage.setItem('wix_oauth_data', JSON.stringify(oauthData)); } catch {}
-      // 2) Key by state so callback can look up by state value
       try { sessionStorage.setItem(`wix_oauth_data_${oauthData.state}`, JSON.stringify(oauthData)); } catch {}
-      // 3) window.name persists across top-level redirects even when origin changes
       try {
         const redirectTo = sessionStorage.getItem('wix_oauth_redirect') || window.location.href;
         console.log('[handleWixConnect] Storing redirect_to in window.name:', redirectTo);
@@ -83,10 +91,23 @@ export const usePlatformConnections = () => {
       } catch (e) {
         console.error('[handleWixConnect] Failed to set window.name:', e);
       }
+
+      console.log('[handleWixConnect] Generating auth URL...');
       const { authUrl } = await wixClient.auth.getAuthUrl(oauthData);
+      console.log('[handleWixConnect] Auth URL generated, redirecting...');
       window.location.href = authUrl;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Wix connection error:', error);
+      const message = error?.message || 'Unknown error during Wix connection';
+      if (message.includes('System error occurred')) {
+        throw new Error(
+          `Wix SDK failed to generate auth URL. Common causes:\n` +
+          `1. WIX_CLIENT_ID is missing or invalid (current: ${WIX_CLIENT_ID ? 'set' : 'EMPTY'})\n` +
+          `2. The redirect URI (${getWixRedirectOrigin()}/wix/callback) is not registered in your Wix app\n` +
+          `3. The Wix app does not have OAuth enabled\n` +
+          `Original error: ${message}`
+        );
+      }
       throw error;
     }
   };

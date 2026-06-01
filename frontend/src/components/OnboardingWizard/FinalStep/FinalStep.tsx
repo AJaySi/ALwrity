@@ -19,8 +19,8 @@ import {
 // import OnboardingButton from '../common/OnboardingButton';
 import { useNavigate } from 'react-router-dom';
 import { getApiKeys, completeOnboarding, getOnboardingSummary, getWebsiteAnalysisData, getResearchPreferencesData, setCurrentStep } from '../../../api/onboarding';
-import { SetupSummary, CapabilitiesOverview, AgentTeamSection } from './components';
-import { FinalStepProps, OnboardingData, Capability } from './types';
+import { SetupSummary, CapabilitiesOverview, AgentTeamSection, TaskSchedulingPanel } from './components';
+import { FinalStepProps, OnboardingData, Capability, OnboardingCompletionResult } from './types';
 import { getAgentTeam, type AgentTeamCatalogEntry } from '../../../api/agentsTeam';
 
 const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }) => {
@@ -35,6 +35,8 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
   const [validationStatus, setValidationStatus] = useState<{isValid: boolean, missingSteps: string[]} | null>(null);
   const [agentTeam, setAgentTeam] = useState<AgentTeamCatalogEntry[]>([]);
   const [agentTeamError, setAgentTeamError] = useState<string | null>(null);
+  const [completionResult, setCompletionResult] = useState<OnboardingCompletionResult | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
   // const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -46,6 +48,25 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
     loadOnboardingData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateHeaderContent]);
+
+  // Auto-redirect countdown after successful onboarding completion
+  useEffect(() => {
+    if (completionResult && countdown === null) {
+      setCountdown(8);
+    }
+    if (countdown === null || countdown <= 0) return;
+    const timer = setTimeout(() => {
+      setCountdown(prev => {
+        const next = (prev ?? 0) - 1;
+        if (next <= 0) {
+          navigate('/dashboard', { replace: true });
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [completionResult, countdown, navigate]);
 
   // Remove the DOM manipulation approach - we'll use React's built-in event handling
 
@@ -300,9 +321,16 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
         localStorage.setItem('onboarding_active_step', String(stepsLengthFallback()));
       } catch {}
       
-      // Navigate directly to dashboard using React Router
-      console.log('FinalStep: Navigating to dashboard with react-router navigate("/dashboard")');
-      navigate('/dashboard', { replace: true });
+      // Show TaskSchedulingPanel with completion result (auto-redirect starts)
+      const typedResult: OnboardingCompletionResult = {
+        message: completionResult?.message || 'Onboarding completed successfully',
+        completed_at: completionResult?.completed_at || new Date().toISOString(),
+        completion_percentage: completionResult?.completion_percentage ?? 100,
+        persona_generated: completionResult?.persona_generated ?? false,
+        scheduled_tasks: completionResult?.scheduled_tasks || [],
+        failed_tasks: completionResult?.failed_tasks || null,
+      };
+      setCompletionResult(typedResult);
     } catch (e: any) {
       console.error('FinalStep: Error completing onboarding:', e);
       console.error('FinalStep: Error details:', {
@@ -411,113 +439,157 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
         {/* Content - Only show when data is loaded */}
         {!dataLoading && (
           <React.Fragment>
-            {/* Setup Summary */}
-            <SetupSummary 
-              onboardingData={onboardingData}
-              capabilities={capabilities}
-              expandedSection={expandedSection}
-              setExpandedSection={setExpandedSection}
-            />
+            {/* Post-completion: show TaskSchedulingPanel and hide setup details */}
+            {completionResult ? (
+              <React.Fragment>
+                <TaskSchedulingPanel
+                  scheduledTasks={completionResult.scheduled_tasks}
+                  failedTasks={completionResult.failed_tasks || []}
+                  personaGenerated={completionResult.persona_generated}
+                  completedAt={completionResult.completed_at}
+                />
 
-            {/* Capabilities Overview */}
-            <CapabilitiesOverview capabilities={capabilities} />
-
-            {/* Agent Team */}
-            {agentTeamError && (
-              <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  Agent team configuration unavailable
-                </Typography>
-                <Typography variant="body2">{agentTeamError}</Typography>
-              </Alert>
-            )}
-            {!agentTeamError && agentTeam.length > 0 && (
-              <AgentTeamSection websiteName={websiteName} agents={agentTeam} contextCard={agentContextCard} />
-            )}
-
-            {/* Missing Requirements Warning */}
-            {missingRequirements.length > 0 && (
-              <Zoom in={true} timeout={1400}>
-                <Alert 
-                  severity="warning" 
-                  sx={{ mb: 4, borderRadius: 2 }}
-                  action={
-                    <Button color="inherit" size="small">
-                      Configure Now
-                    </Button>
-                  }
-                >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                    Missing Requirements
-                  </Typography>
-                  <Typography variant="body2">
-                    The following items are recommended for optimal experience: {missingRequirements.join(', ')}
-                  </Typography>
-                </Alert>
-              </Zoom>
-            )}
-
-
-            {/* Alerts */}
-            <Box sx={{ mt: 3 }}>
-              {error && (
-                <Fade in={true}>
-                  <Alert 
-                    severity="error" 
-                    sx={{ mb: 2, borderRadius: 2 }}
-                    action={
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button 
-                          color="inherit" 
-                          size="small"
-                          onClick={() => setError(null)}
-                        >
-                          Dismiss
-                        </Button>
-                      </Box>
-                    }
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, gap: 2 }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<Rocket />}
+                    onClick={() => navigate('/dashboard', { replace: true })}
+                    sx={{
+                      background: 'linear-gradient(135deg, #0f172a 0%, #312e81 40%, #4f46e5 100%)',
+                      fontSize: '1.125rem',
+                      fontWeight: 600,
+                      px: 4,
+                      py: 2,
+                      borderRadius: 999,
+                      textTransform: 'none',
+                      boxShadow: '0 10px 28px rgba(15,23,42,0.45)',
+                      letterSpacing: 0.2,
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #020617 0%, #1e1b4b 40%, #4338ca 100%)',
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 14px 36px rgba(15,23,42,0.55)',
+                      },
+                    }}
                   >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      Setup Incomplete
+                    Go to Dashboard
+                  </Button>
+                </Box>
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Auto-redirecting to dashboard in {countdown ?? 0}s...
+                  </Typography>
+                </Box>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                {/* Setup Summary */}
+                <SetupSummary 
+                  onboardingData={onboardingData}
+                  capabilities={capabilities}
+                  expandedSection={expandedSection}
+                  setExpandedSection={setExpandedSection}
+                />
+
+                {/* Capabilities Overview */}
+                <CapabilitiesOverview capabilities={capabilities} />
+
+                {/* Agent Team */}
+                {agentTeamError && (
+                  <Alert severity="warning" sx={{ mt: 3, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      Agent team configuration unavailable
                     </Typography>
-                    <Typography variant="body2">
-                      {error}
-                    </Typography>
+                    <Typography variant="body2">{agentTeamError}</Typography>
                   </Alert>
-                </Fade>
-              )}
-            </Box>
+                )}
+                {!agentTeamError && agentTeam.length > 0 && (
+                  <AgentTeamSection websiteName={websiteName} agents={agentTeam} contextCard={agentContextCard} />
+                )}
 
-            {/* Validation Status */}
-            {validationStatus && !validationStatus.isValid && (
-              <Box sx={{ mb: 3 }}>
-                <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                    Setup Incomplete
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    The following steps need to be completed before launching:
-                  </Typography>
-                  <Box component="ul" sx={{ pl: 2, m: 0 }}>
-                    {validationStatus.missingSteps.map((step, index) => (
-                      <li key={index}>
-                        <Typography variant="body2">{step}</Typography>
-                      </li>
-                    ))}
+                {/* Missing Requirements Warning */}
+                {missingRequirements.length > 0 && (
+                  <Zoom in={true} timeout={1400}>
+                    <Alert 
+                      severity="warning" 
+                      sx={{ mb: 4, borderRadius: 2 }}
+                      action={
+                        <Button color="inherit" size="small">
+                          Configure Now
+                        </Button>
+                      }
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                        Missing Requirements
+                      </Typography>
+                      <Typography variant="body2">
+                        The following items are recommended for optimal experience: {missingRequirements.join(', ')}
+                      </Typography>
+                    </Alert>
+                  </Zoom>
+                )}
+
+
+                {/* Alerts */}
+                <Box sx={{ mt: 3 }}>
+                  {error && (
+                    <Fade in={true}>
+                      <Alert 
+                        severity="error" 
+                        sx={{ mb: 2, borderRadius: 2 }}
+                        action={
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button 
+                              color="inherit" 
+                              size="small"
+                              onClick={() => setError(null)}
+                            >
+                              Dismiss
+                            </Button>
+                          </Box>
+                        }
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                          Setup Incomplete
+                        </Typography>
+                        <Typography variant="body2">
+                          {error}
+                        </Typography>
+                      </Alert>
+                    </Fade>
+                  )}
+                </Box>
+
+                {/* Validation Status */}
+                {validationStatus && !validationStatus.isValid && (
+                  <Box sx={{ mb: 3 }}>
+                    <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                        Setup Incomplete
+                      </Typography>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        The following steps need to be completed before launching:
+                      </Typography>
+                      <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                        {validationStatus.missingSteps.map((step, index) => (
+                          <li key={index}>
+                            <Typography variant="body2">{step}</Typography>
+                          </li>
+                        ))}
+                      </Box>
+                    </Alert>
                   </Box>
-                </Alert>
-              </Box>
-            )}
+                )}
 
-            {/* Launch Button */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-              <Button
-                variant="contained"
-                size="large"
-                disabled={loading || dataLoading}
-                onClick={handleLaunch}
-                startIcon={<Rocket />}
-                sx={{
+                {/* Launch Button */}
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    disabled={loading || dataLoading}
+                    onClick={handleLaunch}
+                    startIcon={<Rocket />}
+                    sx={{
               background: 'linear-gradient(135deg, #0f172a 0%, #312e81 40%, #4f46e5 100%)',
               fontSize: '1.125rem',
               fontWeight: 600,
@@ -539,25 +611,27 @@ const FinalStep: React.FC<FinalStepProps> = ({ onContinue, updateHeaderContent }
                 transform: 'none',
               }
             }}
-              >
-                Launch Alwrity & Complete Setup
-              </Button>
-            </Box>
+                  >
+                    Launch Alwrity & Complete Setup
+                  </Button>
+                </Box>
 
-            {/* Help Text */}
-            <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                This will complete your onboarding and launch Alwrity with your configured settings.
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}
-              >
-                <Star sx={{ fontSize: 16, color: '#fbbf24' }} />
-                Your SIF Agent Framework is ready to orchestrate your marketing.
-              </Typography>
-            </Box>
+                {/* Help Text */}
+                <Box sx={{ mt: 3, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    This will complete your onboarding and launch Alwrity with your configured settings.
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}
+                  >
+                    <Star sx={{ fontSize: 16, color: '#fbbf24' }} />
+                    Your SIF Agent Framework is ready to orchestrate your marketing.
+                  </Typography>
+                </Box>
+              </React.Fragment>
+            )}
           </React.Fragment>
         )}
       </Container>

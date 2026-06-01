@@ -95,11 +95,14 @@ const restoreInitialState = () => {
     seoAnalysis = readLS<BlogSEOAnalyzeResponse | null>('blog_seo_analysis', null);
     seoMetadata = readLS<BlogSEOMetadataResponse | null>('blog_seo_metadata', null);
 
-    // Restore section images
+    // Restore section images (log only once per session, not on every hook mount)
     const savedSectionImages = readLS<Record<string, string> | null>('blog_section_images', null);
     if (savedSectionImages && Object.keys(savedSectionImages).length > 0) {
       sectionImages = savedSectionImages;
-      console.log(`[SectionImages] Restored ${Object.keys(sectionImages).length} images from localStorage`);
+      if (!(window as any).__sectionImagesLogged) {
+        console.log(`[SectionImages] Restored ${Object.keys(sectionImages).length} images from localStorage`);
+        (window as any).__sectionImagesLogged = true;
+      }
     }
   } catch (error) {
     console.error('Error during initial state restoration:', error);
@@ -137,6 +140,7 @@ export const useBlogWriterState = () => {
   const [seoAnalysis, setSeoAnalysis] = useState<BlogSEOAnalyzeResponse | null>(initialState.seoAnalysis);
   const [genMode, setGenMode] = useState<'draft' | 'polished'>('polished');
   const [seoMetadata, setSeoMetadata] = useState<BlogSEOMetadataResponse | null>(initialState.seoMetadata);
+  const [introduction, setIntroduction] = useState<string>(localStorage.getItem('blog_introduction') || '');
   const [continuityRefresh, setContinuityRefresh] = useState<number>(0);
   const [outlineTaskId, setOutlineTaskId] = useState<string | null>(null);
   const [flowAnalysisCompleted, setFlowAnalysisCompleted] = useState<boolean>(false);
@@ -246,14 +250,31 @@ export const useBlogWriterState = () => {
   useEffect(() => {
     try {
       if (Object.keys(sectionImages).length > 0) {
-        localStorage.setItem('blog_section_images', JSON.stringify(sectionImages));
+        const serialized = JSON.stringify(sectionImages);
+        // Warn if approaching localStorage quota (~5MB)
+        if (serialized.length > 4_000_000) {
+          console.warn(`[SectionImages] Approaching localStorage quota: ${(serialized.length / 1024 / 1024).toFixed(1)}MB`);
+        }
+        localStorage.setItem('blog_section_images', serialized);
       } else {
-        localStorage.removeItem('blog_section_images');
+        // Only remove if we have previously saved images (avoid clearing on transient empty state)
+        if (localStorage.getItem('blog_section_images')) {
+          localStorage.removeItem('blog_section_images');
+        }
       }
     } catch (e) {
       console.warn('[SectionImages] Failed to persist to localStorage via effect:', e);
     }
   }, [sectionImages]);
+
+  // Persist introduction to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (introduction) {
+        localStorage.setItem('blog_introduction', introduction);
+      }
+    } catch {}
+  }, [introduction]);
 
   // Persist sections to blogWriterCache whenever they change
   useEffect(() => {
@@ -410,6 +431,7 @@ export const useBlogWriterState = () => {
     titleOptions,
     selectedTitle,
     sections,
+    introduction,
     seoAnalysis,
     genMode,
     seoMetadata,
@@ -433,6 +455,7 @@ export const useBlogWriterState = () => {
     setTitleOptions,
     setSelectedTitle,
     setSections,
+    setIntroduction,
     setSeoAnalysis,
     setGenMode,
     setSeoMetadata,

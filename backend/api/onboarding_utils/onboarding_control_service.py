@@ -50,22 +50,40 @@ class OnboardingControlService:
                 db.close()
     
     async def reset_onboarding(self, current_user: Dict[str, Any]) -> Dict[str, Any]:
-        """Reset the onboarding progress for a specific user."""
+        """Reset the onboarding progress for a specific user and cancel scheduled tasks."""
         try:
             from services.onboarding.progress_service import OnboardingProgressService
             user_id = str(current_user.get('clerk_user_id') or current_user.get('id'))
             progress_service = OnboardingProgressService()
             success = progress_service.reset_onboarding(user_id)
 
-            if success:
-                return {
-                    "message": "Onboarding progress reset successfully",
-                    "current_step": 1,
-                    "started_at": None,
-                    "user_id": user_id
-                }
-            else:
+            if not success:
                 raise HTTPException(status_code=500, detail="Failed to reset onboarding progress")
+
+            # Cancel APScheduler one-shot jobs for this user
+            cancelled_jobs = []
+            try:
+                from services.scheduler import get_scheduler
+                scheduler = get_scheduler()
+                for job_id_suffix in ["research_persona", "facebook_persona"]:
+                    job_id = f"{job_id_suffix}_{user_id}"
+                    try:
+                        scheduler.scheduler.remove_job(job_id)
+                        cancelled_jobs.append(job_id)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"Could not cancel APScheduler jobs for user {user_id}: {e}")
+
+            return {
+                "message": "Onboarding progress reset successfully",
+                "current_step": 1,
+                "started_at": None,
+                "user_id": user_id,
+                "cancelled_jobs": cancelled_jobs if cancelled_jobs else None,
+            }
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error resetting onboarding: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")

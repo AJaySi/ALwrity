@@ -230,7 +230,7 @@ class ALwrityAgentOrchestrator:
             # Content Guardian Agent
             if enabled_by_key.get("content_guardian", True):
                 try:
-                    from services.intelligence.sif_agents import ContentGuardianAgent
+                    from services.intelligence.agents.specialized.content_guardian import ContentGuardianAgent
                     from services.intelligence.txtai_service import TxtaiIntelligenceService
                     
                     # Initialize intelligence service if not already available
@@ -247,6 +247,19 @@ class ALwrityAgentOrchestrator:
                     logger.info(f"Initialized ContentGuardianAgent for user {self.user_id}")
                 except Exception as e:
                     logger.error(f"Failed to initialize ContentGuardianAgent: {e}")
+
+            # Content Gap Radar Agent
+            if enabled_by_key.get("content_gap_radar", True):
+                try:
+                    from services.intelligence.agents import ContentGapRadarAgent
+                    from services.intelligence.txtai_service import TxtaiIntelligenceService
+                    intel_service = TxtaiIntelligenceService(self.user_id)
+                    self.content_gap_radar_agent = ContentGapRadarAgent(intel_service, self.user_id)
+                    self.agents['content_gap_radar'] = self.content_gap_radar_agent
+                    initialized_agents.append("Content Gap Radar")
+                    logger.info(f"Initialized ContentGapRadarAgent for user {self.user_id}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize ContentGapRadarAgent: {e}")
 
             logger.info(f"Created {len(self.agents)} specialized agents for user {self.user_id}")
 
@@ -449,7 +462,8 @@ class ALwrityAgentOrchestrator:
             "competitor": ["Competitor monitoring", "Threat analysis", "Response generation", "Strategy execution"],
             "seo": ["SEO auditing", "Issue prioritization", "Auto-fixing", "Strategy generation"],
             "social": ["Social monitoring", "Content adaptation", "Engagement optimization", "Distribution management"],
-            "trend": ["Trend detection", "Opportunity analysis", "Content angle generation"]
+            "trend": ["Trend detection", "Opportunity analysis", "Content angle generation"],
+            "content_gap_radar": ["Content gap detection", "SERP opportunity scoring", "Competitor content deep-dive", "ROI-based topic prioritization", "Content brief generation"]
         }
 
 # Service class for agent orchestration

@@ -11,6 +11,8 @@ import {
   Alert
 } from '@mui/material';
 import { usePlatformConnections } from '../../../components/OnboardingWizard/common/usePlatformConnections';
+import { getWixTrustedOrigins } from '../../../config/wixConfig';
+import { markConnectionHandled, isAlreadyHandled } from '../../../utils/wixConnectionDedup';
 
 interface WixConnectModalProps {
   isOpen: boolean;
@@ -32,12 +34,13 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
     if (!isOpen) return;
 
     const handler = (event: MessageEvent) => {
-      const ngrokOrigin = process.env.REACT_APP_NGROK_ORIGIN || 'https://littery-sonny-unscrutinisingly.ngrok-free.dev';
-      const trusted = [window.location.origin, ngrokOrigin];
+      const trusted = getWixTrustedOrigins();
       if (!trusted.includes(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
 
       if (event.data.type === 'WIX_OAUTH_SUCCESS') {
+        if (isAlreadyHandled()) return;
+        markConnectionHandled();
         console.log('Wix OAuth success in modal');
         setIsConnecting(false);
         setError(null);
@@ -65,6 +68,8 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('wix_connected') === 'true') {
+      if (isAlreadyHandled()) return;
+      markConnectionHandled();
       setIsConnecting(false);
       setError(null);
       if (onConnectionSuccess) {
@@ -81,6 +86,8 @@ export const WixConnectModal: React.FC<WixConnectModalProps> = ({
 
     const handler = (e: StorageEvent) => {
       if (e.key === 'wix_connected' && e.newValue === 'true') {
+        if (isAlreadyHandled()) return;
+        markConnectionHandled();
         setIsConnecting(false);
         setError(null);
         if (onConnectionSuccess) {
