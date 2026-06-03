@@ -116,6 +116,19 @@ const BacklinkOutreachDashboard: React.FC = () => {
   const [subjectSuggestions, setSubjectSuggestions] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const [senderName, setSenderName] = useState('');
+  const [senderEmail, setSenderEmail] = useState('');
+  const [senderOrganization, setSenderOrganization] = useState('');
+  const [senderAddress, setSenderAddress] = useState('');
+  const [unsubscribeUrl, setUnsubscribeUrl] = useState('');
+  const [oneClickUnsubscribe, setOneClickUnsubscribe] = useState(false);
+  const [legalBasis, setLegalBasis] = useState('legitimate_interest');
+  const [contactDiscoverySource, setContactDiscoverySource] = useState('');
+  const [recipientRegion, setRecipientRegion] = useState('unknown');
+  const [recipientRegionSource, setRecipientRegionSource] = useState('user_attested');
+  const [consentStatus, setConsentStatus] = useState('unknown');
+  const [approvedByHuman, setApprovedByHuman] = useState(false);
+
   const [leadName, setLeadName] = useState('');
   const [leadSite, setLeadSite] = useState('');
   const [leadContentTopic, setLeadContentTopic] = useState('');
@@ -391,9 +404,26 @@ const BacklinkOutreachDashboard: React.FC = () => {
     { key: 'campaigns', label: 'Campaigns', desc: 'Create and manage outreach campaigns' },
     { key: 'discover', label: 'Discover', desc: 'AI-powered search for guest post opportunities' },
     { key: 'leads', label: 'Leads', desc: 'Track leads, send outreach, and manage replies' },
-    { key: 'composer', label: 'Composer', desc: 'AI email composer with smart suggestions' },
+    { key: 'composer', label: 'Composer', desc: 'AI email composer with compliance metadata' },
     { key: 'analytics', label: 'Analytics', desc: 'Campaign performance metrics and exports' },
   ];
+
+
+  const complianceReasons = [
+    !unsubscribeUrl.trim() && !oneClickUnsubscribe ? 'Add an unsubscribe URL or enable one-click unsubscribe.' : '',
+    !senderName.trim() ? 'Add the sender name.' : '',
+    !senderEmail.trim() ? 'Add the sender email.' : '',
+    !senderOrganization.trim() ? 'Add the sender organization.' : '',
+    !senderAddress.trim() ? 'Add a physical mailing address.' : '',
+    !legalBasis.trim() ? 'Record the legal basis.' : '',
+    !contactDiscoverySource.trim() ? 'Record where the contact was discovered.' : '',
+    recipientRegion === 'unknown' && !approvedByHuman ? 'Unknown recipient region requires manual review.' : '',
+    recipientRegionSource === 'tld_inference' && !approvedByHuman ? 'TLD-only region inference requires manual review.' : '',
+    ['eu', 'eea', 'uk', 'ca'].includes(recipientRegion) && (legalBasis !== 'consent' || consentStatus !== 'explicit')
+      ? 'Selected recipient region requires recorded explicit consent.' : '',
+  ].filter(Boolean);
+
+  const complianceReady = complianceReasons.length === 0;
 
   const SectionHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
     <div style={{ marginBottom: '16px' }}>
@@ -893,6 +923,71 @@ const BacklinkOutreachDashboard: React.FC = () => {
                   style={{ ...inputSx, fontFamily: 'monospace', fontSize: '13px', resize: 'vertical', lineHeight: 1.6 }} />
               </div>
 
+              {/* Compliance metadata */}
+              <div style={{ marginTop: '20px', padding: '16px', borderRadius: '10px', background: complianceReady ? 'rgba(67,233,123,0.08)' : 'rgba(245,87,108,0.08)', border: `1px solid ${complianceReady ? 'rgba(67,233,123,0.22)' : 'rgba(245,87,108,0.22)'}` }}>
+                <h4 style={{ margin: '0 0 4px', color: '#fff', fontSize: '14px' }}>Send Compliance Metadata</h4>
+                <p style={{ margin: '0 0 12px', color: 'rgba(255,255,255,0.45)', fontSize: '12px' }}>Policy checks require unsubscribe, sender identity, legal basis, contact source, and region-aware consent/review details before a send can be approved.</p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <input type="text" value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Sender name" style={inputSx} />
+                  <input type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} placeholder="Sender email" style={inputSx} />
+                  <input type="text" value={senderOrganization} onChange={(e) => setSenderOrganization(e.target.value)} placeholder="Organization / brand" style={inputSx} />
+                  <input type="text" value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} placeholder="Physical mailing address" style={inputSx} />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <input type="url" value={unsubscribeUrl} onChange={(e) => setUnsubscribeUrl(e.target.value)} placeholder="Unsubscribe URL" style={inputSx} />
+                  <label style={{ ...inputSx, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={oneClickUnsubscribe} onChange={(e) => setOneClickUnsubscribe(e.target.checked)} />
+                    One-click unsubscribe available
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <select value={legalBasis} onChange={(e) => setLegalBasis(e.target.value)} style={selectSx}>
+                    <option value="legitimate_interest">Legitimate interest</option>
+                    <option value="consent">Consent</option>
+                    <option value="contract">Contract</option>
+                  </select>
+                  <input type="text" value={contactDiscoverySource} onChange={(e) => setContactDiscoverySource(e.target.value)} placeholder="Contact discovery source (e.g. contact page URL)" style={inputSx} />
+                  <select value={recipientRegion} onChange={(e) => setRecipientRegion(e.target.value)} style={selectSx}>
+                    <option value="unknown">Recipient region unknown</option>
+                    <option value="us">United States</option>
+                    <option value="eu">EU / EEA</option>
+                    <option value="uk">United Kingdom</option>
+                    <option value="ca">Canada</option>
+                    <option value="au">Australia</option>
+                    <option value="br">Brazil</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <select value={recipientRegionSource} onChange={(e) => setRecipientRegionSource(e.target.value)} style={selectSx}>
+                    <option value="user_attested">Region user-attested</option>
+                    <option value="crm_record">Region from CRM/contact record</option>
+                    <option value="billing_or_profile">Region from profile/billing data</option>
+                    <option value="tld_inference">Region inferred from TLD only</option>
+                    <option value="unknown">Region source unknown</option>
+                  </select>
+                  <select value={consentStatus} onChange={(e) => setConsentStatus(e.target.value)} style={selectSx}>
+                    <option value="unknown">Consent status unknown</option>
+                    <option value="explicit">Explicit consent recorded</option>
+                    <option value="implied">Implied consent / soft opt-in</option>
+                    <option value="not_required">Not required for selected basis</option>
+                  </select>
+                  <label style={{ ...inputSx, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={approvedByHuman} onChange={(e) => setApprovedByHuman(e.target.checked)} />
+                    Manual review approved
+                  </label>
+                </div>
+
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: complianceReady ? 'rgba(67,233,123,0.12)' : 'rgba(245,87,108,0.12)', color: complianceReady ? '#43e97b' : '#f5576c', fontSize: '12px' }}>
+                  {complianceReady ? 'Compliance metadata is complete for policy validation.' : (
+                    <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                      {complianceReasons.map((reason) => <li key={reason}>{reason}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
               {/* Personalize */}
               <div style={{ marginTop: '24px', padding: '16px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <h4 style={{ margin: '0 0 4px', color: '#fff', fontSize: '14px' }}>Personalize for Lead</h4>
@@ -946,13 +1041,13 @@ const BacklinkOutreachDashboard: React.FC = () => {
               </div>
 
               {selectedCampaign && subject.trim() && body.trim() && (
-                <div style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(67,233,123,0.1)', border: '1px solid rgba(67,233,123,0.2)' }}>
-                  <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#43e97b' }}>
-                    Ready to send this email to leads in <strong>{selectedCampaign.name}</strong>?
+                <div style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: complianceReady ? 'rgba(67,233,123,0.1)' : 'rgba(245,87,108,0.1)', border: `1px solid ${complianceReady ? 'rgba(67,233,123,0.2)' : 'rgba(245,87,108,0.2)'}` }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '13px', color: complianceReady ? '#43e97b' : '#f5576c' }}>
+                    {complianceReady ? <>Ready to send this email to leads in <strong>{selectedCampaign.name}</strong>.</> : <>Complete compliance metadata before sending to <strong>{selectedCampaign.name}</strong> leads.</>}
                   </p>
-                  <TooltipWrap text="Go to the Leads tab to select recipients and send">
-                    <button onClick={() => setActiveTab('leads')}
-                      style={{ ...btnBase, padding: '8px 20px', background: GRADIENT_SUCCESS, color: '#1a1a2e', fontSize: '13px' }}>
+                  <TooltipWrap text={complianceReady ? 'Go to the Leads tab to select recipients and send' : 'Policy validation will block sends until all listed compliance fields are complete'}>
+                    <button onClick={() => setActiveTab('leads')} disabled={!complianceReady}
+                      style={{ ...btnBase, padding: '8px 20px', background: GRADIENT_SUCCESS, color: '#1a1a2e', fontSize: '13px', opacity: complianceReady ? 1 : 0.5 }}>
                       Go to Campaign Leads
                     </button>
                   </TooltipWrap>

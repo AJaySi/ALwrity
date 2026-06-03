@@ -76,6 +76,20 @@ export interface DeepDiscoveryResponse {
 
 // -- Policy --
 
+export interface SenderIdentity {
+  name: string;
+  email: string;
+  organization: string;
+  physical_mailing_address: string;
+  reply_to_email?: string;
+}
+
+export interface OneClickUnsubscribe {
+  enabled: boolean;
+  mailto?: string;
+  header_value?: string;
+}
+
 export interface BacklinkPolicyValidationRequest {
   user_id: string;
   workspace_id: string;
@@ -83,10 +97,15 @@ export interface BacklinkPolicyValidationRequest {
   recipient_email: string;
   recipient_domain: string;
   recipient_region: string;
+  recipient_region_source: string;
   legal_basis: string;
+  contact_discovery_source: string;
+  consent_status: string;
   approved_by_human: boolean;
   unsubscribe_url?: string;
-  sender_identity: string;
+  one_click_unsubscribe?: OneClickUnsubscribe;
+  sender_identity: SenderIdentity;
+  sender_email?: string;
   idempotency_key: string;
 }
 
@@ -183,6 +202,15 @@ export interface SendOutreachRequest {
   subject: string;
   body: string;
   idempotency_key: string;
+  sender_identity: SenderIdentity;
+  legal_basis: string;
+  contact_discovery_source: string;
+  recipient_region: string;
+  recipient_region_source: string;
+  consent_status: string;
+  approved_by_human: boolean;
+  unsubscribe_url?: string;
+  one_click_unsubscribe?: OneClickUnsubscribe;
   template_id?: string;
   template_variables?: Record<string, string>;
 }
