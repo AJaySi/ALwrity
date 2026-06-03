@@ -22,7 +22,10 @@ from services.backlink_outreach_models import (
     SuppressionAddRequest,
 )
 from services.backlink_outreach_service import backlink_outreach_service
-from services.backlink_outreach_storage import BacklinkOutreachStorageService
+from services.backlink_outreach_storage import (
+    BacklinkCampaignNotFoundError,
+    BacklinkOutreachStorageService,
+)
 from services.backlink_outreach_sender import backlink_outreach_sender
 from services.backlink_outreach_reply_monitor import backlink_outreach_reply_monitor
 from services.backlink_outreach_template_generator import (
@@ -87,9 +90,14 @@ async def discover_deep_backlink_opportunities(
 ):
     """Enhanced discovery using Exa neural search + DuckDuckGo with full-page scraping."""
     user_id = _resolve_user_id(current_user)
-    result = await backlink_outreach_service.deep_discover(payload.keyword, payload.max_results)
+    storage = None
     if payload.campaign_id:
         storage = BacklinkOutreachStorageService()
+        if not storage.get_campaign(payload.campaign_id, user_id):
+            raise HTTPException(status_code=404, detail="Campaign not found")
+
+    result = await backlink_outreach_service.deep_discover(payload.keyword, payload.max_results)
+    if payload.campaign_id:
         saved = 0
         save_failed = 0
         for opp in result.get("opportunities", []):
@@ -183,7 +191,9 @@ async def add_campaign_lead(
             notes=payload.notes,
         )
         return lead
-    except Exception as e:
+    except BacklinkCampaignNotFoundError:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to add lead")
 
 
