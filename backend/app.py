@@ -126,12 +126,8 @@ seo_tools_router = None
 if _is_full_mode():
     from routers.seo_tools import router as seo_tools_router
 
-# Skip Facebook Writer, LinkedIn, and other non-essential routes in feature-only modes
-# Also skip other heavy services that trigger PersonaAnalysisService initialization
+# Skip heavy services in feature-only modes (PersonaAnalysisService, etc.)
 if _is_full_mode():
-    from api.facebook_writer.routers import facebook_router
-    from routers.linkedin import router as linkedin_router
-    from api.linkedin_image_generation import router as linkedin_image_router
     from api.brainstorm import router as brainstorm_router
     from api.images import router as images_router
     from api.assets_serving import router as assets_serving_router
