@@ -28,6 +28,7 @@ export const FEATURE_KEYS = {
   WIX: 'wix',
   BING: 'bing',
   ASSET_LIBRARY: 'asset-library',
+  BACKLINKING: 'backlinking',
 } as const;
 
 export type FeatureKey = typeof FEATURE_KEYS[keyof typeof FEATURE_KEYS];
@@ -124,6 +125,7 @@ export function getSingleFeature(): string | null {
 const FEATURE_ROUTE_PRIORITY: [string, string][] = [
   ['podcast', '/podcast-maker'],
   ['blog_writer', '/blog-writer'],
+  ['backlinking', '/backlink-outreach'],
   ['story', '/story-writer'],
   ['image', '/image-studio'],
   ['video', '/video-studio'],

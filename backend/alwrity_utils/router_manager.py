@@ -67,6 +67,7 @@ OPTIONAL_ROUTER_REGISTRY = [
     {"name": "oauth_token_monitoring", "module": "api.oauth_token_monitoring_routes", "attr": "router", "features": {"all", "core"}},
     {"name": "agents", "module": "api.agents_api", "attr": "router", "features": {"all"}},
     {"name": "today_workflow", "module": "api.today_workflow", "attr": "router", "features": {"all"}},
+    {"name": "backlink_outreach", "module": "routers.backlink_outreach", "attr": "router", "features": {"all", "backlinking"}},
 ]
 
 OPTIONAL_MODULE_MATRIX = {

@@ -138,7 +138,6 @@ if _is_full_mode():
     from routers.image_studio import router as image_studio_router
     from routers.product_marketing import router as product_marketing_router
     from routers.campaign_creator import router as campaign_creator_router
-    from routers.backlink_outreach import router as backlink_outreach_router
 else:
     # In feature-only modes, only load essential assets router
     from api.assets_serving import router as assets_serving_router
@@ -147,7 +146,6 @@ else:
     image_studio_router = None
     product_marketing_router = None
     campaign_creator_router = None
-    backlink_outreach_router = None
 
 # Import hallucination detector router
 try:
@@ -683,8 +681,6 @@ if _is_full_mode():
         app.include_router(product_marketing_router)
     if campaign_creator_router:
         app.include_router(campaign_creator_router)
-    if backlink_outreach_router:
-        app.include_router(backlink_outreach_router)
 
     router_group_status["platform_extensions"] = {
         "mounted": True,
@@ -798,6 +794,24 @@ async def startup_event():
             await get_scheduler().start()
         else:
             logger.info(f"[FEATURE-MODE] Skipping scheduler startup (features: {enabled_features})")
+
+        # Recover stale YouTube tasks on startup
+        if _is_feature_enabled("youtube"):
+            try:
+                from api.youtube.task_manager import task_manager
+                from services.database import get_all_user_ids
+                user_ids = get_all_user_ids()
+                recovered = 0
+                for uid in user_ids:
+                    try:
+                        count = task_manager.recover_stale_tasks(uid)
+                        recovered += count
+                    except Exception:
+                        pass
+                if recovered > 0:
+                    logger.info(f"[STARTUP] Recovered {recovered} stale YouTube tasks across {len(user_ids)} users")
+            except Exception as e:
+                logger.warning(f"[STARTUP] YouTube task recovery skipped: {e}")
 
         # Check Wix configuration (OAuth-based, API key optional)
         wix_api_key = os.getenv('WIX_API_KEY')

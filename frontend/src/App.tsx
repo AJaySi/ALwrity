@@ -193,7 +193,7 @@ const App: React.FC = () => {
                     <Route path="/dashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
                     <Route path="/seo" element={<ProtectedRoute><FeatureRoute feature="seo"><SEODashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/seo-dashboard" element={<ProtectedRoute><FeatureRoute feature="seo"><SEODashboard /></FeatureRoute></ProtectedRoute>} />
-                    <Route path="/backlink-outreach" element={<ProtectedRoute><FeatureRoute feature="seo"><BacklinkOutreachDashboard /></FeatureRoute></ProtectedRoute>} />
+                    <Route path="/backlink-outreach" element={<ProtectedRoute><FeatureRoute feature="backlinking"><BacklinkOutreachDashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/content-planning" element={<ProtectedRoute><FeatureRoute feature="content-planning"><ContentPlanningDashboard /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/facebook-writer" element={<ProtectedRoute><FeatureRoute feature="social"><FacebookWriter /></FeatureRoute></ProtectedRoute>} />
                     <Route path="/linkedin-writer" element={<ProtectedRoute><FeatureRoute feature="social"><LinkedInWriter /></FeatureRoute></ProtectedRoute>} />

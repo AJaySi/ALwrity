@@ -58,6 +58,10 @@ FEATURE_GROUPS: Dict[str, FeatureGroup] = {
             "api.blog_writer.seo_analysis:router",
         ),
     ),
+    "backlinking": FeatureGroup(
+        features=("backlinking",),
+        routers=("routers.backlink_outreach:router",),
+    ),
 }
 
 
@@ -67,5 +71,6 @@ PROFILE_GROUP_MAP: Dict[str, Tuple[str, ...]] = {
     "podcast": ("core", "podcast"),
     "youtube": ("core", "youtube"),
     "blog_writer": ("core", "blog_writer"),
+    "backlinking": ("core", "backlinking"),
     "planning": ("core", "content_planning"),
 }
