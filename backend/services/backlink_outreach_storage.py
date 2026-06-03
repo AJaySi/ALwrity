@@ -16,6 +16,10 @@ from models.backlink_outreach_models import (
 )
 
 
+class BacklinkCampaignNotFoundError(RuntimeError):
+    """Raised when a backlink campaign is missing or not owned by the user."""
+
+
 class BacklinkOutreachStorageService:
     _NEW_LEAD_COLUMNS = [
         "url", "page_title", "snippet", "confidence_score", "discovery_source", "notes"
@@ -120,6 +124,14 @@ class BacklinkOutreachStorageService:
 
     # -- Lead CRUD --
 
+    def _campaign_belongs_to_user(self, db, campaign_id: str, user_id: str) -> bool:
+        return (
+            db.query(BacklinkCampaign)
+            .filter(BacklinkCampaign.id == campaign_id, BacklinkCampaign.user_id == user_id)
+            .first()
+            is not None
+        )
+
     def add_lead(
         self,
         campaign_id: str,
@@ -138,6 +150,9 @@ class BacklinkOutreachStorageService:
         if not db:
             raise RuntimeError("Database session unavailable")
         try:
+            if not self._campaign_belongs_to_user(db, campaign_id, user_id):
+                raise BacklinkCampaignNotFoundError("Campaign not found")
+
             lead = BacklinkLead(
                 id=f"bl_{uuid4().hex[:16]}",
                 campaign_id=campaign_id,
@@ -164,6 +179,9 @@ class BacklinkOutreachStorageService:
         if not db:
             raise RuntimeError("Database session unavailable")
         try:
+            if not self._campaign_belongs_to_user(db, campaign_id, user_id):
+                raise BacklinkCampaignNotFoundError("Campaign not found")
+
             added = []
             for data in leads_data:
                 lead = BacklinkLead(
