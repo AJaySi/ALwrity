@@ -91,10 +91,11 @@ async def discover_deep_backlink_opportunities(
     if payload.campaign_id:
         storage = BacklinkOutreachStorageService()
         saved = 0
+        duplicates_skipped = 0
         save_failed = 0
         for opp in result.get("opportunities", []):
             try:
-                storage.add_lead(
+                lead = storage.add_lead(
                     campaign_id=payload.campaign_id,
                     user_id=user_id,
                     url=opp["url"],
@@ -105,10 +106,14 @@ async def discover_deep_backlink_opportunities(
                     confidence_score=opp.get("confidence_score", 0.0),
                     discovery_source=opp.get("discovery_source", "duckduckgo"),
                 )
-                saved += 1
+                if lead.get("duplicate") or lead.get("skipped"):
+                    duplicates_skipped += 1
+                else:
+                    saved += 1
             except Exception:
                 save_failed += 1
         result["saved_to_campaign"] = saved
+        result["duplicates_skipped"] = duplicates_skipped
         result["save_failed"] = save_failed
     return result
 

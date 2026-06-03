@@ -1,7 +1,7 @@
 """DB models for production backlink outreach tracking."""
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, Boolean, Date
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, Boolean, Date, and_
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -128,6 +128,21 @@ class SendCounterDomain(Base):
 
 
 Index("idx_backlink_campaign_user_date", BacklinkCampaign.user_id, BacklinkCampaign.created_at)
+Index(
+    "idx_backlink_lead_campaign_url_unique",
+    BacklinkLead.campaign_id,
+    BacklinkLead.url,
+    unique=True,
+    sqlite_where=and_(BacklinkLead.url.isnot(None), BacklinkLead.url != ""),
+)
+Index(
+    "idx_backlink_lead_campaign_domain_email_unique",
+    BacklinkLead.campaign_id,
+    BacklinkLead.domain,
+    BacklinkLead.email,
+    unique=True,
+    sqlite_where=and_(BacklinkLead.email.isnot(None), BacklinkLead.email != ""),
+)
 Index("idx_backlink_attempt_campaign_date", OutreachAttempt.campaign_id, OutreachAttempt.created_at)
 Index("idx_backlink_suppressed_email", SuppressedRecipient.email, SuppressedRecipient.user_id)
 Index("idx_backlink_counter_user_date", SendCounterUser.user_id, SendCounterUser.date, unique=True)
