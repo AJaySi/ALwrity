@@ -314,7 +314,10 @@ const BacklinkOutreachDashboard: React.FC = () => {
   const handleSingleStatusUpdate = async (leadId: string, status: string) => {
     setIsStatusUpdating(true);
     try {
-      await updateLeadStatus(leadId, { status });
+      await updateLeadStatus(leadId, {
+        status,
+        campaign_id: selectedCampaign!.campaign_id,
+      });
       showToastNotification(`Status updated to "${status}"`, 'success');
       await selectCampaign(selectedCampaign!.campaign_id);
     } catch (e) {
@@ -328,7 +331,11 @@ const BacklinkOutreachDashboard: React.FC = () => {
     if (selectedLeadIds.size === 0) return;
     setIsStatusUpdating(true);
     try {
-      const result = await bulkUpdateLeadStatus({ lead_ids: Array.from(selectedLeadIds), status: bulkStatus });
+      const result = await bulkUpdateLeadStatus({
+        lead_ids: Array.from(selectedLeadIds),
+        status: bulkStatus,
+        campaign_id: selectedCampaign!.campaign_id,
+      });
       if (result.failed.length > 0) {
         showToastNotification(`Updated ${result.updated} leads; ${result.failed.length} failed`, 'warning');
       } else {

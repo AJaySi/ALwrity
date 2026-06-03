@@ -192,18 +192,48 @@ async def bulk_update_lead_status(
     payload: BulkStatusUpdateRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Bulk update lead statuses."""
+    """Bulk update lead statuses for leads owned by the current user."""
     user_id = _resolve_user_id(current_user)
     storage = BacklinkOutreachStorageService()
+    access_issues = storage.get_lead_access_issues(
+        payload.lead_ids, user_id, campaign_id=payload.campaign_id
+    )
+    if access_issues["unauthorized"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "One or more leads do not belong to the current user",
+                "lead_ids": access_issues["unauthorized"],
+            },
+        )
+    if access_issues["missing"]:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "One or more leads were not found",
+                "lead_ids": access_issues["missing"],
+            },
+        )
+
     updated = 0
     failed: list[str] = []
     for lid in payload.lead_ids:
         try:
-            lead = storage.update_lead_status(lid, user_id, payload.status, payload.notes)
+            lead = storage.update_lead_status(
+                lid,
+                user_id,
+                payload.status,
+                payload.notes,
+                campaign_id=payload.campaign_id,
+            )
             if lead:
                 updated += 1
             else:
                 failed.append(lid)
+        except PermissionError:
+            raise HTTPException(
+                status_code=403, detail="Lead does not belong to the current user"
+            )
         except Exception:
             failed.append(lid)
     return BulkStatusUpdateResponse(updated=updated, failed=failed)
@@ -218,7 +248,18 @@ async def update_lead_status(
     """Update lead status (discovered -> contacted -> replied -> placed)."""
     user_id = _resolve_user_id(current_user)
     storage = BacklinkOutreachStorageService()
-    lead = storage.update_lead_status(lead_id, user_id, payload.status, payload.notes)
+    try:
+        lead = storage.update_lead_status(
+            lead_id,
+            user_id,
+            payload.status,
+            payload.notes,
+            campaign_id=payload.campaign_id,
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail="Lead does not belong to the current user"
+        )
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead

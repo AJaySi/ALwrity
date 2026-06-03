@@ -163,6 +163,7 @@ export interface LeadCreateRequest {
 export interface LeadStatusUpdateRequest {
   status: string;
   notes?: string;
+  campaign_id?: string;
 }
 
 export interface CampaignDetailResponse {
@@ -307,6 +308,7 @@ export interface BulkStatusUpdateRequest {
   lead_ids: string[];
   status: string;
   notes?: string;
+  campaign_id?: string;
 }
 
 export interface BulkStatusUpdateResponse {

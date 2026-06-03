@@ -95,6 +95,7 @@ class LeadListResponse(BaseModel):
 class LeadStatusUpdateRequest(BaseModel):
     status: str = Field(..., min_length=1)
     notes: Optional[str] = None
+    campaign_id: Optional[str] = Field(default=None, min_length=1)
 
 
 class CampaignDetailResponse(BaseModel):
@@ -298,6 +299,7 @@ class BulkStatusUpdateRequest(BaseModel):
     lead_ids: List[str] = Field(..., min_length=1)
     status: str = Field(..., min_length=1)
     notes: Optional[str] = None
+    campaign_id: Optional[str] = Field(default=None, min_length=1)
 
 
 class BulkStatusUpdateResponse(BaseModel):
