@@ -241,6 +241,7 @@ class BacklinkOutreachService:
             status=attempt.get("status", "failed"),
             policy_allowed=policy.allowed,
             policy_reasons=policy.reasons,
+            effective_sender_email=request.sender_email,
         )
 
     def get_reporting_snapshot(self, user_id: str = "default") -> Dict[str, Any]:

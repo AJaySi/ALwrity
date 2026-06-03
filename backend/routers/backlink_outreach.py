@@ -260,18 +260,29 @@ async def send_outreach(
             subject = backlink_outreach_sender.personalize(tmpl.get("subject_template", subject), variables)
             body = backlink_outreach_sender.personalize(tmpl.get("body_template", body), variables)
 
+    sender_validation = backlink_outreach_sender.validate_sender_alias(payload.sender_email)
+    if not sender_validation.authorized:
+        return SendOutreachResponse(
+            attempt_id="",
+            status="failed",
+            policy_allowed=False,
+            policy_reasons=sender_validation.failure_reasons,
+            effective_sender_email=sender_validation.effective_sender_email or None,
+        )
+
     result = backlink_outreach_service.send_outreach(
         SendOutreachRequest(
             lead_id=payload.lead_id,
             campaign_id=payload.campaign_id,
             user_id=user_id,
             workspace_id=payload.workspace_id,
-            sender_email=payload.sender_email,
+            sender_email=sender_validation.effective_sender_email,
             subject=subject,
             body=body,
             idempotency_key=payload.idempotency_key,
         )
     )
+    result.effective_sender_email = sender_validation.effective_sender_email
 
     lead_email = ""
     if result.attempt_id:
@@ -279,15 +290,19 @@ async def send_outreach(
         lead_email = (lead.get("email") or "") if lead else ""
 
     if result.policy_allowed and lead_email:
-        sent = await backlink_outreach_sender.send_email(
+        send_result = await backlink_outreach_sender.send_email(
             to_email=lead_email,
             subject=subject,
             body=body,
+            from_email=payload.sender_email,
         )
-        status = "sent" if sent else "failed"
+        status = "sent" if send_result.success else "failed"
         storage.update_attempt_status(result.attempt_id, status, user_id=user_id)
         result.status = status
-        if sent:
+        result.effective_sender_email = send_result.effective_sender_email or result.effective_sender_email
+        if send_result.failure_reasons:
+            result.policy_reasons = (result.policy_reasons or []) + send_result.failure_reasons
+        if send_result.success:
             storage.mark_idempotency(payload.idempotency_key, user_id)
             storage.increment_user_send_counter(user_id)
             domain = lead_email.split("@")[-1] if "@" in lead_email else "unknown"
