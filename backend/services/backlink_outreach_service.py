@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
+import asyncio
 import re
-import time
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 
 import csv
@@ -55,51 +56,67 @@ class BacklinkOutreachService:
             f"{normalized} + 'Submit article'",
         ]
 
-    def search_for_urls(self, query: str, timeout_seconds: int = 12, retries: int = 2) -> List[SearchResult]:
-        encoded_query = requests.utils.quote(query)
+    async def search_for_urls(
+        self,
+        query: str,
+        timeout_seconds: int = 12,
+        retries: int = 2,
+        client: Optional[httpx.AsyncClient] = None,
+    ) -> List[SearchResult]:
+        """Search DuckDuckGo HTML using a non-blocking HTTP client."""
+        encoded_query = quote(query)
         url = f"https://duckduckgo.com/html/?q={encoded_query}"
         headers = {"User-Agent": "Mozilla/5.0 ALwrityBacklinkBot/1.0"}
 
-        for attempt in range(retries + 1):
-            try:
-                response = requests.get(url, headers=headers, timeout=timeout_seconds)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
-                rows: List[SearchResult] = []
-                for result in soup.select("div.result")[:10]:
-                    anchor = result.select_one("a.result__a")
-                    snippet = result.select_one("a.result__snippet") or result.select_one("div.result__snippet")
-                    if not anchor or not anchor.get("href"):
-                        continue
-                    rows.append(
-                        SearchResult(
-                            url=anchor.get("href"),
-                            title=anchor.get_text(strip=True),
-                            snippet=snippet.get_text(" ", strip=True) if snippet else "",
+        async def _request(active_client: httpx.AsyncClient) -> List[SearchResult]:
+            for attempt in range(retries + 1):
+                try:
+                    response = await active_client.get(url, headers=headers)
+                    response.raise_for_status()
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    rows: List[SearchResult] = []
+                    for result in soup.select("div.result")[:10]:
+                        anchor = result.select_one("a.result__a")
+                        snippet = result.select_one("a.result__snippet") or result.select_one("div.result__snippet")
+                        if not anchor or not anchor.get("href"):
+                            continue
+                        rows.append(
+                            SearchResult(
+                                url=anchor.get("href"),
+                                title=anchor.get_text(strip=True),
+                                snippet=snippet.get_text(" ", strip=True) if snippet else "",
+                            )
                         )
-                    )
-                return rows
-            except Exception:
-                if attempt == retries:
-                    return []
-                time.sleep(0.6 * (attempt + 1))
-        return []
+                    return rows
+                except (httpx.HTTPError, httpx.TimeoutException):
+                    if attempt == retries:
+                        return []
+                    await asyncio.sleep(0.6 * (attempt + 1))
+            return []
 
-    def discover_opportunities(self, keyword: str, max_results: int = 10) -> Dict[str, Any]:
+        if client is not None:
+            return await _request(client)
+
+        timeout = httpx.Timeout(timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as owned_client:
+            return await _request(owned_client)
+
+    async def discover_opportunities_async(self, keyword: str, max_results: int = 10) -> Dict[str, Any]:
         queries = self.generate_guest_post_queries(keyword)[:4]
         dedup: Dict[str, SearchResult] = {}
 
-        for query in queries:
-            for result in self.search_for_urls(query):
-                normalized_url = self._normalize_url(result.url)
-                if not normalized_url or normalized_url in dedup:
-                    continue
-                dedup[normalized_url] = result
+        async with httpx.AsyncClient(timeout=httpx.Timeout(12.0), follow_redirects=True) as client:
+            for query in queries:
+                for result in await self.search_for_urls(query, client=client):
+                    normalized_url = self._normalize_url(result.url)
+                    if not normalized_url or normalized_url in dedup:
+                        continue
+                    dedup[normalized_url] = result
+                    if len(dedup) >= max_results:
+                        break
                 if len(dedup) >= max_results:
                     break
-            if len(dedup) >= max_results:
-                break
-            time.sleep(0.4)
+                await asyncio.sleep(0.4)
 
         opportunities: List[OpportunityRecord] = []
         for normalized_url, row in dedup.items():
@@ -117,6 +134,10 @@ class BacklinkOutreachService:
             )
 
         return {"keyword": keyword, "queries": queries, "opportunities": opportunities}
+
+    def discover_opportunities(self, keyword: str, max_results: int = 10) -> Dict[str, Any]:
+        """Synchronous compatibility wrapper for non-async callers."""
+        return asyncio.run(self.discover_opportunities_async(keyword, max_results))
 
     def _normalize_url(self, url: str) -> str:
         u = (url or "").strip()
@@ -323,11 +344,23 @@ class BacklinkOutreachService:
             writer.writerows([{k: self._sanitize_csv_value(v) for k, v in row.items()}])
         return output.getvalue()
 
-    async def deep_discover(self, keyword: str, max_results: int = 15) -> Dict[str, Any]:
+    async def deep_discover(
+        self,
+        keyword: str,
+        max_results: int = 15,
+        user_id: Optional[str] = None,
+        scrape_timeout_seconds: float = 15.0,
+        scrape_max_concurrency: int = 5,
+    ) -> Dict[str, Any]:
         """Enhanced discovery using Exa neural search + DuckDuckGo with full-page scraping."""
         from services.backlink_outreach_scraper import BacklinkOutreachScraper
-        scraper = BacklinkOutreachScraper(user_id=self._user_id if hasattr(self, '_user_id') else None)
-        return await scraper.deep_discover(keyword, max_results)
+        scraper = BacklinkOutreachScraper(user_id=user_id)
+        return await scraper.deep_discover(
+            keyword,
+            max_results,
+            scrape_timeout_seconds=scrape_timeout_seconds,
+            scrape_max_concurrency=scrape_max_concurrency,
+        )
 
     def get_migration_coverage(self) -> Dict[str, Any]:
         implemented = [
