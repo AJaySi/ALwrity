@@ -745,6 +745,7 @@ const BacklinkOutreachDashboard: React.FC = () => {
                           <div key={a.attempt_id} style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px', fontSize: '12px' }}>
                             <span style={{ color: 'rgba(255,255,255,0.5)' }}>Latest: {a.subject} — </span>
                             {renderStatusBadge(a.status)}
+                            {a.sender_email && <span style={{ color: 'rgba(255,255,255,0.35)', marginLeft: '8px' }}>From: {a.sender_email}</span>}
                             {a.sent_at && <span style={{ color: 'rgba(255,255,255,0.3)', marginLeft: '8px' }}>{new Date(a.sent_at).toLocaleString()}</span>}
                           </div>
                         ))}
@@ -761,7 +762,7 @@ const BacklinkOutreachDashboard: React.FC = () => {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                         <thead>
                           <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                            {['Subject', 'Status', 'Sender', 'Sent At'].map(h => (
+                            {['Subject', 'Status', 'Effective Sender', 'Sent At'].map(h => (
                               <th key={h} style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontWeight: 500, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
                             ))}
                           </tr>

@@ -221,6 +221,7 @@ export interface SendOutreachResponse {
   status: string;
   policy_allowed: boolean;
   policy_reasons: string[];
+  effective_sender_email?: string | null;
 }
 
 export interface OutreachAttemptRecord {

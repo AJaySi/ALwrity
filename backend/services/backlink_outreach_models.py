@@ -191,6 +191,7 @@ class SendOutreachResponse(BaseModel):
     status: str
     policy_allowed: bool
     policy_reasons: List[str] = Field(default_factory=list)
+    effective_sender_email: Optional[str] = None
 
 
 class OutreachAttemptRecord(BaseModel):
