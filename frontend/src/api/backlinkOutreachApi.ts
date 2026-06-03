@@ -158,7 +158,7 @@ export interface LeadRecord {
   email: string | null;
   confidence_score: number;
   discovery_source: string;
-  status: string;
+  status: LeadStatus;
   notes: string | null;
   created_at: string | null;
 }
@@ -179,8 +179,10 @@ export interface LeadCreateRequest {
   notes?: string;
 }
 
+export type LeadStatus = 'discovered' | 'contacted' | 'replied' | 'placed' | 'bounced' | 'unsubscribed';
+
 export interface LeadStatusUpdateRequest {
-  status: string;
+  status: LeadStatus;
   notes?: string;
   campaign_id?: string;
 }
@@ -335,7 +337,7 @@ export interface FollowUpRequest {
 
 export interface BulkStatusUpdateRequest {
   lead_ids: string[];
-  status: string;
+  status: LeadStatus;
   notes?: string;
   campaign_id?: string;
 }

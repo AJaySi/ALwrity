@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Dict, List, Optional
+from typing_extensions import Literal
 
 
 class BacklinkKeywordInput(BaseModel):
@@ -93,7 +94,7 @@ class LeadListResponse(BaseModel):
 
 
 class LeadStatusUpdateRequest(BaseModel):
-    status: str = Field(..., min_length=1)
+    status: Literal["discovered", "contacted", "replied", "placed", "bounced", "unsubscribed"]
     notes: Optional[str] = None
     campaign_id: Optional[str] = Field(default=None, min_length=1)
 
@@ -329,7 +330,7 @@ class ConversionFunnelResponse(BaseModel):
 
 class BulkStatusUpdateRequest(BaseModel):
     lead_ids: List[str] = Field(..., min_length=1)
-    status: str = Field(..., min_length=1)
+    status: Literal["discovered", "contacted", "replied", "placed", "bounced", "unsubscribed"]
     notes: Optional[str] = None
     campaign_id: Optional[str] = Field(default=None, min_length=1)
 

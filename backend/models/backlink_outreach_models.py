@@ -46,6 +46,7 @@ class OutreachAttempt(Base):
     decision_reason = Column(Text, nullable=True)
     sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    message_id = Column(String(255), nullable=True, index=True)
 
 
 class OutreachReply(Base):

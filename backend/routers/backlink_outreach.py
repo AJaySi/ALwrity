@@ -368,26 +368,40 @@ async def send_outreach(
         lead_email = (lead.get("email") or "") if lead else ""
 
     if result.status == "approved" and result.policy_allowed and not result.duplicate and lead_email:
-        send_result = await backlink_outreach_sender.send_email(
-            to_email=lead_email,
-            subject=subject,
-            body=body,
-            from_email=payload.sender_email,
-        )
-        if send_result.success:
-            storage.update_attempt_status(result.attempt_id, "sent", user_id=user_id)
-            result.status = "sent"
-            result.effective_sender_email = send_result.effective_sender_email or result.effective_sender_email
-            storage.mark_idempotency(payload.idempotency_key, user_id)
-            storage.increment_user_send_counter(user_id)
-            domain = lead_email.split("@")[-1] if "@" in lead_email else "unknown"
-            storage.increment_domain_send_counter(domain, user_id=user_id)
+        domain = lead_email.split("@")[-1] if "@" in lead_email else "unknown"
+
+        user_within_cap, _ = storage.try_increment_user_send_counter(user_id)
+        domain_within_cap, _ = storage.try_increment_domain_send_counter(domain, user_id=user_id)
+        if not (user_within_cap and domain_within_cap):
+            reasons = []
+            if not user_within_cap:
+                reasons.append("user_daily_cap_exceeded")
+            if not domain_within_cap:
+                reasons.append("domain_daily_cap_exceeded")
+            reason_str = f"rate_limit_hit; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+            storage.update_attempt_status(result.attempt_id, "blocked", decision_reason=reason_str, user_id=user_id)
+            result.status = "blocked"
+            result.policy_reasons = reasons
         else:
-            reason = f"smtp_send_failed; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
-            storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
-            result.status = "failed"
-            result.policy_reasons = ["smtp_send_failed"]
-            result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
+            send_result = await backlink_outreach_sender.send_email(
+                to_email=lead_email,
+                subject=subject,
+                body=body,
+                from_email=payload.sender_email,
+            )
+            if send_result.success:
+                storage.update_attempt_status(result.attempt_id, "sent", user_id=user_id)
+                result.status = "sent"
+                result.effective_sender_email = send_result.effective_sender_email or result.effective_sender_email
+                if send_result.message_id:
+                    storage.update_attempt_message_id(result.attempt_id, send_result.message_id, user_id=user_id)
+                storage.mark_idempotency(payload.idempotency_key, user_id)
+            else:
+                reason = f"smtp_send_failed; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+                storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
+                result.status = "failed"
+                result.policy_reasons = ["smtp_send_failed"]
+                result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
     elif result.status == "approved" and result.policy_allowed and not result.duplicate and not lead_email:
         reason = f"lead_has_no_email; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
         storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
@@ -448,7 +462,18 @@ async def poll_replies(
             if storage.reply_exists(from_email, subject, user_id=user_id):
                 skipped += 1
                 continue
-            attempt_id = storage.find_attempt_by_from_email(from_email, user_id=user_id) or ""
+
+            attempt_id = ""
+            in_reply_to = raw.get("in_reply_to", "")
+            references = raw.get("references", "")
+            if in_reply_to:
+                attempt_id = storage.find_attempt_by_message_id(in_reply_to, user_id=user_id) or ""
+            if not attempt_id and references:
+                mid = references.split()[-1]
+                attempt_id = storage.find_attempt_by_message_id(mid, user_id=user_id) or ""
+            if not attempt_id:
+                attempt_id = storage.find_attempt_by_from_email(from_email, user_id=user_id) or ""
+
             reply = storage.add_reply(
                 attempt_id=attempt_id,
                 from_email=from_email,

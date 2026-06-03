@@ -12,6 +12,7 @@ import {
   GenerateEmailRequest,
   bulkUpdateLeadStatus,
   updateLeadStatus,
+  addLeadToCampaign,
   fetchCampaignAnalyticsVolume,
   fetchCampaignAnalyticsFunnel,
   CampaignVolumePoint,
@@ -25,7 +26,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as
 
 type Tab = 'campaigns' | 'discover' | 'leads' | 'composer' | 'analytics';
 
-const STATUS_OPTIONS = ['discovered', 'contacted', 'replied', 'placed', 'bounced', 'unsubscribed'];
+const STATUS_OPTIONS = ['discovered', 'contacted', 'replied', 'placed', 'bounced', 'unsubscribed'] as const;
 
 const STATUS_EXPLANATIONS: Record<string, string> = {
   discovered: 'Lead found but not yet contacted',
@@ -139,7 +140,7 @@ const BacklinkOutreachDashboard: React.FC = () => {
   const [templateName, setTemplateName] = useState('');
 
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
-  const [bulkStatus, setBulkStatus] = useState('contacted');
+  const [bulkStatus, setBulkStatus] = useState<'discovered' | 'contacted' | 'replied' | 'placed' | 'bounced' | 'unsubscribed'>('contacted');
 
   const [volumeData, setVolumeData] = useState<CampaignVolumePoint[]>([]);
   const [funnelData, setFunnelData] = useState<FunnelStage[]>([]);
@@ -203,9 +204,24 @@ const BacklinkOutreachDashboard: React.FC = () => {
   }, [keyword, deepDiscover]);
 
   const handleDiscoverAndSave = useCallback(async () => {
-    if (!keyword.trim() || !discoverCampaignId) return;
-    await deepDiscover(keyword.trim(), 15, discoverCampaignId);
-  }, [keyword, discoverCampaignId, deepDiscover]);
+    if (!keyword.trim() || !discoverCampaignId || discoveredOpportunities.length === 0) return;
+    for (const opp of discoveredOpportunities) {
+      try {
+        await addLeadToCampaign(discoverCampaignId, {
+          campaign_id: discoverCampaignId,
+          url: opp.url,
+          domain: opp.domain,
+          page_title: opp.page_title,
+          snippet: opp.snippet,
+          email: opp.email ?? undefined,
+          confidence_score: opp.confidence_score,
+        });
+      } catch (e) {
+        // skip duplicates
+      }
+    }
+    showToastNotification(`Saved ${discoveredOpportunities.length} leads to campaign`, 'success');
+  }, [keyword, discoverCampaignId, discoveredOpportunities]);
 
   const handleSelectCampaign = useCallback(async (campaignId: string) => {
     await selectCampaign(campaignId);
@@ -324,7 +340,7 @@ const BacklinkOutreachDashboard: React.FC = () => {
     );
   };
 
-  const handleSingleStatusUpdate = async (leadId: string, status: string) => {
+  const handleSingleStatusUpdate = async (leadId: string, status: 'discovered' | 'contacted' | 'replied' | 'placed' | 'bounced' | 'unsubscribed') => {
     setIsStatusUpdating(true);
     try {
       await updateLeadStatus(leadId, {
@@ -681,7 +697,7 @@ const BacklinkOutreachDashboard: React.FC = () => {
                     {selectedLeadIds.size > 0 && (
                       <>
                         <TooltipWrap text="Choose the new status for all selected leads">
-                          <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}
+                          <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value as typeof bulkStatus)}
                             style={{ ...selectSx, padding: '6px 10px', fontSize: '12px', minWidth: '130px' }}>
                             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>

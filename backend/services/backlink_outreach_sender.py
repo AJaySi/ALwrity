@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Optional, Set
+from uuid import uuid4
 from loguru import logger
 
 
@@ -35,6 +36,7 @@ class SenderAuthorizationResult:
 class SendEmailResult:
     success: bool
     effective_sender_email: str = ""
+    message_id: str = ""
     failure_reasons: List[str] = field(default_factory=list)
 
 
@@ -116,10 +118,12 @@ class BacklinkOutreachSender:
 
         sender = sender_validation.effective_sender_email
 
+        msg_id = f"<{uuid4().hex}@{sender.split('@')[-1] if '@' in sender else 'outreach.local'}>"
         msg = MIMEMultipart("alternative")
         msg["From"] = sender
         msg["To"] = to_email
         msg["Subject"] = subject
+        msg["Message-ID"] = msg_id
         msg.attach(MIMEText(body, "plain"))
 
         loop = asyncio.get_running_loop()
@@ -149,6 +153,7 @@ class BacklinkOutreachSender:
         return SendEmailResult(
             success=success,
             effective_sender_email=sender,
+            message_id=msg_id if success else "",
             failure_reasons=[] if success else ["smtp_send_failed"],
         )
 

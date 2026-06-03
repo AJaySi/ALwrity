@@ -23,9 +23,6 @@ from services.backlink_outreach_models import (
 )
 from services.backlink_outreach_storage import BacklinkOutreachStorageService
 
-DEFAULT_USER_DAILY_CAP = 100
-DEFAULT_DOMAIN_DAILY_CAP = 20
-
 @dataclass
 class SearchResult:
     url: str
@@ -234,13 +231,6 @@ class BacklinkOutreachService:
             reasons.append("recipient_suppressed")
         if storage.check_idempotency(payload.idempotency_key, user_id=payload.user_id):
             reasons.append("duplicate_idempotency_key")
-
-        user_count = storage.get_user_send_count(payload.user_id)
-        domain_count = storage.get_domain_send_count(payload.recipient_domain, user_id=payload.user_id)
-        if user_count >= DEFAULT_USER_DAILY_CAP:
-            reasons.append("user_daily_cap_exceeded")
-        if domain_count >= DEFAULT_DOMAIN_DAILY_CAP:
-            reasons.append("domain_daily_cap_exceeded")
 
         allowed = len(reasons) == 0
         final_status = "approved" if allowed else "blocked"

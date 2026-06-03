@@ -8,6 +8,8 @@ from typing import List, Optional
 from sqlalchemy import text as sql_text, func as sa_func
 from sqlalchemy.exc import IntegrityError
 
+LEAD_VALID_STATUSES = frozenset({"discovered", "contacted", "replied", "placed", "bounced", "unsubscribed"})
+
 from services.database import get_session_for_user
 from models.backlink_outreach_models import (
     Base, BacklinkCampaign, BacklinkLead,
@@ -19,6 +21,10 @@ from models.backlink_outreach_models import (
 
 class BacklinkCampaignNotFoundError(RuntimeError):
     """Raised when a backlink campaign is missing or not owned by the user."""
+
+
+DEFAULT_USER_DAILY_CAP = 100
+DEFAULT_DOMAIN_DAILY_CAP = 20
 
 
 class BacklinkOutreachStorageService:
@@ -154,6 +160,14 @@ class BacklinkOutreachStorageService:
             if not self._campaign_belongs_to_user(db, campaign_id, user_id):
                 raise BacklinkCampaignNotFoundError("Campaign not found")
 
+            existing = (
+                db.query(BacklinkLead)
+                .filter(BacklinkLead.campaign_id == campaign_id, BacklinkLead.url == url)
+                .first()
+            )
+            if existing:
+                return self._lead_to_dict(existing)
+
             lead = BacklinkLead(
                 id=f"bl_{uuid4().hex[:16]}",
                 campaign_id=campaign_id,
@@ -183,12 +197,22 @@ class BacklinkOutreachStorageService:
             if not self._campaign_belongs_to_user(db, campaign_id, user_id):
                 raise BacklinkCampaignNotFoundError("Campaign not found")
 
+            existing_urls = {
+                row[0]
+                for row in db.query(BacklinkLead.url)
+                .filter(BacklinkLead.campaign_id == campaign_id)
+                .all()
+            }
+
             added = []
             for data in leads_data:
+                url = data.get("url", "")
+                if url in existing_urls:
+                    continue
                 lead = BacklinkLead(
                     id=f"bl_{uuid4().hex[:16]}",
                     campaign_id=campaign_id,
-                    url=data.get("url", ""),
+                    url=url,
                     domain=data.get("domain", ""),
                     page_title=data.get("page_title", ""),
                     snippet=data.get("snippet", ""),
@@ -201,6 +225,7 @@ class BacklinkOutreachStorageService:
                 )
                 db.add(lead)
                 added.append(lead)
+                existing_urls.add(url)
             db.commit()
             return [self._lead_to_dict(l) for l in added]
         finally:
@@ -230,29 +255,27 @@ class BacklinkOutreachStorageService:
         notes: Optional[str] = None,
         campaign_id: Optional[str] = None,
     ) -> Optional[dict]:
+        if status not in LEAD_VALID_STATUSES:
+            raise ValueError(f"Invalid status '{status}'. Valid values: {sorted(LEAD_VALID_STATUSES)}")
+
         self._ensure_tables(user_id)
         db = get_session_for_user(user_id)
         if not db:
             return None
         try:
-            query = (
-                db.query(BacklinkLead)
-                .join(BacklinkCampaign, BacklinkLead.campaign_id == BacklinkCampaign.id)
-                .filter(
-                    BacklinkLead.id == lead_id,
-                    BacklinkCampaign.user_id == user_id,
-                )
-            )
-            if campaign_id:
-                query = query.filter(BacklinkCampaign.id == campaign_id)
-
-            lead = query.first()
+            lead = db.query(BacklinkLead).filter(BacklinkLead.id == lead_id).first()
             if not lead:
-                access = self._get_lead_access_rows(db, [lead_id]).get(lead_id)
-                if not access:
-                    return None
-                if access["user_id"] != user_id:
-                    raise PermissionError("Lead does not belong to the current user")
+                return None
+
+            campaign = (
+                db.query(BacklinkCampaign)
+                .filter(BacklinkCampaign.id == lead.campaign_id, BacklinkCampaign.user_id == user_id)
+                .first()
+            )
+            if not campaign:
+                raise PermissionError("Lead does not belong to the current user")
+
+            if campaign_id and lead.campaign_id != campaign_id:
                 return None
 
             lead.status = status
@@ -491,6 +514,7 @@ class BacklinkOutreachStorageService:
             "decision_reason": attempt.decision_reason,
             "sent_at": attempt.sent_at.isoformat() if attempt.sent_at else None,
             "created_at": attempt.created_at.isoformat() if attempt.created_at else None,
+            "message_id": attempt.message_id or "",
         }
 
     def find_attempt_by_from_email(self, from_email: str, user_id: str = "default") -> Optional[str]:
@@ -506,6 +530,37 @@ class BacklinkOutreachStorageService:
                 .join(BacklinkLead, OutreachAttempt.lead_id == BacklinkLead.id)
                 .filter(BacklinkLead.email == from_email)
                 .order_by(desc(OutreachAttempt.created_at))
+                .first()
+            )
+            return attempt.id if attempt else None
+        finally:
+            db.close()
+
+    def update_attempt_message_id(self, attempt_id: str, message_id: str, user_id: str = "default") -> Optional[dict]:
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            return None
+        try:
+            attempt = db.query(OutreachAttempt).filter(OutreachAttempt.id == attempt_id).first()
+            if not attempt:
+                return None
+            attempt.message_id = message_id
+            db.commit()
+            return self._attempt_to_dict(attempt)
+        finally:
+            db.close()
+
+    def find_attempt_by_message_id(self, message_id: str, user_id: str = "default") -> Optional[str]:
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            return None
+        try:
+            clean = message_id.strip()
+            attempt = (
+                db.query(OutreachAttempt)
+                .filter(OutreachAttempt.message_id == clean)
                 .first()
             )
             return attempt.id if attempt else None
@@ -855,27 +910,6 @@ class BacklinkOutreachStorageService:
     def _today(self) -> date:
         return date.today()
 
-    def increment_user_send_counter(self, user_id: str) -> int:
-        self._ensure_tables(user_id)
-        db = get_session_for_user(user_id)
-        if not db:
-            return 0
-        try:
-            today = self._today()
-            row_id = f"scu_{uuid4().hex[:16]}"
-            db.execute(sql_text(
-                "INSERT INTO backlink_send_counters_user (id, user_id, date, count) "
-                "VALUES (:id, :uid, :dt, 1) "
-                "ON CONFLICT (user_id, date) DO UPDATE SET count = count + 1"
-            ), {"id": row_id, "uid": user_id, "dt": today})
-            db.commit()
-            result = db.query(SendCounterUser.count).filter(
-                SendCounterUser.user_id == user_id, SendCounterUser.date == today
-            ).first()
-            return result[0] if result else 0
-        finally:
-            db.close()
-
     def get_user_send_count(self, user_id: str) -> int:
         db = get_session_for_user(user_id)
         if not db:
@@ -891,28 +925,6 @@ class BacklinkOutreachStorageService:
         finally:
             db.close()
 
-    def increment_domain_send_counter(self, domain: str, user_id: str = "default") -> int:
-        self._ensure_tables(user_id)
-        db = get_session_for_user(user_id)
-        if not db:
-            return 0
-        try:
-            today = self._today()
-            domain_lower = domain.lower()
-            row_id = f"scd_{uuid4().hex[:16]}"
-            db.execute(sql_text(
-                "INSERT INTO backlink_send_counters_domain (id, domain, date, count) "
-                "VALUES (:id, :dom, :dt, 1) "
-                "ON CONFLICT (domain, date) DO UPDATE SET count = count + 1"
-            ), {"id": row_id, "dom": domain_lower, "dt": today})
-            db.commit()
-            result = db.query(SendCounterDomain.count).filter(
-                SendCounterDomain.domain == domain_lower, SendCounterDomain.date == today
-            ).first()
-            return result[0] if result else 0
-        finally:
-            db.close()
-
     def get_domain_send_count(self, domain: str, user_id: str = "default") -> int:
         db = get_session_for_user(user_id)
         if not db:
@@ -925,6 +937,73 @@ class BacklinkOutreachStorageService:
                 .first()
             )
             return row[0] if row else 0
+        finally:
+            db.close()
+
+    def try_increment_user_send_counter(self, user_id: str) -> tuple:
+        """Atomically check cap and increment. Returns (within_cap, new_count)."""
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            return True, 0
+        try:
+            today = self._today()
+            current = (
+                db.query(SendCounterUser.count)
+                .filter(SendCounterUser.user_id == user_id, SendCounterUser.date == today)
+                .scalar()
+            ) or 0
+            if current >= DEFAULT_USER_DAILY_CAP:
+                db.close()
+                return False, current
+            row_id = f"scu_{uuid4().hex[:16]}"
+            db.execute(sql_text(
+                "INSERT INTO backlink_send_counters_user (id, user_id, date, count) "
+                "VALUES (:id, :uid, :dt, 1) "
+                "ON CONFLICT (user_id, date) DO UPDATE SET count = count + 1"
+            ), {"id": row_id, "uid": user_id, "dt": today})
+            db.commit()
+            result = db.query(SendCounterUser.count).filter(
+                SendCounterUser.user_id == user_id, SendCounterUser.date == today
+            ).first()
+            return True, result[0] if result else 0
+        except Exception:
+            db.rollback()
+            return True, 0
+        finally:
+            db.close()
+
+    def try_increment_domain_send_counter(self, domain: str, user_id: str = "default") -> tuple:
+        """Atomically check cap and increment. Returns (within_cap, new_count)."""
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            return True, 0
+        try:
+            today = self._today()
+            domain_lower = domain.lower()
+            current = (
+                db.query(SendCounterDomain.count)
+                .filter(SendCounterDomain.domain == domain_lower, SendCounterDomain.date == today)
+                .scalar()
+            ) or 0
+            if current >= DEFAULT_DOMAIN_DAILY_CAP:
+                db.close()
+                return False, current
+            row_id = f"scd_{uuid4().hex[:16]}"
+            db.execute(sql_text(
+                "INSERT INTO backlink_send_counters_domain (id, domain, date, count) "
+                "VALUES (:id, :dom, :dt, 1) "
+                "ON CONFLICT (domain, date) DO UPDATE SET count = count + 1"
+            ), {"id": row_id, "dom": domain_lower, "dt": today})
+            db.commit()
+            result = db.query(SendCounterDomain.count).filter(
+                SendCounterDomain.domain == domain_lower, SendCounterDomain.date == today
+            ).first()
+            return True, result[0] if result else 0
+        except Exception:
+            db.rollback()
+            return True, 0
         finally:
             db.close()
 

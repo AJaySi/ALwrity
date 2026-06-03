@@ -104,6 +104,8 @@ class BacklinkOutreachReplyMonitor:
             from_email = parsed_msg.get("From", "")
             subject = parsed_msg.get("Subject", "")
             received_at = parsed_msg.get("Date", "")
+            in_reply_to = parsed_msg.get("In-Reply-To", "")
+            references = parsed_msg.get("References", "")
 
             # Extract body
             body = ""
@@ -137,6 +139,8 @@ class BacklinkOutreachReplyMonitor:
                 "body": body[:5000],
                 "classification": classification,
                 "received_at": received_at_iso,
+                "in_reply_to": in_reply_to,
+                "references": references,
             }
         except Exception as e:
             logger.error(f"Failed to parse reply: {e}")
