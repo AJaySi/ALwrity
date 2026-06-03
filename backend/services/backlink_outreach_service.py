@@ -165,19 +165,70 @@ class BacklinkOutreachService:
     def _get_storage(self) -> BacklinkOutreachStorageService:
         return BacklinkOutreachStorageService()
 
+    CONSENT_REQUIRED_REGIONS = {"eu", "eea", "uk", "ca"}
+    MANUAL_REVIEW_REGIONS = {"unknown", "br", "cn", "jp", "kr"}
+    LOW_CONFIDENCE_REGION_SOURCES = {"tld_inference", "domain_tld", "inferred", "unknown"}
+    VALID_LEGAL_BASES = {"legitimate_interest", "consent", "contract"}
+    VALID_CONSENT_STATUSES = {"explicit", "implied", "not_required", "unknown"}
+
+    @staticmethod
+    def _has_one_click_unsubscribe(payload: PolicyValidationRequest) -> bool:
+        one_click = payload.one_click_unsubscribe
+        if not one_click or not one_click.enabled:
+            return False
+        return bool(one_click.mailto or (one_click.header_value or "").strip())
+
     def validate_send_policy(self, payload: PolicyValidationRequest) -> PolicyValidationResponse:
         reasons: List[str] = []
         storage = self._get_storage()
 
+        legal_basis = payload.legal_basis.strip().lower()
+        recipient_region = payload.recipient_region.strip().lower()
+        region_source = payload.recipient_region_source.strip().lower()
+        consent_status = payload.consent_status.strip().lower()
+        discovery_source = payload.contact_discovery_source.strip()
+        sender = payload.sender_identity
+
         if payload.workspace_id.startswith("new-") and not payload.approved_by_human:
             reasons.append("human_review_required_for_new_workspace")
-        if payload.legal_basis.lower() not in {"legitimate_interest", "consent", "contract"}:
-            reasons.append("invalid_legal_basis")
-        if payload.recipient_region.lower() in {"eu", "eea"} and payload.legal_basis.lower() != "consent":
-            reasons.append("region_requires_explicit_consent")
+        if not legal_basis:
+            reasons.append("legal_basis_required")
+        elif legal_basis not in self.VALID_LEGAL_BASES:
+            reasons.append("invalid_legal_basis_recorded")
+        if not discovery_source:
+            reasons.append("contact_discovery_source_required")
+        if consent_status not in self.VALID_CONSENT_STATUSES:
+            reasons.append("invalid_consent_status")
 
-        if len(payload.sender_identity.strip()) < 3:
-            reasons.append("sender_identity_required")
+        has_unsubscribe = bool(payload.unsubscribe_url) or self._has_one_click_unsubscribe(payload)
+        if not has_unsubscribe:
+            reasons.append("unsubscribe_url_or_one_click_unsubscribe_required")
+
+        if not sender:
+            reasons.append("complete_sender_identity_required")
+        else:
+            sender_email = str(sender.email).strip()
+            if not sender.name.strip():
+                reasons.append("sender_name_required")
+            if not sender_email:
+                reasons.append("sender_email_required")
+            elif not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", sender_email):
+                reasons.append("sender_email_invalid")
+            if not sender.organization.strip():
+                reasons.append("sender_organization_required")
+            if not sender.physical_mailing_address.strip():
+                reasons.append("sender_physical_mailing_address_required")
+            if payload.sender_email and sender_email.lower() != str(payload.sender_email).lower():
+                reasons.append("sender_identity_email_mismatch")
+
+        if recipient_region in self.CONSENT_REQUIRED_REGIONS:
+            if legal_basis != "consent" or consent_status != "explicit":
+                reasons.append("region_requires_recorded_explicit_consent")
+        elif recipient_region in self.MANUAL_REVIEW_REGIONS and not payload.approved_by_human:
+            reasons.append("manual_review_required_for_recipient_region")
+
+        if region_source in self.LOW_CONFIDENCE_REGION_SOURCES and not payload.approved_by_human:
+            reasons.append("manual_review_required_for_tld_or_unknown_region_source")
 
         if storage.is_suppressed(str(payload.recipient_email), payload.recipient_domain, user_id=payload.user_id):
             reasons.append("recipient_suppressed")
@@ -227,8 +278,12 @@ class BacklinkOutreachService:
             return SendOutreachResponse(attempt_id="", status="failed", policy_allowed=False, policy_reasons=["lead_not_found"])
 
         domain = lead.get("domain", request.sender_email.split("@")[-1] if "@" in request.sender_email else "unknown")
-        recipient_region = self._infer_region(domain)
-        legal_basis = "consent" if recipient_region == "eu" else "legitimate_interest"
+        recipient_region = (request.recipient_region or "unknown").strip().lower()
+        if recipient_region == "unknown":
+            recipient_region = self._infer_region(domain)
+            region_source = "tld_inference" if recipient_region != "unknown" else request.recipient_region_source
+        else:
+            region_source = request.recipient_region_source
 
         policy_req = PolicyValidationRequest(
             user_id=request.user_id,
@@ -237,10 +292,15 @@ class BacklinkOutreachService:
             recipient_email=lead.get("email", ""),
             recipient_domain=domain,
             recipient_region=recipient_region,
-            legal_basis=legal_basis,
-            approved_by_human=False,
-            unsubscribe_url=None,
-            sender_identity=request.sender_email,
+            recipient_region_source=region_source,
+            legal_basis=request.legal_basis,
+            contact_discovery_source=request.contact_discovery_source,
+            consent_status=request.consent_status,
+            approved_by_human=request.approved_by_human,
+            unsubscribe_url=request.unsubscribe_url,
+            one_click_unsubscribe=request.one_click_unsubscribe,
+            sender_identity=request.sender_identity,
+            sender_email=request.sender_email,
             idempotency_key=request.idempotency_key,
         )
         policy = self.validate_send_policy(policy_req)

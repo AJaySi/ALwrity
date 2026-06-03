@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, HttpUrl, EmailStr
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Dict, List, Optional
 
 
@@ -10,7 +10,7 @@ class BacklinkKeywordInput(BaseModel):
 
 
 class OpportunityContactInfo(BaseModel):
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     contact_page: Optional[HttpUrl] = None
 
 
@@ -149,6 +149,21 @@ class OutreachStatusRecord(BaseModel):
     notes: Optional[str] = None
 
 
+
+class SenderIdentity(BaseModel):
+    name: str = Field(default="", description="Human sender name displayed to the recipient")
+    email: str = Field(default="")
+    organization: str = Field(default="", description="Organization or brand responsible for the outreach")
+    physical_mailing_address: str = Field(default="", description="Postal address required for commercial outreach compliance")
+    reply_to_email: Optional[str] = Field(None, description="Optional reply-to mailbox if different from sender email")
+
+
+class OneClickUnsubscribe(BaseModel):
+    enabled: bool = Field(default=False)
+    mailto: Optional[str] = Field(None, description="Mailbox for one-click unsubscribe requests")
+    header_value: Optional[str] = Field(None, description="List-Unsubscribe / one-click unsubscribe header value")
+
+
 class SendOutreachRequest(BaseModel):
     lead_id: str = Field(..., min_length=1)
     campaign_id: str = Field(..., min_length=1)
@@ -158,6 +173,15 @@ class SendOutreachRequest(BaseModel):
     subject: str = Field(..., min_length=1)
     body: str = Field(..., min_length=1)
     idempotency_key: str = Field(..., min_length=8)
+    sender_identity: Optional[SenderIdentity] = None
+    legal_basis: str = Field(default="")
+    contact_discovery_source: str = Field(default="")
+    recipient_region: str = Field(default="unknown")
+    recipient_region_source: str = Field(default="user_attested", min_length=2)
+    consent_status: str = Field(default="unknown", min_length=2)
+    approved_by_human: bool = False
+    unsubscribe_url: Optional[HttpUrl] = None
+    one_click_unsubscribe: Optional[OneClickUnsubscribe] = None
     template_id: Optional[str] = Field(None, description="Optional template ID for personalization")
     template_variables: Optional[dict] = Field(None, description="Variable values for template personalization")
 
@@ -241,10 +265,15 @@ class PolicyValidationRequest(BaseModel):
     recipient_email: str = Field(..., min_length=1)
     recipient_domain: str
     recipient_region: str = Field(default="unknown")
-    legal_basis: str = Field(..., min_length=2)
+    recipient_region_source: str = Field(default="user_attested", min_length=2)
+    legal_basis: str = Field(default="")
+    contact_discovery_source: str = Field(default="")
+    consent_status: str = Field(default="unknown", min_length=2)
     approved_by_human: bool = False
     unsubscribe_url: Optional[HttpUrl] = None
-    sender_identity: str = Field(..., min_length=3)
+    one_click_unsubscribe: Optional[OneClickUnsubscribe] = None
+    sender_identity: Optional[SenderIdentity] = None
+    sender_email: Optional[str] = Field(None, description="Transport sender email, if separate from identity")
     idempotency_key: str = Field(..., min_length=8)
 
 

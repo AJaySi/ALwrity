@@ -329,6 +329,15 @@ async def send_outreach(
             subject=subject,
             body=body,
             idempotency_key=payload.idempotency_key,
+            sender_identity=payload.sender_identity,
+            legal_basis=payload.legal_basis,
+            contact_discovery_source=payload.contact_discovery_source,
+            recipient_region=payload.recipient_region,
+            recipient_region_source=payload.recipient_region_source,
+            consent_status=payload.consent_status,
+            approved_by_human=payload.approved_by_human,
+            unsubscribe_url=payload.unsubscribe_url,
+            one_click_unsubscribe=payload.one_click_unsubscribe,
         )
     )
 
