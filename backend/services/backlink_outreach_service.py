@@ -199,12 +199,75 @@ class BacklinkOutreachService:
             return "au"
         return "unknown"
 
+
+    SMTP_RETRY_POLICY = "manual_retry_with_new_idempotency_key"
+
+    @staticmethod
+    def _decision_parts(attempt: Optional[dict]) -> List[str]:
+        if not attempt:
+            return []
+        reason = attempt.get("decision_reason") or ""
+        return [part.strip() for part in reason.split(";") if part.strip()]
+
+    def response_from_attempt(self, attempt: Optional[dict], duplicate: bool = False) -> SendOutreachResponse:
+        if not attempt:
+            return SendOutreachResponse(
+                attempt_id="",
+                status="duplicate",
+                policy_allowed=False,
+                policy_reasons=["duplicate_idempotency_key"],
+                duplicate=True,
+            )
+
+        status = attempt.get("status", "failed")
+        parts = self._decision_parts(attempt)
+        retry_policy = next((part.split("=", 1)[1] for part in parts if part.startswith("retry_policy=")), None)
+        reasons = [part for part in parts if not part.startswith("retry_policy=")]
+        if not retry_policy and ("smtp_send_failed" in reasons or "lead_has_no_email" in reasons):
+            retry_policy = self.SMTP_RETRY_POLICY
+        policy_allowed = status in {"queued", "approved", "sent", "failed"} and not any(
+            reason.startswith("human_review_required")
+            or reason in {
+                "invalid_legal_basis",
+                "region_requires_explicit_consent",
+                "sender_identity_required",
+                "recipient_suppressed",
+                "user_daily_cap_exceeded",
+                "domain_daily_cap_exceeded",
+            }
+            for reason in reasons
+        )
+        if status == "blocked":
+            policy_allowed = False
+        return SendOutreachResponse(
+            attempt_id=attempt.get("attempt_id", ""),
+            status=status,
+            policy_allowed=policy_allowed,
+            policy_reasons=reasons,
+            duplicate=duplicate,
+            retry_policy=retry_policy,
+        )
+
     def send_outreach(self, request: SendOutreachRequest) -> SendOutreachResponse:
         storage = self._get_storage()
         lead = storage.get_lead(request.lead_id, user_id=request.user_id)
         if not lead:
             return SendOutreachResponse(attempt_id="", status="failed", policy_allowed=False, policy_reasons=["lead_not_found"])
 
+        reservation = storage.reserve_attempt_idempotency(
+            lead_id=request.lead_id,
+            campaign_id=request.campaign_id,
+            idempotency_key=request.idempotency_key,
+            sender_email=request.sender_email,
+            subject=request.subject,
+            body=request.body,
+            user_id=request.user_id,
+        )
+        if not reservation.get("reserved"):
+            return self.response_from_attempt(reservation.get("attempt"), duplicate=True)
+
+        attempt = reservation.get("attempt") or {}
+        attempt_id = attempt.get("attempt_id", "")
         domain = lead.get("domain", request.sender_email.split("@")[-1] if "@" in request.sender_email else "unknown")
         recipient_region = self._infer_region(domain)
         legal_basis = "consent" if recipient_region == "eu" else "legitimate_interest"
@@ -224,21 +287,16 @@ class BacklinkOutreachService:
         )
         policy = self.validate_send_policy(policy_req)
 
-        attempt = storage.add_attempt(
-            lead_id=request.lead_id,
-            campaign_id=request.campaign_id,
-            idempotency_key=request.idempotency_key,
-            sender_email=request.sender_email,
-            subject=request.subject,
-            body=request.body,
-            status="approved" if policy.allowed else "blocked",
+        updated_attempt = storage.update_attempt_status(
+            attempt_id,
+            "approved" if policy.allowed else "blocked",
             decision_reason="; ".join(policy.reasons) if policy.reasons else None,
             user_id=request.user_id,
-        )
+        ) or attempt
 
         return SendOutreachResponse(
-            attempt_id=attempt.get("attempt_id", ""),
-            status=attempt.get("status", "failed"),
+            attempt_id=updated_attempt.get("attempt_id", attempt_id),
+            status=updated_attempt.get("status", "failed"),
             policy_allowed=policy.allowed,
             policy_reasons=policy.reasons,
         )

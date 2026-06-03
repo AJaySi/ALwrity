@@ -166,6 +166,8 @@ class SendOutreachResponse(BaseModel):
     status: str
     policy_allowed: bool
     policy_reasons: List[str] = Field(default_factory=list)
+    duplicate: bool = False
+    retry_policy: Optional[str] = None
 
 
 class OutreachAttemptRecord(BaseModel):

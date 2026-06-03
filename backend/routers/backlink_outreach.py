@@ -260,42 +260,55 @@ async def send_outreach(
             subject = backlink_outreach_sender.personalize(tmpl.get("subject_template", subject), variables)
             body = backlink_outreach_sender.personalize(tmpl.get("body_template", body), variables)
 
-    result = backlink_outreach_service.send_outreach(
-        SendOutreachRequest(
-            lead_id=payload.lead_id,
-            campaign_id=payload.campaign_id,
-            user_id=user_id,
-            workspace_id=payload.workspace_id,
-            sender_email=payload.sender_email,
-            subject=subject,
-            body=body,
-            idempotency_key=payload.idempotency_key,
+    try:
+        result = backlink_outreach_service.send_outreach(
+            SendOutreachRequest(
+                lead_id=payload.lead_id,
+                campaign_id=payload.campaign_id,
+                user_id=user_id,
+                workspace_id=payload.workspace_id,
+                sender_email=payload.sender_email,
+                subject=subject,
+                body=body,
+                idempotency_key=payload.idempotency_key,
+            )
         )
-    )
+    except Exception:
+        existing = storage.get_attempt_by_idempotency_key(payload.idempotency_key, user_id=user_id)
+        if existing:
+            return backlink_outreach_service.response_from_attempt(existing, duplicate=True)
+        raise HTTPException(status_code=409, detail="Unable to reserve idempotency key")
 
     lead_email = ""
-    if result.attempt_id:
+    if result.attempt_id and result.status == "approved" and not result.duplicate:
         lead = storage.get_lead(payload.lead_id, user_id=user_id)
         lead_email = (lead.get("email") or "") if lead else ""
 
-    if result.policy_allowed and lead_email:
+    if result.status == "approved" and result.policy_allowed and not result.duplicate and lead_email:
         sent = await backlink_outreach_sender.send_email(
             to_email=lead_email,
             subject=subject,
             body=body,
         )
-        status = "sent" if sent else "failed"
-        storage.update_attempt_status(result.attempt_id, status, user_id=user_id)
-        result.status = status
         if sent:
+            storage.update_attempt_status(result.attempt_id, "sent", user_id=user_id)
+            result.status = "sent"
             storage.mark_idempotency(payload.idempotency_key, user_id)
             storage.increment_user_send_counter(user_id)
             domain = lead_email.split("@")[-1] if "@" in lead_email else "unknown"
             storage.increment_domain_send_counter(domain, user_id=user_id)
-    elif result.policy_allowed and not lead_email:
-        storage.update_attempt_status(result.attempt_id, "failed", user_id=user_id)
+        else:
+            reason = f"smtp_send_failed; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+            storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
+            result.status = "failed"
+            result.policy_reasons = ["smtp_send_failed"]
+            result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
+    elif result.status == "approved" and result.policy_allowed and not result.duplicate and not lead_email:
+        reason = f"lead_has_no_email; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+        storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
         result.status = "failed"
         result.policy_reasons = (result.policy_reasons or []) + ["lead_has_no_email"]
+        result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
 
     return result
 
