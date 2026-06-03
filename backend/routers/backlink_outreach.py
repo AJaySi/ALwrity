@@ -71,7 +71,7 @@ async def discover_backlink_opportunities(
     payload: BacklinkKeywordInput,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    return backlink_outreach_service.discover_opportunities(payload.keyword, payload.max_results)
+    return await backlink_outreach_service.discover_opportunities_async(payload.keyword, payload.max_results)
 
 
 @router.get("/migration-coverage")
@@ -87,6 +87,8 @@ async def get_backlink_migration_coverage(
 async def discover_deep_backlink_opportunities(
     payload: DeepKeywordInput,
     current_user: Dict[str, Any] = Depends(get_current_user),
+    scrape_timeout_seconds: float = Query(15.0, ge=1.0, le=60.0),
+    scrape_max_concurrency: int = Query(5, ge=1, le=20),
 ):
     """Enhanced discovery using Exa neural search + DuckDuckGo with full-page scraping."""
     user_id = _resolve_user_id(current_user)
@@ -96,7 +98,13 @@ async def discover_deep_backlink_opportunities(
         if not storage.get_campaign(payload.campaign_id, user_id):
             raise HTTPException(status_code=404, detail="Campaign not found")
 
-    result = await backlink_outreach_service.deep_discover(payload.keyword, payload.max_results)
+    result = await backlink_outreach_service.deep_discover(
+        payload.keyword,
+        payload.max_results,
+        user_id=user_id,
+        scrape_timeout_seconds=scrape_timeout_seconds,
+        scrape_max_concurrency=scrape_max_concurrency,
+    )
     if payload.campaign_id:
         saved = 0
         save_failed = 0
