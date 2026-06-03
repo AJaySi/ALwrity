@@ -329,56 +329,71 @@ async def send_outreach(
             effective_sender_email=sender_validation.effective_sender_email or None,
         )
 
-    result = backlink_outreach_service.send_outreach(
-        SendOutreachRequest(
-            lead_id=payload.lead_id,
-            campaign_id=payload.campaign_id,
-            user_id=user_id,
-            workspace_id=payload.workspace_id,
-            sender_email=sender_validation.effective_sender_email,
-            subject=subject,
-            body=body,
-            idempotency_key=payload.idempotency_key,
-            sender_identity=payload.sender_identity,
-            legal_basis=payload.legal_basis,
-            contact_discovery_source=payload.contact_discovery_source,
-            recipient_region=payload.recipient_region,
-            recipient_region_source=payload.recipient_region_source,
-            consent_status=payload.consent_status,
-            approved_by_human=payload.approved_by_human,
-            unsubscribe_url=payload.unsubscribe_url,
-            one_click_unsubscribe=payload.one_click_unsubscribe,
+    try:
+        result = backlink_outreach_service.send_outreach(
+            SendOutreachRequest(
+                lead_id=payload.lead_id,
+                campaign_id=payload.campaign_id,
+                user_id=user_id,
+                workspace_id=payload.workspace_id,
+                sender_email=sender_validation.effective_sender_email,
+                subject=subject,
+                body=body,
+                idempotency_key=payload.idempotency_key,
+                sender_identity=payload.sender_identity,
+                legal_basis=payload.legal_basis,
+                contact_discovery_source=payload.contact_discovery_source,
+                recipient_region=payload.recipient_region,
+                recipient_region_source=payload.recipient_region_source,
+                consent_status=payload.consent_status,
+                approved_by_human=payload.approved_by_human,
+                unsubscribe_url=payload.unsubscribe_url,
+                one_click_unsubscribe=payload.one_click_unsubscribe,
+            )
         )
-    )
+    except Exception:
+        existing = storage.get_attempt_by_idempotency_key(payload.idempotency_key, user_id=user_id)
+        if existing:
+            result = backlink_outreach_service.response_from_attempt(existing, duplicate=True)
+            if sender_validation.effective_sender_email:
+                result.effective_sender_email = sender_validation.effective_sender_email
+            return result
+        raise HTTPException(status_code=409, detail="Unable to reserve idempotency key")
+
     result.effective_sender_email = sender_validation.effective_sender_email
 
     lead_email = ""
-    if result.attempt_id:
+    if result.attempt_id and result.status == "approved" and not result.duplicate:
         lead = storage.get_lead(payload.lead_id, user_id=user_id)
         lead_email = (lead.get("email") or "") if lead else ""
 
-    if result.policy_allowed and lead_email:
+    if result.status == "approved" and result.policy_allowed and not result.duplicate and lead_email:
         send_result = await backlink_outreach_sender.send_email(
             to_email=lead_email,
             subject=subject,
             body=body,
             from_email=payload.sender_email,
         )
-        status = "sent" if send_result.success else "failed"
-        storage.update_attempt_status(result.attempt_id, status, user_id=user_id)
-        result.status = status
-        result.effective_sender_email = send_result.effective_sender_email or result.effective_sender_email
-        if send_result.failure_reasons:
-            result.policy_reasons = (result.policy_reasons or []) + send_result.failure_reasons
         if send_result.success:
+            storage.update_attempt_status(result.attempt_id, "sent", user_id=user_id)
+            result.status = "sent"
+            result.effective_sender_email = send_result.effective_sender_email or result.effective_sender_email
             storage.mark_idempotency(payload.idempotency_key, user_id)
             storage.increment_user_send_counter(user_id)
             domain = lead_email.split("@")[-1] if "@" in lead_email else "unknown"
             storage.increment_domain_send_counter(domain, user_id=user_id)
-    elif result.policy_allowed and not lead_email:
-        storage.update_attempt_status(result.attempt_id, "failed", user_id=user_id)
+        else:
+            reason = f"smtp_send_failed; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+            storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
+            result.status = "failed"
+            result.policy_reasons = ["smtp_send_failed"]
+            result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
+    elif result.status == "approved" and result.policy_allowed and not result.duplicate and not lead_email:
+        reason = f"lead_has_no_email; retry_policy={backlink_outreach_service.SMTP_RETRY_POLICY}"
+        storage.update_attempt_status(result.attempt_id, "failed", decision_reason=reason, user_id=user_id)
         result.status = "failed"
         result.policy_reasons = (result.policy_reasons or []) + ["lead_has_no_email"]
+        result.retry_policy = backlink_outreach_service.SMTP_RETRY_POLICY
 
     return result
 

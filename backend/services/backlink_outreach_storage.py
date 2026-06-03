@@ -6,6 +6,7 @@ from datetime import datetime, date
 from uuid import uuid4
 from typing import List, Optional
 from sqlalchemy import text as sql_text, func as sa_func
+from sqlalchemy.exc import IntegrityError
 
 from services.database import get_session_for_user
 from models.backlink_outreach_models import (
@@ -319,6 +320,79 @@ class BacklinkOutreachStorageService:
 
     # -- Outreach Attempt CRUD --
 
+
+    def get_attempt_by_idempotency_key(self, idempotency_key: str, user_id: str = "default") -> Optional[dict]:
+        """Return the existing attempt for an idempotency key visible to the user."""
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            return None
+        try:
+            attempt = (
+                db.query(OutreachAttempt)
+                .join(BacklinkCampaign, OutreachAttempt.campaign_id == BacklinkCampaign.id)
+                .filter(
+                    OutreachAttempt.idempotency_key == idempotency_key,
+                    BacklinkCampaign.user_id == user_id,
+                )
+                .first()
+            )
+            return self._attempt_to_dict(attempt) if attempt else None
+        finally:
+            db.close()
+
+    def reserve_attempt_idempotency(
+        self,
+        lead_id: str,
+        campaign_id: str,
+        idempotency_key: str,
+        sender_email: str = "",
+        subject: str = "",
+        body: str = "",
+        user_id: str = "default",
+    ) -> dict:
+        """Atomically reserve an outreach idempotency key by creating the attempt row.
+
+        Returns {"reserved": True, "attempt": attempt_dict} for the caller that won
+        the reservation, or {"reserved": False, "attempt": existing_attempt_or_none}
+        when the unique key already exists. Duplicate rows are detected by the
+        database unique constraint so concurrent requests do not both proceed to
+        policy approval or SMTP delivery.
+        """
+        self._ensure_tables(user_id)
+        db = get_session_for_user(user_id)
+        if not db:
+            raise RuntimeError("Database session unavailable")
+        try:
+            attempt = OutreachAttempt(
+                id=f"att_{uuid4().hex[:16]}",
+                lead_id=lead_id,
+                campaign_id=campaign_id,
+                idempotency_key=idempotency_key,
+                sender_email=sender_email,
+                subject=subject,
+                body=body,
+                status="queued",
+                created_at=datetime.utcnow(),
+            )
+            db.add(attempt)
+            db.commit()
+            return {"reserved": True, "attempt": self._attempt_to_dict(attempt)}
+        except IntegrityError:
+            db.rollback()
+            existing = (
+                db.query(OutreachAttempt)
+                .join(BacklinkCampaign, OutreachAttempt.campaign_id == BacklinkCampaign.id)
+                .filter(
+                    OutreachAttempt.idempotency_key == idempotency_key,
+                    BacklinkCampaign.user_id == user_id,
+                )
+                .first()
+            )
+            return {"reserved": False, "attempt": self._attempt_to_dict(existing) if existing else None}
+        finally:
+            db.close()
+
     def add_attempt(
         self,
         lead_id: str,
@@ -351,6 +425,20 @@ class BacklinkOutreachStorageService:
             db.add(attempt)
             db.commit()
             return self._attempt_to_dict(attempt)
+        except IntegrityError:
+            db.rollback()
+            existing = (
+                db.query(OutreachAttempt)
+                .join(BacklinkCampaign, OutreachAttempt.campaign_id == BacklinkCampaign.id)
+                .filter(
+                    OutreachAttempt.idempotency_key == idempotency_key,
+                    BacklinkCampaign.user_id == user_id,
+                )
+                .first()
+            )
+            if existing:
+                return self._attempt_to_dict(existing)
+            raise
         finally:
             db.close()
 
@@ -755,6 +843,9 @@ class BacklinkOutreachStorageService:
             )
             db.add(entry)
             db.commit()
+            return {"idempotency_key": idempotency_key}
+        except IntegrityError:
+            db.rollback()
             return {"idempotency_key": idempotency_key}
         finally:
             db.close()
