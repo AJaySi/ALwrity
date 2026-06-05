@@ -50,6 +50,7 @@ class ClerkAuthMiddleware:
         # Cache for PyJWKClient to avoid repeated JWKS fetches
         self._jwks_client_cache = {}
         self._jwks_url_cache = None
+        self._issuer_cache = None  # Pre-configured Clerk issuer for iss validation
 
         if not self.clerk_secret_key and not self.disable_auth:
             logger.warning("CLERK_SECRET_KEY not found, authentication may fail")
@@ -58,15 +59,16 @@ class ClerkAuthMiddleware:
         if CLERK_AUTH_AVAILABLE and not self.disable_auth:
             try:
                 if self.clerk_secret_key and self.clerk_publishable_key:
-                    # Extract instance from publishable key for JWKS URL
+                    # Extract instance from publishable key for JWKS URL and issuer validation
                     # Format: pk_test_<instance>.<domain> or pk_live_<instance>.<domain>
                     parts = self.clerk_publishable_key.replace('pk_test_', '').replace('pk_live_', '').split('.')
                     if len(parts) >= 1:
                         # Extract the domain from publishable key or use default
                         # Clerk URLs are typically: https://<instance>.clerk.accounts.dev
                         instance = parts[0]
-                        jwks_url = f"https://{instance}.clerk.accounts.dev/.well-known/jwks.json"
-                        
+                        issuer_url = f"https://{instance}.clerk.accounts.dev"
+                        jwks_url = f"{issuer_url}/.well-known/jwks.json"
+
                         # Create Clerk configuration with JWKS URL
                         clerk_config = ClerkConfig(
                             secret_key=self.clerk_secret_key,
@@ -76,6 +78,7 @@ class ClerkAuthMiddleware:
                         self.clerk_bearer = ClerkHTTPBearer(clerk_config)
                         logger.info(f"fastapi-clerk-auth initialized successfully with JWKS URL: {jwks_url}")
                         self._jwks_url_cache = jwks_url
+                        self._issuer_cache = issuer_url  # Pin issuer for VULN-001 fix
                     else:
                         logger.warning("Could not extract instance from publishable key")
                         self.clerk_bearer = None
@@ -118,19 +121,29 @@ class ClerkAuthMiddleware:
                     import jwt
                     from jwt import PyJWKClient
                     
-                    # Get the JWKS URL from the token header
+                    # Get the unverified header for key ID lookup
                     unverified_header = jwt.get_unverified_header(token)
-                    
-                    # Decode token to get issuer for JWKS URL
+
+                    # --- SECURITY FIX (VULN-001): Validate issuer before any JWKS fetch ---
+                    # Pre-configured issuer and JWKS URL derived from CLERK_PUBLISHABLE_KEY
+                    # NEVER use the token's 'iss' claim to construct the JWKS URL (GHSA-426f-p74m-73fv)
+                    expected_issuer = self._issuer_cache
+                    jwks_url = self._jwks_url_cache
+                    if not expected_issuer or not jwks_url:
+                        raise Exception("Clerk issuer/JWKS URL not configured at startup")
+
+                    # Decode token to validate the issuer claim against the pre-configured value
+                    # WARNING: We must first validate 'iss' before trusting anything else
                     unverified_claims = jwt.decode(token, options={"verify_signature": False})
-                    issuer = unverified_claims.get('iss', '')
-                    
-                    # Construct JWKS URL from issuer
-                    jwks_url = f"{issuer}/.well-known/jwks.json" if issuer else self._jwks_url_cache or ""
-                    if not jwks_url:
-                        raise Exception("Unable to resolve JWKS URL for Clerk verification")
-                    
-                    # Use cached PyJWKClient to avoid repeated JWKS fetches
+                    token_issuer = unverified_claims.get('iss', '')
+                    if token_issuer != expected_issuer:
+                        logger.error(
+                            f"Issuer mismatch: token claims '{token_issuer}' "
+                            f"but expected '{expected_issuer}'"
+                        )
+                        return None
+
+                    # Use cached PyJWKClient with pinned jwks_url (never derived from token)
                     if jwks_url not in self._jwks_client_cache:
                         logger.info(f"Creating new PyJWKClient for {jwks_url} with caching enabled")
                         # Create client with caching enabled (cache_keys=True keeps keys in memory)
@@ -139,17 +152,19 @@ class ClerkAuthMiddleware:
                             cache_keys=True,
                             max_cached_keys=16
                         )
-                    
+
                     jwks_client = self._jwks_client_cache[jwks_url]
                     signing_key = jwks_client.get_signing_key_from_jwt(token)
-                    
+
                     # Verify and decode the token with clock skew tolerance
                     # Add 300 seconds (5 minutes) leeway to handle clock skew and token refresh delays
+                    # SECURITY: Always pass issuer= to verify the token's 'iss' matches expected (VULN-001)
                     decoded_token = jwt.decode(
                         token,
                         signing_key.key,
                         algorithms=["RS256"],
-                        options={"verify_signature": True, "verify_exp": True},
+                        issuer=expected_issuer,
+                        options={"verify_signature": True, "verify_exp": True, "verify_iss": True},
                         leeway=300  # Allow 5 minutes leeway for token refresh during navigation
                     )
                     
