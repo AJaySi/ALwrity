@@ -14,7 +14,7 @@ All endpoints require authentication via Bearer token:
 Authorization: Bearer YOUR_ACCESS_TOKEN
 ```
 
-The token is obtained through the standard ALwrity authentication flow. See [Authentication Guide](../api/authentication.md) for details.
+The token is obtained through the standard ALwrity authentication flow. See [Authentication Guide](../../api/authentication.md) for details.
 
 ## API Architecture
 
@@ -827,7 +827,7 @@ Image Studio API follows standard ALwrity rate limiting:
 - **Headers**: Rate limit information in response headers
 - **Retry**: Use exponential backoff for rate limit errors
 
-See [Rate Limiting Guide](../api/rate-limiting.md) for details.
+See [Rate Limiting Guide](../../api/rate-limiting.md) for details.
 
 ---
 
@@ -936,5 +936,5 @@ curl -X POST https://api.alwrity.com/api/image-studio/create \
 
 ---
 
-*For authentication details, see the [API Authentication Guide](../api/authentication.md). For rate limiting, see the [Rate Limiting Guide](../api/rate-limiting.md).*
+*For authentication details, see the [API Authentication Guide](../../api/authentication.md). For rate limiting, see the [Rate Limiting Guide](../../api/rate-limiting.md).*
 

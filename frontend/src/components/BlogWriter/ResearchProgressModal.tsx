@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import CircularProgress from '@mui/material/CircularProgress';
 
 interface ResearchProgressModalProps {
   open: boolean;
@@ -397,27 +398,27 @@ const mapMessageToMeta = (message: { timestamp: string; message: string }): Mess
 const stageStateCopy: Record<StageState, { label: string; color: string; background: string; border: string }> = {
   upcoming: {
     label: 'Pending',
-    color: '#6b7280',
-    background: '#f3f4f6',
+    color: '#9ca3af',
+    background: '#f9fafb',
     border: '#e5e7eb'
   },
   active: {
     label: 'In Progress',
-    color: '#2563eb',
-    background: '#eff6ff',
-    border: '#bfdbfe'
+    color: '#1d4ed8',
+    background: '#dbeafe',
+    border: '#93c5fd'
   },
   done: {
     label: 'Completed',
     color: '#047857',
-    background: '#ecfdf5',
-    border: '#bbf7d0'
+    background: '#d1fae5',
+    border: '#86efac'
   },
   error: {
     label: 'Needs Attention',
     color: '#b91c1c',
     background: '#fee2e2',
-    border: '#fecaca'
+    border: '#fca5a5'
   }
 };
 
@@ -496,11 +497,24 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
     }));
   }, [error, normalizedStatus, processedMessages]);
 
+  const isRunning = !error && !completionStatuses.has(normalizedStatus);
+
   if (!open) {
     return null;
   }
 
   return (
+    <>
+      <style>{`
+        @keyframes researchPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.15); }
+          50% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+        }
+        @keyframes researchShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
     <div
       role="dialog"
       aria-modal="true"
@@ -575,18 +589,26 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                   marginTop: 14,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 12,
-                  padding: '8px 14px',
+                  gap: 10,
+                  padding: '8px 16px 8px 14px',
                   borderRadius: 999,
                   background: statusInfo.background,
                   color: statusInfo.color,
                   fontSize: 13,
                   fontWeight: 600,
-                  border: `1px solid ${statusInfo.color}1A`
+                  border: `1px solid ${statusInfo.color}33`,
+                  animation: isRunning ? 'researchPulse 2s ease-in-out infinite' : undefined
                 }}
               >
+                {isRunning && (
+                  <CircularProgress
+                    size={14}
+                    thickness={6}
+                    sx={{ color: statusInfo.color }}
+                  />
+                )}
                 <span>{statusInfo.label}</span>
-                <span style={{ fontSize: 12, color: '#475569', fontWeight: 500 }}>{statusInfo.description}</span>
+                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{statusInfo.description}</span>
               </div>
             </div>
             <button
@@ -610,16 +632,49 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
         </div>
 
         <div style={{ padding: '24px 32px', overflow: 'auto' }}>
+          <div style={{ marginBottom: 20 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                marginBottom: 8
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  height: 6,
+                  borderRadius: 3,
+                  background: '#e5e7eb',
+                  overflow: 'hidden',
+                  position: 'relative'
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.round((stagesWithState.filter(s => s.state === 'done').length / stagesWithState.length) * 100)}%`,
+                    height: '100%',
+                    borderRadius: 3,
+                    background: 'linear-gradient(90deg, #3b82f6, #2563eb)',
+                    transition: 'width 0.5s ease'
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
+                {stagesWithState.filter(s => s.state === 'done').length}/{stagesWithState.length}
+              </span>
+            </div>
           <div
             style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 12,
-              marginBottom: 20
+              gap: 12
             }}
           >
             {stagesWithState.map(stage => {
               const copy = stageStateCopy[stage.state];
+              const isActive = stage.state === 'active';
               return (
                 <div
                   key={stage.id}
@@ -630,7 +685,11 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                     padding: '14px 16px',
                     background: copy.background,
                     border: `1px solid ${copy.border}`,
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)'
+                    boxShadow: isActive
+                      ? '0 0 0 1px rgba(37, 99, 235, 0.08), inset 0 1px 0 rgba(255,255,255,0.6)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.6)',
+                    animation: isActive ? 'researchPulse 2s ease-in-out infinite' : undefined,
+                    transition: 'all 0.3s ease'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, color: '#0f172a' }}>
@@ -638,10 +697,16 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                     <span>{stage.label}</span>
                   </div>
                   <div style={{ marginTop: 6, fontSize: 12.5, color: '#475569' }}>{stage.description}</div>
-                  <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: copy.color }}>{copy.label}</div>
+                  <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: copy.color, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {isActive && (
+                      <CircularProgress size={10} thickness={6} sx={{ color: copy.color }} />
+                    )}
+                    {copy.label}
+                  </div>
                 </div>
               );
             })}
+          </div>
           </div>
 
           {latestMessage && (
@@ -666,8 +731,13 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                       gap: 16
                     }}
                   >
-                    <div style={{ fontSize: 17, fontWeight: 600, color: '#0f172a' }}>{latestMessage.title}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>{latestMessage.timeLabel}</div>
+                    <div style={{ fontSize: 17, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {latestMessage.tone === 'active' && isRunning && (
+                        <CircularProgress size={14} thickness={6} sx={{ color: '#1d4ed8', flexShrink: 0 }} />
+                      )}
+                      {latestMessage.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{latestMessage.timeLabel}</div>
                   </div>
                   {latestMessage.subtitle && (
                     <div style={{ marginTop: 6, fontSize: 13.5, color: '#334155' }}>{latestMessage.subtitle}</div>
@@ -702,7 +772,8 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
               }}
             >
               {processedMessages.length === 0 && (
-                <div style={{ padding: '10px 0', color: '#6b7280', fontSize: 14 }}>
+                <div style={{ padding: '10px 0', color: '#6b7280', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isRunning && <CircularProgress size={12} thickness={6} sx={{ color: '#6b7280' }} />}
                   Awaiting progress updates…
                 </div>
               )}
@@ -764,6 +835,7 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 

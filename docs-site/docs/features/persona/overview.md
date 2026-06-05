@@ -1,3 +1,7 @@
+---
+description: ALwrity Persona System - AI-powered personalized writing assistants tailored to your brand voice.
+---
+
 # Persona System Overview
 
 The ALwrity Persona System is a revolutionary AI-powered feature that creates personalized writing assistants tailored specifically to your voice, style, and communication preferences. It analyzes your writing patterns and creates platform-specific optimizations for LinkedIn, Facebook, and other social media platforms.
@@ -266,6 +270,13 @@ If you're having issues with specific platforms:
 The ALwrity Persona System transforms your content creation experience by providing personalized, platform-optimized assistance that maintains your authentic voice while maximizing engagement and performance. By understanding and leveraging your persona, you can create more effective, engaging content that resonates with your audience across all social media platforms.
 
 Remember: Your persona is a powerful tool that learns and improves over time. The more you use it, the better it becomes at understanding your style and helping you create exceptional content.
+
+## Related Features
+
+- **[Content Strategy](../content-strategy/overview.md)** — Align personas with content strategy
+- **[Blog Writer](../blog-writer/overview.md)** — Write blog posts in your persona's voice
+- **[LinkedIn Writer](../linkedin-writer/overview.md)** — Create LinkedIn content with brand voice
+- **[SIF & AI Agents](../sif-agents/overview.md)** — AI agents that adapt to your persona
 
 ---
 

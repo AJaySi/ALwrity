@@ -124,7 +124,8 @@ class OutlineGenerator:
         content_angle_titles = self.title_generator.extract_content_angle_titles(research)
         
         # Combine AI-generated titles with content angles (full primary keywords for title variety)
-        title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords)
+        research_topic = getattr(request, 'topic', '') or ''
+        title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords, research_topic)
         
         logger.info(f"Generated optimized outline with {len(balanced_sections)} sections and {len(title_options)} title options")
         
@@ -224,7 +225,8 @@ class OutlineGenerator:
         content_angle_titles = self.title_generator.extract_content_angle_titles(research)
         
         # Combine AI-generated titles with content angles (full primary keywords for title variety)
-        title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords)
+        research_topic = getattr(request, 'topic', '') or ''
+        title_options = self.title_generator.combine_title_options(ai_title_options, content_angle_titles, primary_keywords, research_topic)
         
         await task_manager.update_progress(task_id, "✅ Outline generation and optimization completed successfully!")
         

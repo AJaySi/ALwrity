@@ -93,6 +93,7 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
 
       await new Promise<void>((resolve) => {
         let resolved = false;
+        let completionSource = '';
 
         const finish = (connected: boolean) => {
           if (resolved) return;
@@ -103,11 +104,13 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
           clearInterval(connectionCheckInterval);
           try { popup.close(); } catch { /* COOP may block close across origins */ }
           if (connected) {
+            console.log(`[GSC] Connection resolved via ${completionSource || 'unknown'}`);
             checkConnection().then(() => {
               cachedAnalyticsAPI.forceRefreshAnalyticsData(['gsc']).catch(console.error);
               resolve();
             });
           } else {
+            console.warn(`[GSC] Connection failed via ${completionSource || 'unknown'}`);
             setConnectError('Google Search Console connection was cancelled or failed.');
             resolve();
           }
@@ -120,8 +123,10 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
           const { type } = event.data as { type?: string };
 
           if (type === 'GSC_AUTH_SUCCESS') {
+            completionSource = 'postMessage:success';
             finish(true);
           } else if (type === 'GSC_AUTH_ERROR') {
+            completionSource = 'postMessage:error';
             finish(false);
           }
         };
@@ -133,6 +138,7 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
           if (resolved) return;
           try {
             if (popup.closed) {
+              completionSource = 'popup.closed';
               // Popup closed — check if connection succeeded
               checkConnection().then((connected) => {
                 if (connected) {
@@ -153,23 +159,26 @@ export const useGSCBrainstormConnection = (): UseGSCBrainstormConnectionReturn =
         }, 500);
 
         // 3. Poll backend connection status (works even when postMessage is blocked)
-        // Checks every 2s after a 1s initial delay to let the OAuth flow complete
         let checkCount = 0;
         const connectionCheckInterval = setInterval(() => {
           if (resolved) return;
           checkCount++;
-          if (checkCount < 2) return; // Skip first 2 checks (1s) to let OAuth start
+          if (checkCount < 2) return;
           checkConnection().then((connected) => {
-            if (connected) finish(true);
+            if (connected) {
+              completionSource = 'backend-poll';
+              finish(true);
+            }
           });
         }, 1500);
 
         // 4. Safety timeout
         const safetyTimeout = setTimeout(() => {
           if (!resolved) {
+            completionSource = 'timeout';
             checkConnection().then((connected) => finish(connected));
           }
-        }, 2 * 60 * 1000); // 2 min safety timeout (reduced from 3)
+        }, 2 * 60 * 1000);
       });
     } catch (error) {
       console.error('GSC OAuth error:', error);

@@ -1,3 +1,7 @@
+---
+description: ALwrity API Reference - Complete API documentation for authentication, endpoints, rate limiting, and error handling.
+---
+
 # API Reference Overview
 
 ALwrity provides a comprehensive RESTful API that allows you to integrate AI-powered content creation capabilities into your applications. This API enables you to generate blog posts, optimize SEO, create social media content, and manage your content strategy programmatically.

@@ -75,7 +75,9 @@ class SEODashboardData(BaseModel):
     platforms: Dict[str, PlatformStatus]
     ai_insights: List[AIInsight]
     last_updated: str
-    website_url: Optional[str] = None  # User's website URL from onboarding
+    website_url: Optional[str] = None
+    advertools_insights: Optional[Dict[str, Any]] = None
+    technical_seo_audit: Optional[Dict[str, Any]] = None
 
 # New models for comprehensive SEO analysis
 class SEOAnalysisRequest(BaseModel):
@@ -378,7 +380,9 @@ async def get_seo_dashboard_data(current_user: dict = Depends(get_current_user))
                 platforms=_convert_platforms(overview_data.get("platforms", {})),
                 ai_insights=[AIInsight(**insight) for insight in overview_data.get("ai_insights", [])],
                 last_updated=overview_data.get("last_updated", datetime.now().isoformat()),
-                website_url=overview_data.get("website_url")
+                website_url=overview_data.get("website_url"),
+                advertools_insights=overview_data.get("advertools_insights"),
+                technical_seo_audit=overview_data.get("technical_seo_audit"),
             )
         finally:
             db_session.close()

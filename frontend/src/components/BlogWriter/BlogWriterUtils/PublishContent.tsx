@@ -151,11 +151,37 @@ export const PublishContent: React.FC<PublishContentProps> = ({
     }
   };
 
+  // Inject section images from localStorage into markdown so Wix can publish them
+  const enrichMarkdownWithImages = (markdown: string): string => {
+    try {
+      const outline = JSON.parse(localStorage.getItem('blog_outline') || '[]');
+      const images = JSON.parse(localStorage.getItem('blog_section_images') || '{}');
+      if (!outline.length || !Object.keys(images).length) return markdown;
+
+      let enriched = markdown;
+      for (const section of outline) {
+        const image = images[section.id];
+        if (!image) continue;
+        // Only inject URL-based images (http or /api/); skip base64 (too large for Wix API)
+        if (!image.startsWith('http') && !image.startsWith('/api/')) continue;
+
+        const heading = section.heading;
+        const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(`(##\\s+${escapedHeading}\\n\\n)`);
+        enriched = enriched.replace(pattern, `$1![${heading}](${image})\n\n`);
+      }
+      return enriched;
+    } catch {
+      return markdown;
+    }
+  };
+
   const handlePublishToWix = async () => {
     const md = buildFullMarkdown();
+    const enrichedMd = enrichMarkdownWithImages(md);
     setPublishResult(null);
     setWixContentWarning(null);
-    const validation = validateWixContent(md);
+    const validation = validateWixContent(enrichedMd);
     if (!validation.valid) {
       setPublishResult({ platform: 'wix', success: false, message: validation.warning || 'Content validation failed.' });
       return;
@@ -163,12 +189,11 @@ export const PublishContent: React.FC<PublishContentProps> = ({
     if (validation.warning) {
       setWixContentWarning(validation.warning);
     }
-    const result = await publishToWix(md, seoMetadata, blogTitle);
+    const result = await publishToWix(enrichedMd, seoMetadata, blogTitle);
     setPublishResult({ platform: 'wix', success: result.success, message: result.message, url: result.url });
     if (result.warning && result.success) {
       setWixContentWarning(result.warning);
     }
-    setPublishResult({ platform: 'wix', success: result.success, message: result.message, url: result.url });
     if (result.success) {
       saveCompleteBlogAsset(blogTitle || seoMetadata?.seo_title || 'Blog Post', md, seoMetadata);
       try { localStorage.setItem('blog_publish_completed', 'true'); } catch {}

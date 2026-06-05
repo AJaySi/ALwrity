@@ -202,17 +202,17 @@ See next section...
 - [Metadata Generation Guide](metadata.md)
 
 ### Tool-Specific Guides
-- [Meta Description Generator](meta-description-tool.md)
-- [PageSpeed Analyzer Guide](pagespeed-analyzer.md)
-- [Sitemap Analysis](sitemap-analyzer.md)
-- [Content Strategy Tool](content-strategy-tool.md)
-- [Technical SEO Analyzer](technical-seo-tool.md)
-- [Competitive Analysis](competitive-analysis.md)
+- Meta Description Generator — see [Workflows & Automation Guide](workflows-guide.md)
+- PageSpeed Analyzer — see [Workflows & Automation Guide](workflows-guide.md)
+- Sitemap Analysis — see [Workflows & Automation Guide](workflows-guide.md)
+- Content Strategy Tool — see [Content Strategy Guide](content-strategy-guide.md)
+- Technical SEO Analyzer — see [Workflows & Automation Guide](workflows-guide.md)
+- [Competitive Analysis Guide](competitive-analysis.md)
 
 ### Advanced Guides
 - [AI Copilot Assistant](ai-copilot.md)
-- [API Reference](../../api/seo-tools.md)
-- [Advanced Configuration](advanced-configuration.md)
+- [API Reference](../../api/overview.md)
+- Advanced Configuration — see [SEO Dashboard Setup](overview.md)
 
 ---
 
@@ -343,10 +343,10 @@ See next section...
 ## 🔗 Related Resources
 
 - [SEO Dashboard Main Guide](overview.md)
-- [Complete API Reference](../../api/seo-tools.md)
+- [Complete API Reference](../../api/overview.md)
 - [Blog Writer SEO Integration](../blog-writer/overview.md)
 - [Content Strategy Guide](../content-strategy/overview.md)
-- [AI Features](../ai/overview.md)
+- [AI Features](../ai/assistive-writing.md)
 
 ---
 

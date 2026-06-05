@@ -75,7 +75,7 @@ Content-Type: application/json
 ### Key Rotation
 
 ```bash
-# Create new key
+## Create new key
 curl -X POST "https://your-domain.com/api/keys" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
@@ -84,7 +84,7 @@ curl -X POST "https://your-domain.com/api/keys" \
     "permissions": ["read", "write"]
   }'
 
-# Revoke old key
+## Revoke old key
 curl -X DELETE "https://your-domain.com/api/keys/old_key_id" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
@@ -234,10 +234,10 @@ def make_request_with_retry(url, headers, data):
 ```python
 from alwrity import AlwrityClient
 
-# Initialize client with API key
+## Initialize client with API key
 client = AlwrityClient(api_key="your_api_key_here")
 
-# Or use environment variable
+## Or use environment variable
 import os
 client = AlwrityClient(api_key=os.getenv('ALWRITY_API_KEY'))
 ```
@@ -257,10 +257,10 @@ const client = new AlwrityClient(process.env.ALWRITY_API_KEY);
 ### cURL Examples
 
 ```bash
-# Set API key as environment variable
+## Set API key as environment variable
 export ALWRITY_API_KEY="your_api_key_here"
 
-# Use in requests
+## Use in requests
 curl -H "Authorization: Bearer $ALWRITY_API_KEY" \
      -H "Content-Type: application/json" \
      https://your-domain.com/api/blog-writer

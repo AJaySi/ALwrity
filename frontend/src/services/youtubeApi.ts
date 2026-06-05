@@ -330,7 +330,7 @@ export const youtubeApi = {
   async combineVideos(params: CombineVideosRequest): Promise<{ success: boolean; task_id?: string; message: string }> {
     try {
       const response = await apiClient.post(`${API_BASE}/render/combine`, {
-        video_urls: params.scene_video_urls,
+        scene_video_urls: params.scene_video_urls,
         video_plan: params.video_plan,
         resolution: params.resolution || '720p',
         title: params.title,

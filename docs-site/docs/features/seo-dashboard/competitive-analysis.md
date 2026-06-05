@@ -424,4 +424,4 @@ Score opportunities by:
 
 ---
 
-**Ready to analyze your competition? Start with [Competitive Analysis Tool](../tools-reference.md) or ask the [AI Copilot](ai-copilot.md) for guidance!**
+**Ready to analyze your competition? Start with the [SEO Dashboard Tools Reference](tools-reference.md) or ask the [AI Copilot](ai-copilot.md) for guidance!**

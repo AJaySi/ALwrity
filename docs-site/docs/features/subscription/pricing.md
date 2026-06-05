@@ -124,7 +124,7 @@ Models covered: `openai/gpt-oss-120b:groq`, `gpt-oss-120b`, and `default` (fallb
 
 ## Additional Resources
 
-- [Billing Dashboard](billing-dashboard.md)
+- Billing Dashboard (see [Subscription Overview](overview.md))
 - [API Reference](api-reference.md)
 - [Setup Guide](setup.md)
 - [Gemini Pricing](https://ai.google.dev/gemini-api/docs/pricing)

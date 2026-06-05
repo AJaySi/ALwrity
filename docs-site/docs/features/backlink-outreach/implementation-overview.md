@@ -54,13 +54,15 @@ backend/
 ├── routers/
 │   └── backlink_outreach.py          # 18+ API endpoints
 ├── services/
-│   ├── backlink_outreach_service.py  # Business logic, policy, analytics
-│   ├── backlink_outreach_storage.py  # SQLite CRUD operations
-│   ├── backlink_outreach_sender.py   # SMTP email delivery
-│   ├── backlink_outreach_reply_monitor.py  # IMAP reply polling
-│   └── backlink_outreach_models.py   # Pydantic request/response models
+│   ├── backlink_outreach_service.py       # Business logic, policy, analytics
+│   ├── backlink_outreach_storage.py       # SQLite CRUD operations
+│   ├── backlink_outreach_sender.py        # SMTP email delivery with Message-ID
+│   ├── backlink_outreach_reply_monitor.py # IMAP reply polling with Message-ID matching
+│   ├── backlink_outreach_scraper.py       # Deep website scraper (Exa + DuckDuckGo)
+│   ├── backlink_outreach_template_generator.py  # LLM-based email copy generation
+│   └── backlink_outreach_models.py        # Pydantic request/response models
 ├── models/
-│   └── backlink_outreach_models.py   # SQLAlchemy models + indexes
+│   └── backlink_outreach_models.py        # SQLAlchemy models + indexes
 
 frontend/src/
 ├── components/
@@ -109,6 +111,7 @@ erDiagram
         string body
         string status
         string legal_basis
+        string message_id
         datetime sent_at
     }
     OutreachReply {
@@ -217,10 +220,10 @@ SQLite CRUD operations with 20+ methods:
 - Campaign CRUD: `create_campaign`, `list_backlink_campaigns`, `get_campaign`, `delete_campaign`.
 - Lead management: `add_campaign_lead`, `add_campaign_leads_bulk`, `update_lead_status`, `bulk_update_lead_status`.
 - Outreach: `create_outreach_attempt`, `list_outreach_attempts`, `get_lead_attempts`.
-- Replies: `store_reply`, `find_attempt_by_from_email`, `reply_exists`, `list_replies`, `count_replies`.
+- Replies: `store_reply`, `find_attempt_by_from_email`, `find_attempt_by_message_id`, `reply_exists`, `list_replies`, `count_replies`.
 - Follow-ups: `create_follow_up`, `list_follow_ups`.
 - Suppression: `add_suppression`, `list_suppression`, `is_suppressed`.
-- Counters: `increment_user_counter`, `increment_domain_counter` (atomic ON CONFLICT).
+- Counters: `try_increment_user_send_counter`, `try_increment_domain_send_counter` (atomic ON CONFLICT — reserves cap slot before send).
 - Idempotency: `check_idempotency`, `mark_idempotency`.
 - Audit: `log_audit_entry`.
 - Templates: `create_email_template`, `list_email_templates`, `get_email_template`, `delete_email_template`.
@@ -249,7 +252,7 @@ Handles IMAP reply processing:
 3. Searches for messages matching the outreach sender.
 4. Fetches up to `IMAP_FETCH_LIMIT` messages.
 5. Checks for duplicates via `reply_exists()`.
-6. Matches replies to attempts via `find_attempt_by_from_email()`.
+6. Matches replies to attempts via `find_attempt_by_message_id()` (primary, using `In-Reply-To`/`References` headers), falls back to `find_attempt_by_from_email()`.
 7. Classifies replies based on content analysis.
 8. Stores reply records.
 

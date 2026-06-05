@@ -36,11 +36,55 @@ class PromptBuilder:
         competitor_text = ', '.join(research.competitor_analysis.get('top_competitors', [])) if research and research.competitor_analysis else "Not available"
         opportunity_text = ', '.join(research.competitor_analysis.get('opportunities', [])) if research and research.competitor_analysis else "Not available"
         advantages_text = ', '.join(research.competitor_analysis.get('competitive_advantages', [])) if research and research.competitor_analysis else "Not available"
+        competitor_headings_text = ', '.join(research.competitor_analysis.get('competitor_headings', [])[:3]) if research and research.competitor_analysis and research.competitor_analysis.get('competitor_headings') else ""
         
         # Extract additional UI-mapped context fields
         analysis_insights_text = (research.keyword_analysis.get('analysis_insights', '') or '') if research and research.keyword_analysis else ''
         market_positioning_text = (research.competitor_analysis.get('market_positioning', '') or '') if research and research.competitor_analysis else ''
         difficulty_score = research.keyword_analysis.get('difficulty', None) if research and research.keyword_analysis else None
+
+        # Extract top 3 authoritative source excerpts as factual data points
+        source_excerpts_text = ""
+        if sources:
+            sorted_sources = sorted(
+                [s for s in sources if (s.excerpt or s.summary)],
+                key=lambda s: s.credibility_score or 0.8, reverse=True
+            )[:3]
+            excerpts = []
+            for i, src in enumerate(sorted_sources, 1):
+                excerpt = src.excerpt or src.summary or ""
+                if len(excerpt) > 300:
+                    excerpt = excerpt[:297] + "..."
+                excerpts.append(f"  {i}. \"{src.title}\" — {excerpt}")
+            if excerpts:
+                source_excerpts_text = "FACTUAL DATA POINTS FROM RESEARCH:\n" + "\n".join(excerpts)
+
+        # Extract recency: newest source publication date
+        newest_date_str = ""
+        if sources:
+            valid_dates = [s.published_at for s in sources if s.published_at]
+            if valid_dates:
+                try:
+                    parsed = [d for d in valid_dates if d[:4].isdigit()]
+                    if parsed:
+                        sorted_dates = sorted(parsed, reverse=True)
+                        newest_date_str = f"Most Recent Source: {sorted_dates[0]}"
+                except Exception:
+                    pass
+
+        # Extract top grounding evidence snippets as verified data points
+        grounding_evidence_text = ""
+        if research and research.grounding_metadata and research.grounding_metadata.grounding_supports:
+            supports = research.grounding_metadata.grounding_supports
+            top_supports = [s for s in supports if s.segment_text and len(s.segment_text) > 20][:3]
+            if top_supports:
+                evidence_parts = []
+                for i, s in enumerate(top_supports, 1):
+                    text = s.segment_text[:250]
+                    if len(s.segment_text) > 250:
+                        text += "..."
+                    evidence_parts.append(f"  {i}. {text}")
+                grounding_evidence_text = "VERIFIED EVIDENCE (high-confidence snippets):\n" + "\n".join(evidence_parts)
 
         # Build selected angle prominence section
         if selected_content_angle and selected_content_angle.strip():
@@ -106,8 +150,14 @@ Top Competitors: {competitor_text}
 Market Opportunities: {opportunity_text}
 Competitive Advantages: {advantages_text}
 {f"Market Positioning: {market_positioning_text}" if market_positioning_text else ""}
+{f"Competitor Headings (AVOID duplicating): {competitor_headings_text}" if competitor_headings_text else ""}
 
 RESEARCH SOURCES: {len(sources)} authoritative sources available
+{newest_date_str}
+
+{source_excerpts_text}
+
+{grounding_evidence_text}
 
 {f"CUSTOM INSTRUCTIONS: {custom_instructions}" if custom_instructions else ""}
 

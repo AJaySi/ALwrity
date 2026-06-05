@@ -172,6 +172,8 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                   fontSize: '14px',
                   lineHeight: '1.5',
                   wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal',
                   cursor: 'pointer'
                 }}
                 title="Click to edit title"
@@ -389,22 +391,25 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                   </div>
                   <div style={{ display: 'grid', gap: '10px' }}>
                     {generatedTitles.map((title, index) => (
-                      <button
-                        key={`seo-${index}`}
-                        onClick={() => handleTitleSelect(title)}
-                        style={{
-                          width: '100%',
-                          padding: '16px 20px',
-                          border: selectedTitle === title ? '2px solid #16a34a' : '1px solid #e5e7eb',
-                          borderRadius: '12px',
-                          backgroundColor: selectedTitle === title ? '#f0fdf4' : 'white',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          fontSize: '15px',
-                          color: '#1f2937',
-                          transition: 'all 0.2s ease',
-                          lineHeight: '1.4'
-                        }}
+                        <button
+                          key={`seo-${index}`}
+                          onClick={() => handleTitleSelect(title)}
+                          style={{
+                            width: '100%',
+                            padding: '16px 20px',
+                            border: selectedTitle === title ? '2px solid #16a34a' : '1px solid #e5e7eb',
+                            borderRadius: '12px',
+                            backgroundColor: selectedTitle === title ? '#f0fdf4' : 'white',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '15px',
+                            color: '#1f2937',
+                            transition: 'all 0.2s ease',
+                            lineHeight: '1.4',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            whiteSpace: 'normal'
+                          }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {
                             e.currentTarget.style.backgroundColor = '#f9fafb';
@@ -477,7 +482,10 @@ const EnhancedTitleSelector: React.FC<EnhancedTitleSelectorProps> = ({
                           fontSize: '15px',
                           color: '#1f2937',
                           transition: 'all 0.2s ease',
-                          lineHeight: '1.4'
+                          lineHeight: '1.4',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          whiteSpace: 'normal'
                         }}
                         onMouseEnter={(e) => {
                           if (selectedTitle !== title) {

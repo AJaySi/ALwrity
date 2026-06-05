@@ -1,3 +1,7 @@
+---
+description: ALwrity Podcast Maker - AI-powered podcast creation, editing, and publishing platform.
+---
+
 # Podcast Maker Overview
 
 Podcast Maker helps you turn a topic idea into a polished episode draft with research, script generation, AI voice narration, and optional video scenes.
@@ -46,6 +50,13 @@ Most users can ignore this section.
 - Podcast Maker uses preflight checks before expensive operations (analysis/script/audio/research) to surface plan/credit issues early.
 - The frontend normalizes snake_case API responses into camelCase for UI components where needed.
 - Long-running video operations are task-based and polled from the client.
+
+## Related Features
+
+- **[Workflow Guide](workflow-guide.md)** — Step-by-step podcast creation
+- **[YouTube Publishing](youtube-publishing.md)** — Upload podcasts to YouTube
+- **[Blog Writer](../blog-writer/overview.md)** — Repurpose podcast scripts into blog posts
+- **[Image Studio](../image-studio/overview.md)** — Create podcast cover art
 
 ## Engineering references
 

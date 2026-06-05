@@ -44,15 +44,18 @@ The reply monitor:
 3. Searches for messages sent to your outreach address.
 4. Fetches up to `IMAP_FETCH_LIMIT` recent messages.
 5. For each message, checks if it's already been processed (deduplication).
-6. Matches the reply to an existing outreach attempt by sender email.
+6. Matches the reply to an existing outreach attempt (Message-ID first, sender email fallback).
 7. Classifies the reply and stores it.
 
 ### Reply Matching
 
-Replies are matched to outreach attempts using the `from_email` field:
+Replies are matched to outreach attempts using a two-stage strategy:
 
-- The system looks up `find_attempt_by_from_email(from_email)` to find the most recent outreach attempt sent to that email address.
-- If no match is found, the reply is still stored but not linked to an attempt.
+1. **Message-ID matching (primary)**: Each sent email includes a unique `Message-ID` header. When the recipient replies, their email client includes the original `Message-ID` in `In-Reply-To` and `References` headers. The system extracts these and looks up `find_attempt_by_message_id(in_reply_to)` to find the exact outreach attempt.
+
+2. **Sender email fallback**: If no Message-ID match is found (e.g., the reply client stripped headers), the system falls back to `find_attempt_by_from_email(from_email)` to find the most recent attempt sent to that address.
+
+3. **Unmatched replies**: If neither strategy produces a match, the reply is still stored but not linked to an attempt.
 
 ### Deduplication
 

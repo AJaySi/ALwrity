@@ -432,7 +432,7 @@ class ResearchDataFilter:
             'how to', 'guide', 'tutorial', 'steps', 'process', 'method',
             'best practices', 'tips', 'strategies', 'techniques', 'approach',
             'comparison', 'vs', 'versus', 'difference', 'pros and cons',
-            'trends', 'future', '2024', '2025', 'emerging', 'new'
+            'trends', 'future', str(datetime.now().year), str(datetime.now().year + 1), 'emerging', 'new'
         ]
         
         for indicator in actionable_indicators:

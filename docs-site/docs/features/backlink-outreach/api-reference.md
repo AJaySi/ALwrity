@@ -75,12 +75,16 @@ flowchart TD
 **Request Body:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+|---|---|---|---|---|
 | `name` | string | Yes | Campaign name. |
 | `description` | string | No | Campaign description. |
 | `keywords` | string[] | No | Target keywords for discovery. |
 
-**Response:** `201 Created` — Campaign object.
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `422` | Validation error (e.g., empty name). |
 
 ### List Campaigns
 
@@ -92,7 +96,7 @@ flowchart TD
 |---|---|---|---|
 | `workspace_id` | string | user_id | Workspace to filter by. Defaults to authenticated user. |
 
-**Response:** `200 OK` — Array of campaign objects.
+**Response:** `200 OK` — Array of campaign objects scoped to the authenticated user.
 
 ### Get Campaign
 
@@ -100,11 +104,23 @@ flowchart TD
 
 **Response:** `200 OK` — Campaign object with included leads.
 
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `404` | Campaign not found or does not belong to authenticated user (`BacklinkCampaignNotFoundError`). |
+
 ### Delete Campaign
 
 `DELETE /api/v1/backlink-outreach/campaigns/{campaign_id}`
 
 **Response:** `204 No Content`
+
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `404` | Campaign not found or does not belong to authenticated user. |
 
 ---
 
@@ -117,7 +133,7 @@ flowchart TD
 **Request Body:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+|---|---|---|---|---|
 | `website_url` | string | Yes | Target website URL. |
 | `website_title` | string | No | Website title. |
 | `contact_email` | string | No | Contact email address. |
@@ -126,7 +142,14 @@ flowchart TD
 | `guest_post_likelihood` | float | No | Guest post likelihood (0-1). |
 | `source` | string | No | Source of the lead. |
 
-**Response:** `201 Created` — Lead object.
+!!! tip "Duplicate handling"
+    If a lead with the same `website_url` already exists in the campaign, the existing lead record is returned (HTTP 200) instead of creating a duplicate.
+
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `404` | Campaign not found or not owned by user. |
 
 ### Bulk Add Leads
 
@@ -138,8 +161,8 @@ flowchart TD
 
 | Field | Type | Description |
 |---|---|---|
-| `added` | int | Number of leads successfully added. |
-| `skipped` | int | Number of duplicates skipped. |
+| `added` | int | Number of leads successfully added (duplicates excluded). |
+| `skipped` | int | Number of existing leads skipped (matched by `(campaign_id, website_url)`). |
 | `failed` | string[] | List of failed entries with reasons. |
 
 ### Update Lead Status
@@ -149,10 +172,15 @@ flowchart TD
 **Request Body:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
-| `status` | string | Yes | New status: discovered, contacted, replied, placed, bounced, lost. |
+|---|---|---|---|---|
+| `status` | string | Yes | New status: `discovered`, `contacted`, `replied`, `placed`, `bounced`, `unsubscribed`. |
 
-**Response:** `200 OK` — Updated lead object.
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `422` | Invalid status value (must be one of the valid statuses). |
+| `404` | Lead not found. |
 
 ### Bulk Update Status
 
@@ -163,7 +191,7 @@ flowchart TD
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `lead_ids` | string[] | Yes | Lead IDs to update. |
-| `status` | string | Yes | New status for all leads. |
+| `status` | string | Yes | New status: `discovered`, `contacted`, `replied`, `placed`, `bounced`, `unsubscribed`. |
 
 **Response:** `200 OK`
 
@@ -441,9 +469,10 @@ flowchart TD
 ## Common Error Responses
 
 | Status | Meaning | Body |
-|---|---|---|
+|---|---|---|---|
 | `401` | Not authenticated | `{"detail": "Not authenticated"}` |
 | `403` | Policy blocked | `{"detail": "Policy validation failed", "reason": "..."}` |
-| `404` | Not found | `{"detail": "Resource not found"}` |
+| `404` | Campaign or lead not found | `{"detail": "BacklinkCampaignNotFoundError: Campaign not found or access denied"}` |
+| `409` | Duplicate lead (idempotency key collision) | `{"detail": "Duplicate attempt detected"}` |
 | `422` | Validation error | `{"detail": [...validation errors]}` |
 | `500` | Server error | `{"detail": "An internal error occurred"}` (generic, no stack trace) |

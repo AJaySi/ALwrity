@@ -378,7 +378,48 @@ class SIFIntegrationService:
                 themes = adv_insights.get('augmented_themes', [])
                 if themes:
                     text_content += f"Augmented Themes: {', '.join(themes[:5])}. "
-                
+
+                freshness = adv_insights.get('freshness', {})
+                if freshness:
+                    text_content += (f"Content Freshness Score: {freshness.get('freshness_score', 'N/A')}. "
+                                     f"Publishing Velocity: {freshness.get('publishing_velocity', 0)}/week. "
+                                     f"Trend: {freshness.get('publishing_trend', 'unknown')}. "
+                                     f"Last 30d: {freshness.get('publishing_recency', {}).get('last_30d', 0)} pages. ")
+
+                link_health = adv_insights.get('link_health', {})
+                if link_health and 'error' not in link_health:
+                    text_content += (f"Internal Links: {link_health.get('internal_link_count', 0)}. "
+                                     f"External Links: {link_health.get('external_link_count', 0)}. "
+                                     f"Nofollow: {link_health.get('nofollow_link_count', 0)}. "
+                                     f"Avg Links/Page: {link_health.get('avg_links_per_page', 0)}. ")
+
+                redirects = adv_insights.get('redirect_audit', {})
+                if redirects and 'error' not in redirects:
+                    text_content += (f"Redirects: {redirects.get('total_redirects', 0)} total, "
+                                     f"{redirects.get('multi_hop_chains', 0)} multi-hop. ")
+
+                image_seo = adv_insights.get('image_seo', {})
+                if image_seo and 'error' not in image_seo:
+                    text_content += (f"Images: {image_seo.get('total_images', 0)} total, "
+                                     f"Alt Coverage: {image_seo.get('alt_coverage_percentage', 0)}%. ")
+
+                url_struct = adv_insights.get('url_structure', {})
+                if url_struct:
+                    text_content += (f"URL Structure: {url_struct.get('total_urls_analyzed', 0)} URLs, "
+                                     f"Avg Depth: {url_struct.get('directory_depth', {}).get('average_depth', 0)}. "
+                                     f"Params: {url_struct.get('parameter_usage', {}).get('percentage_with_params', 0)}%. ")
+
+                robots = adv_insights.get('robots_txt', {})
+                if robots and robots.get('success'):
+                    text_content += (f"Robots.txt: {robots.get('total_directives', 0)} directives, "
+                                     f"Compliance: {robots.get('compliance_score', 0)}/100. "
+                                     f"Issues: {len(robots.get('issues', []))}. ")
+
+                budget = adv_insights.get('crawl_budget', {})
+                if budget and budget.get('success'):
+                    text_content += (f"Crawl Budget: {budget.get('pages_crawled', 0)} crawled of {budget.get('sitemap_total_urls', 0)} URLs. "
+                                     f"Waste: {budget.get('waste_percentage', 0)}%. "
+                                     f"Score: {budget.get('optimization_score', 0)}. ")
             # Add Technical SEO overview
             tech_audit = dashboard_data.get('technical_seo_audit', {})
             if tech_audit:

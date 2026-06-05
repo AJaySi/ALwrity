@@ -292,14 +292,42 @@ export const getTasksNeedingIntervention = async (userId: string): Promise<TaskN
       throw new Error('Failed to fetch tasks needing intervention');
     }
     
-    return response.data.tasks || [];
+return response.data.tasks || [];
   } catch (error: any) {
     console.error('Error fetching tasks needing intervention:', error);
     throw new Error(
-      error.response?.data?.detail ||
-      error.message ||
+      error.response?.data?.detail || 
+      error.message || 
       'Failed to fetch tasks needing intervention'
     );
+  }
+};
+
+export interface OnboardingTask {
+  task_type: string;
+  label: string;
+  description: string;
+  frequency: string;
+  task_id: number;
+  website_url: string | null;
+  status: string;
+  status_label: string;
+  last_success: string | null;
+  last_failure: string | null;
+  next_execution: string | null;
+  failure_reason: string | null;
+  consecutive_failures: number;
+}
+
+export const getOnboardingTasks = async (userId: string): Promise<OnboardingTask[]> => {
+  try {
+    const response = await apiClient.get<{ success: boolean; tasks: OnboardingTask[]; count: number }>(
+      `/api/scheduler/onboarding-tasks/${userId}`
+    );
+    return response.data.tasks || [];
+  } catch (error: any) {
+    console.error('Error fetching onboarding tasks:', error);
+    return [];
   }
 };
 

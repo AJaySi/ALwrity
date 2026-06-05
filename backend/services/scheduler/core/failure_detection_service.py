@@ -370,6 +370,136 @@ class FailureDetectionService:
                         "last_failure": task.last_failure.isoformat() if task.last_failure else None
                     })
             
+            # Check onboarding full website analysis tasks
+            from models.website_analysis_monitoring_models import OnboardingFullWebsiteAnalysisTask
+            onboarding_tasks = self.db.query(OnboardingFullWebsiteAnalysisTask).filter(
+                OnboardingFullWebsiteAnalysisTask.status == "needs_intervention"
+            )
+            if user_id:
+                onboarding_tasks = onboarding_tasks.filter(OnboardingFullWebsiteAnalysisTask.user_id == user_id)
+            
+            for task in onboarding_tasks.all():
+                pattern = self.analyze_task_failures(task.id, "onboarding_full_website_analysis", task.user_id)
+                tasks_needing_intervention.append({
+                    "task_id": task.id,
+                    "task_type": "onboarding_full_website_analysis",
+                    "user_id": task.user_id,
+                    "website_url": task.website_url,
+                    "failure_pattern": {
+                        "consecutive_failures": pattern.consecutive_failures if pattern else task.consecutive_failures,
+                        "recent_failures": pattern.recent_failures if pattern else 0,
+                        "failure_reason": pattern.failure_reason.value if pattern else "unknown",
+                        "last_failure_time": pattern.last_failure_time.isoformat() if pattern and pattern.last_failure_time else None,
+                        "error_patterns": pattern.error_patterns if pattern else [],
+                    },
+                    "failure_reason": task.failure_reason,
+                    "last_failure": task.last_failure.isoformat() if task.last_failure else None
+                })
+            
+            # Check deep competitor analysis tasks
+            from models.website_analysis_monitoring_models import DeepCompetitorAnalysisTask
+            competitor_tasks = self.db.query(DeepCompetitorAnalysisTask).filter(
+                DeepCompetitorAnalysisTask.status == "needs_intervention"
+            )
+            if user_id:
+                competitor_tasks = competitor_tasks.filter(DeepCompetitorAnalysisTask.user_id == user_id)
+            
+            for task in competitor_tasks.all():
+                pattern = self.analyze_task_failures(task.id, "deep_competitor_analysis", task.user_id)
+                tasks_needing_intervention.append({
+                    "task_id": task.id,
+                    "task_type": "deep_competitor_analysis",
+                    "user_id": task.user_id,
+                    "website_url": task.website_url,
+                    "failure_pattern": {
+                        "consecutive_failures": pattern.consecutive_failures if pattern else task.consecutive_failures,
+                        "recent_failures": pattern.recent_failures if pattern else 0,
+                        "failure_reason": pattern.failure_reason.value if pattern else "unknown",
+                        "last_failure_time": pattern.last_failure_time.isoformat() if pattern and pattern.last_failure_time else None,
+                        "error_patterns": pattern.error_patterns if pattern else [],
+                    },
+                    "failure_reason": task.failure_reason,
+                    "last_failure": task.last_failure.isoformat() if task.last_failure else None
+                })
+            
+            # Check SIF indexing tasks
+            from models.website_analysis_monitoring_models import SIFIndexingTask
+            sif_tasks = self.db.query(SIFIndexingTask).filter(
+                SIFIndexingTask.status == "needs_intervention"
+            )
+            if user_id:
+                sif_tasks = sif_tasks.filter(SIFIndexingTask.user_id == user_id)
+            
+            for task in sif_tasks.all():
+                pattern = self.analyze_task_failures(task.id, "sif_indexing", task.user_id)
+                tasks_needing_intervention.append({
+                    "task_id": task.id,
+                    "task_type": "sif_indexing",
+                    "user_id": task.user_id,
+                    "website_url": task.website_url,
+                    "failure_pattern": {
+                        "consecutive_failures": pattern.consecutive_failures if pattern else task.consecutive_failures,
+                        "recent_failures": pattern.recent_failures if pattern else 0,
+                        "failure_reason": pattern.failure_reason.value if pattern else "unknown",
+                        "last_failure_time": pattern.last_failure_time.isoformat() if pattern and pattern.last_failure_time else None,
+                        "error_patterns": pattern.error_patterns if pattern else [],
+                    },
+                    "failure_reason": task.failure_reason,
+                    "last_failure": task.last_failure.isoformat() if task.last_failure else None
+                })
+            
+            # Check market trends tasks
+            from models.website_analysis_monitoring_models import MarketTrendsTask
+            trends_tasks = self.db.query(MarketTrendsTask).filter(
+                MarketTrendsTask.status == "needs_intervention"
+            )
+            if user_id:
+                trends_tasks = trends_tasks.filter(MarketTrendsTask.user_id == user_id)
+            
+            for task in trends_tasks.all():
+                pattern = self.analyze_task_failures(task.id, "market_trends", task.user_id)
+                tasks_needing_intervention.append({
+                    "task_id": task.id,
+                    "task_type": "market_trends",
+                    "user_id": task.user_id,
+                    "website_url": task.website_url,
+                    "failure_pattern": {
+                        "consecutive_failures": pattern.consecutive_failures if pattern else task.consecutive_failures,
+                        "recent_failures": pattern.recent_failures if pattern else 0,
+                        "failure_reason": pattern.failure_reason.value if pattern else "unknown",
+                        "last_failure_time": pattern.last_failure_time.isoformat() if pattern and pattern.last_failure_time else None,
+                        "error_patterns": pattern.error_patterns if pattern else [],
+                    },
+                    "failure_reason": task.failure_reason,
+                    "last_failure": task.last_failure.isoformat() if task.last_failure else None
+                })
+            
+            # Check advertools tasks (paused tasks may also need attention)
+            from models.website_analysis_monitoring_models import AdvertoolsTask
+            advertools_tasks = self.db.query(AdvertoolsTask).filter(
+                AdvertoolsTask.status.in_(["needs_intervention", "failed"])
+            )
+            if user_id:
+                advertools_tasks = advertools_tasks.filter(AdvertoolsTask.user_id == user_id)
+            
+            for task in advertools_tasks.all():
+                pattern = self.analyze_task_failures(task.id, "advertools", task.user_id)
+                tasks_needing_intervention.append({
+                    "task_id": task.id,
+                    "task_type": "advertools",
+                    "user_id": task.user_id,
+                    "website_url": task.website_url,
+                    "failure_pattern": {
+                        "consecutive_failures": pattern.consecutive_failures if pattern else task.consecutive_failures,
+                        "recent_failures": pattern.recent_failures if pattern else 0,
+                        "failure_reason": pattern.failure_reason.value if pattern else "unknown",
+                        "last_failure_time": pattern.last_failure_time.isoformat() if pattern and pattern.last_failure_time else None,
+                        "error_patterns": pattern.error_patterns if pattern else [],
+                    },
+                    "failure_reason": task.failure_reason,
+                    "last_failure": task.last_failure.isoformat() if task.last_failure else None
+                })
+            
             return tasks_needing_intervention
             
         except Exception as e:

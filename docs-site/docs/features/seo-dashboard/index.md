@@ -129,9 +129,9 @@ Deep technical reference:
 
 **Recommended Reading Order**:
 1. [Quick Start Guide](quick-start.md) - 10 min
-2. [Meta Description Generator](individual-tools-guide.md#1--meta-description-generator) - 5 min
-3. [On-Page SEO Analyzer](individual-tools-guide.md#6--on-page-seo-analyzer) - 10 min
-4. [Content Strategy Analyzer](individual-tools-guide.md#9--content-strategy-analyzer) - 10 min
+2. [Meta Description Generator](individual-tools-guide.md#1-meta-description-generator) - 5 min
+3. [On-Page SEO Analyzer](individual-tools-guide.md#6-on-page-seo-analyzer) - 10 min
+4. [Content Strategy Analyzer](individual-tools-guide.md#9-content-strategy-analyzer) - 10 min
 5. [LLM Insights Generation](phase2a-llm-insights.md) - Get AI content strategy - 10 min
 6. [Content Creation Workflow](workflows-guide.md#workflow-1-content-creation-pipeline) - 5 min
 
@@ -210,8 +210,8 @@ Deep technical reference:
 
 **Recommended Reading Order**:
 1. [Quick Start Guide](quick-start.md) - 10 min
-2. [Technical SEO Analyzer](individual-tools-guide.md#7--technical-seo-analyzer) - 15 min
-3. [PageSpeed Analyzer](individual-tools-guide.md#2--pagespeed-analyzer) - 15 min
+2. [Technical SEO Analyzer](individual-tools-guide.md#7-technical-seo-analyzer) - 15 min
+3. [PageSpeed Analyzer](individual-tools-guide.md#2-pagespeed-analyzer) - 15 min
 4. [Design Document](design-document.md) - 20 min
 
 **Total Learning Time**: 1 hour
@@ -267,15 +267,15 @@ Deep technical reference:
 
 | Goal | Tool | Guide |
 |------|------|-------|
-| Quick content optimization | On-Page SEO Analyzer | [Link](individual-tools-guide.md#6--on-page-seo-analyzer) |
-| Improve search appearance | Meta Description Generator | [Link](individual-tools-guide.md#1--meta-description-generator) |
-| Social media optimization | OpenGraph Generator | [Link](individual-tools-guide.md#5--opengraph-generator) |
-| Find new content ideas | Content Strategy Analyzer | [Link](individual-tools-guide.md#9--content-strategy-analyzer) |
-| Fix website speed | PageSpeed Analyzer | [Link](individual-tools-guide.md#2--pagespeed-analyzer) |
-| Find technical issues | Technical SEO Analyzer | [Link](individual-tools-guide.md#7--technical-seo-analyzer) |
-| Understand your site | Sitemap Analyzer | [Link](individual-tools-guide.md#3--sitemap-analyzer) |
-| Optimize images | Image Alt Text Generator | [Link](individual-tools-guide.md#4--image-alt-text-generator) |
-| Complete audit | Enterprise SEO Suite | [Link](individual-tools-guide.md#8--enterprise-seo-suite) |
+| Quick content optimization | On-Page SEO Analyzer | [Link](individual-tools-guide.md#6-on-page-seo-analyzer) |
+| Improve search appearance | Meta Description Generator | [Link](individual-tools-guide.md#1-meta-description-generator) |
+| Social media optimization | OpenGraph Generator | [Link](individual-tools-guide.md#5-opengraph-generator) |
+| Find new content ideas | Content Strategy Analyzer | [Link](individual-tools-guide.md#9-content-strategy-analyzer) |
+| Fix website speed | PageSpeed Analyzer | [Link](individual-tools-guide.md#2-pagespeed-analyzer) |
+| Find technical issues | Technical SEO Analyzer | [Link](individual-tools-guide.md#7-technical-seo-analyzer) |
+| Understand your site | Sitemap Analyzer | [Link](individual-tools-guide.md#3-sitemap-analyzer) |
+| Optimize images | Image Alt Text Generator | [Link](individual-tools-guide.md#4-image-alt-text-generator) |
+| Complete audit | Enterprise SEO Suite | [Link](individual-tools-guide.md#8-enterprise-seo-suite) |
 | Beat competitors | Competitive Analysis | [Link](competitive-analysis.md) |
 | Plan strategy | Content Strategy Guide | [Link](content-strategy-guide.md) |
 | AI recommendations | AI Copilot | [Link](ai-copilot.md) |

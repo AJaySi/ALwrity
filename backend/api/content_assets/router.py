@@ -344,6 +344,43 @@ async def update_asset(
         raise HTTPException(status_code=500, detail=f"Error updating asset: {str(e)}")
 
 
+@router.get("/{asset_id}/content")
+async def get_asset_content(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Serve the raw text content of a text asset by reading its file from disk."""
+    try:
+        user_id = current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found")
+        
+        service = ContentAssetService(db)
+        asset = service.get_asset_by_id(asset_id, user_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        
+        if asset.asset_type != AssetType.TEXT:
+            raise HTTPException(status_code=400, detail="Asset is not a text file")
+        
+        if not asset.file_path:
+            raise HTTPException(status_code=404, detail="Asset file path not recorded")
+        
+        from pathlib import Path
+        file_path = Path(asset.file_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Asset file not found on disk")
+        
+        content = file_path.read_text(encoding="utf-8")
+        return {"success": True, "content": content}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading asset content: {str(e)}")
+
+
 @router.get("/statistics", response_model=Dict[str, Any])
 async def get_statistics(
     db: Session = Depends(get_db),

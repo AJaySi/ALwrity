@@ -12,15 +12,16 @@ flowchart TD
     B --> C[Resolve Lead Email from DB]
     C --> D[Policy Validation]
     D -->|Approved| E[Create Outreach Attempt Record]
-    D -->|Blocked| F[Record Audit Log + Return 403]
-    E --> G[Send via SMTP with TLS]
-    G -->|Success| H[Increment Counters]
-    G -->|Success| I[Mark Idempotency Key]
-    G -->|Success| J[Update Lead Status to Contacted]
-    G -->|Failure| K[Return 500 with Generic Error]
-    H --> L[Return 200 with Attempt Details]
-    I --> L
-    J --> L
+    D -->|Blocked|     F[Record Audit Log + Return 403]
+    E --> G[Reserve Daily Cap Slots Atomically]
+    G --> H[Send via SMTP with TLS + Message-ID]
+    H -->|Success| I[Store Message-ID on Attempt Record]
+    H -->|Success| J[Mark Idempotency Key]
+    H -->|Success| K[Update Lead Status to Contacted]
+    H -->|Failure| L[Return 500 with Generic Error]
+    I --> M[Return 200 with Attempt Details]
+    J --> M
+    K --> M
     
     style D fill:#fff3e0
     style G fill:#e3f2fd
@@ -28,7 +29,7 @@ flowchart TD
 ```
 
 !!! warning "Counter timing"
-    Counters and idempotency keys are marked **only after successful SMTP delivery**, never before. This prevents false cap consumption on failed sends.
+    Daily cap slots are **reserved atomically before sending** via `try_increment_user_send_counter` and `try_increment_domain_send_counter`. If SMTP delivery fails, one slot is consumed (the cap check and increment happen in the same transaction). Idempotency keys are marked only after successful delivery.
 
 ## Policy Validation
 
@@ -40,6 +41,7 @@ Before every send, the system validates:
 | **Daily domain cap** | Max 20 emails/domain/day | Block + audit |
 | **Suppression list** | Recipient not suppressed | Block + audit |
 | **Idempotency** | No duplicate `(sender, recipient, subject)` in 24h | Block + audit |
+| **Sender alias** | `sender_email` must match `SMTP_ALLOWED_FROM_EMAILS` pattern | Block + fallback to `SMTP_FROM_EMAIL` |
 | **Legal basis** | EU domains → "consent", others → "legitimate_interest" | Auto-assign |
 
 **API:** `POST /api/v1/backlink-outreach/policy/validate`

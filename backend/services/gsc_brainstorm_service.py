@@ -47,6 +47,10 @@ class GSCBrainstormService:
         if not site_url:
             sites = self.gsc_service.get_site_list(user_id)
             if not sites:
+                logger.info(f"No GSC sites found for user {user_id} — falling back to AI-only brainstorm")
+                fallback = self._generate_ai_only_brainstorm(user_id, keywords, None, None, None)
+                if fallback:
+                    return fallback
                 return {
                     "error": "No GSC sites found. Make sure your site is verified in Google Search Console.",
                     "content_opportunities": [],
@@ -70,6 +74,10 @@ class GSCBrainstormService:
         )
 
         if "error" in analytics:
+            logger.info(f"GSC analytics error for user {user_id}: {analytics.get('error')} — falling back to AI-only brainstorm")
+            fallback = self._generate_ai_only_brainstorm(user_id, keywords, site_url, start_date, end_date)
+            if fallback:
+                return fallback
             return {
                 "error": analytics.get("error", "Failed to fetch GSC data"),
                 "content_opportunities": [],
@@ -88,6 +96,10 @@ class GSCBrainstormService:
         pages_data = self._parse_page_rows(page_rows)
 
         if not keywords_data:
+            logger.info(f"No GSC keyword data for user {user_id} — falling back to AI-only brainstorm")
+            fallback = self._generate_ai_only_brainstorm(user_id, keywords, site_url, start_date, end_date)
+            if fallback:
+                return fallback
             return {
                 "error": "No keyword data available for the selected period. This usually means your site is new to GSC or hasn't received search traffic yet.",
                 "content_opportunities": [],
@@ -110,6 +122,10 @@ class GSCBrainstormService:
         logger.info(f"After topic filter: {len(keywords_data)} keywords, {len(pages_data)} pages")
 
         if not keywords_data:
+            logger.info(f"No GSC keywords matched topic '{keywords}' for user {user_id} — falling back to AI-only brainstorm")
+            fallback = self._generate_ai_only_brainstorm(user_id, keywords, site_url, start_date, end_date)
+            if fallback:
+                return fallback
             return {
                 "error": "No GSC keywords matched your topic. Try a broader research topic or check your GSC data.",
                 "content_opportunities": [],
@@ -154,6 +170,128 @@ class GSCBrainstormService:
             "ai_recommendations": ai_recommendations,
             "summary": summary,
         }
+
+    # ------------------------------------------------------------------ #
+    #  AI-only fallback (when GSC has no data)
+    # ------------------------------------------------------------------ #
+
+    def _generate_ai_only_brainstorm(
+        self,
+        user_id: str,
+        keywords: str,
+        site_url: Optional[str],
+        start_date: Optional[str],
+        end_date: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generate topic ideas using AI alone when GSC data is unavailable.
+        Returns a brainstorm-shaped result with empty GSC-specific arrays
+        but populated ai_recommendations.
+        """
+        try:
+            prompt = f"""You are an expert content strategist helping a blog writer brainstorm topic ideas.
+
+The user is interested in writing about: "{keywords}"
+
+Since they are a new or early-stage website, there is no Google Search Console data available yet.
+Generate compelling blog post ideas they can write RIGHT NOW to start building traffic.
+
+For each suggestion include:
+1. A specific, compelling blog post TITLE (not a vague topic)
+2. The primary keyword it should target
+3. Why this topic will perform well (search demand, competition level, timing)
+4. The recommended content format (how-to, listicle, comparison, pillar page, etc.)
+5. Estimated difficulty level (Easy / Medium / Hard)
+
+Return your response in this EXACT JSON format (no markdown, no code fences):
+{{
+  "immediate_opportunities": [
+    {{
+      "title": "Specific Blog Post Title",
+      "keyword": "primary target keyword",
+      "reason": "Why this will perform well",
+      "format": "How-To Guide | Listicle | Comparison | Pillar Page | etc.",
+      "estimated_impact": "Beginner-friendly traffic opportunity"
+    }}
+  ],
+  "content_strategy": [
+    {{
+      "title": "Pillar Content Title",
+      "keyword": "target keyword",
+      "reason": "Strategic importance for building topical authority",
+      "format": "Pillar Page | Ultimate Guide | Resource",
+      "estimated_impact": "Foundation for long-term organic growth"
+    }}
+  ],
+  "long_term_strategy": [
+    {{
+      "title": "Authority Building Title",
+      "keyword": "target keyword",
+      "reason": "Establishes expertise and captures high-intent traffic over time",
+      "format": "Research-Backed Analysis | Expert Roundup | Original Study",
+      "estimated_impact": "Compound traffic growth over 6-12 months"
+    }}
+  ]
+}}
+
+IMPORTANT:
+- Provide 3-5 items in each category
+- All suggestions MUST relate to the user's interest in "{keywords}"
+- Titles should be specific, compelling, and SEO-aware
+- Prioritize topics with clear search intent and realistic ranking potential for a new site
+- Include a mix of easy wins (long-tail, low competition) and strategic pillar content
+- For estimated_impact, describe the opportunity type (not click numbers since we lack data)"""
+
+            system_prompt = (
+                "You are an expert content strategist specializing in SEO and blog topic generation. "
+                "You help new websites identify high-potential content topics even without search console data. "
+                "You always respond with valid JSON matching the requested format exactly."
+            )
+
+            result = llm_text_gen(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                user_id=user_id,
+                flow_type="gsc_brainstorm_fallback",
+            )
+
+            if result:
+                parsed = self._parse_ai_response(result)
+                if parsed:
+                    return {
+                        "content_opportunities": [],
+                        "keyword_gaps": [],
+                        "quick_wins": [],
+                        "page_opportunities": [],
+                        "ai_recommendations": parsed,
+                        "summary": {
+                            "site_url": site_url or "",
+                            "date_range": {
+                                "start": start_date or "",
+                                "end": end_date or "",
+                            },
+                            "total_keywords_analyzed": 0,
+                            "total_impressions": 0,
+                            "total_clicks": 0,
+                            "avg_ctr": 0,
+                            "avg_position": 0,
+                            "ctr_vs_benchmark": 0,
+                            "health_score": 0,
+                            "keyword_distribution": {
+                                "positions_1_3": 0,
+                                "positions_4_10": 0,
+                                "positions_11_20": 0,
+                                "positions_21_plus": 0,
+                            },
+                            "top_keywords": [],
+                            "top_pages": [],
+                            "note": "AI-generated suggestions based on your topic. No GSC data was available — these are strategic recommendations, not data-driven insights."
+                        },
+                    }
+        except Exception as e:
+            logger.warning(f"AI-only brainstorm fallback failed for user {user_id}: {e}")
+
+        return None
 
     # ------------------------------------------------------------------ #
     #  Data parsing helpers

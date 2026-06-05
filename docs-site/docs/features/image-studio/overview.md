@@ -1,3 +1,7 @@
+---
+description: ALwrity Image Studio - AI-powered image creation, editing, and optimization for digital marketers and content creators.
+---
+
 # Image Studio Overview
 
 The ALwrity Image Studio is a comprehensive AI-powered image creation, editing, and optimization platform designed specifically for digital marketers and content creators. It provides a unified hub for all image-related operations, from generation to social media optimization, making professional visual content creation accessible to everyone.

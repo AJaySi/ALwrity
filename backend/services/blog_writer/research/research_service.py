@@ -720,7 +720,7 @@ class ResearchService:
                 url=src.get("url", ""),
                 excerpt=src.get("content", "")[:500] if src.get("content") else f"Source from {src.get('title', 'web')}",
                 credibility_score=float(src.get("credibility_score", 0.8)),
-                published_at=str(src.get("publication_date", "2024-01-01")),
+                published_at=str(src.get("publication_date", f"{datetime.now().year}-01-01")),
                 index=src.get("index"),
                 source_type=src.get("type", "web")
             )

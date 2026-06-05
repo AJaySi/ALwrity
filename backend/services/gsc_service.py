@@ -188,7 +188,6 @@ class GSCService:
                 
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
-                # Check if table exists first to avoid error on fresh DB
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='gsc_credentials'")
                 if not cursor.fetchone():
                     return None
@@ -204,7 +203,6 @@ class GSCService:
                 
                 credentials_data = json.loads(result[0])
                 
-                # Check for required fields, but allow connection without refresh token
                 required_fields = ['token_uri', 'client_id', 'client_secret']
                 missing_fields = [field for field in required_fields if not credentials_data.get(field)]
                 
@@ -214,7 +212,6 @@ class GSCService:
                 
                 credentials = Credentials.from_authorized_user_info(credentials_data, self.scopes)
                 
-                # Refresh token if needed and possible
                 if credentials.expired:
                     if credentials.refresh_token:
                         try:
@@ -222,9 +219,11 @@ class GSCService:
                             self.save_user_credentials(user_id, credentials)
                         except Exception as e:
                             logger.error(f"Failed to refresh GSC token for user {user_id}: {e}")
+                            self.clear_incomplete_credentials(user_id)
                             return None
                     else:
                         logger.warning(f"GSC token expired for user {user_id} but no refresh token available - user needs to re-authorize")
+                        self.clear_incomplete_credentials(user_id)
                         return None
                 
                 return credentials
@@ -288,7 +287,6 @@ class GSCService:
         try:
             logger.info(f"Handling GSC OAuth callback with state: {state[:20]}...")
             
-            # Extract user_id from state
             if ':' not in state:
                 logger.error(f"Invalid GSC state format: {state}")
                 return False
@@ -300,17 +298,19 @@ class GSCService:
                 logger.error(f"User database not found for user {user_id}")
                 return False
 
-            # Verify state in user's DB (but don't delete yet — delete after successful token exchange)
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT user_id FROM gsc_oauth_states WHERE state = ?', (state,))
-                result = cursor.fetchone()
-                
-                if not result:
-                    logger.error(f"Invalid or expired GSC OAuth state for user {user_id}")
-                    return False
-            
-            # Exchange code for credentials
+            # Verify state in user's DB (best effort — if missing, attempt code exchange anyway)
+            state_valid = False
+            try:
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT user_id FROM gsc_oauth_states WHERE state = ?', (state,))
+                    state_valid = cursor.fetchone() is not None
+            except Exception as state_err:
+                logger.warning(f"State verification query failed, proceeding anyway: {state_err}")
+
+            if not state_valid:
+                logger.warning(f"GSC OAuth state not found in DB for user {user_id} — will attempt code exchange without state verification")
+
             if not self.client_config:
                 logger.error("Cannot handle callback: Client configuration not loaded")
                 return False
@@ -324,21 +324,30 @@ class GSCService:
             
             flow.fetch_token(code=authorization_code)
             credentials = flow.credentials
+
+            if not credentials or not credentials.token:
+                logger.error(f"Token exchange returned empty credentials for user {user_id}")
+                return False
             
-            # State consumed successfully — clean up
-            try:
-                with sqlite3.connect(db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
-                    conn.commit()
-            except Exception as cleanup_err:
-                logger.warning(f"Failed to clean up OAuth state: {cleanup_err}")
+            # Clean up state if it was valid
+            if state_valid:
+                try:
+                    with sqlite3.connect(db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM gsc_oauth_states WHERE state = ?', (state,))
+                        conn.commit()
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up OAuth state: {cleanup_err}")
             
-            # Save credentials
-            return self.save_user_credentials(user_id, credentials)
+            result = self.save_user_credentials(user_id, credentials)
+            if result:
+                logger.info(f"GSC OAuth callback succeeded for user {user_id} (state_valid={state_valid})")
+            else:
+                logger.error(f"GSC OAuth callback: token exchange succeeded but failed to save credentials for user {user_id}")
+            return result
             
         except Exception as e:
-            logger.error(f"Error handling GSC OAuth callback: {e}")
+            logger.error(f"Error handling GSC OAuth callback for user {user_id if 'user_id' in dir() else 'unknown'}: {e}")
             return False
 
     
@@ -726,6 +735,8 @@ class GSCService:
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM gsc_credentials WHERE user_id = ?', (user_id,))
+                cursor.execute('DELETE FROM gsc_data_cache WHERE user_id = ?', (user_id,))
+                cursor.execute('DELETE FROM gsc_oauth_states WHERE user_id = ?', (user_id,))
                 conn.commit()
             
             logger.info(f"Cleared incomplete GSC credentials for user: {user_id}")

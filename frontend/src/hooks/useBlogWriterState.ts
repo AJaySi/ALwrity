@@ -424,6 +424,87 @@ export const useBlogWriterState = () => {
     // For now, just log the content
   }, []);
 
+  // Restore full blog state from a loaded BlogAssetFull object
+  const restoreFromAsset = useCallback((asset: any) => {
+    if (!asset) return;
+    try {
+      // Restore research
+      if (asset.research_data) {
+        setResearch(asset.research_data);
+        localStorage.setItem('blog_research_cache', JSON.stringify(asset.research_data));
+      }
+
+      // Restore outline
+      if (asset.outline_data) {
+        const od = asset.outline_data;
+        if (od.outline && Array.isArray(od.outline)) {
+          setOutline(od.outline);
+          localStorage.setItem('blog_outline', JSON.stringify(od.outline));
+        }
+        if (od.selected_title) {
+          setSelectedTitle(od.selected_title);
+          localStorage.setItem('blog_selected_title', od.selected_title);
+        }
+        if (od.title_options && Array.isArray(od.title_options)) {
+          setTitleOptions(od.title_options);
+          localStorage.setItem('blog_title_options', JSON.stringify(od.title_options));
+        }
+        setOutlineConfirmed(true);
+        localStorage.setItem('blog_outline_confirmed', 'true');
+      }
+
+      // Restore content sections
+      if (asset.content_data && typeof asset.content_data === 'object') {
+        const sectionsMap: Record<string, string> = {};
+        Object.entries(asset.content_data).forEach(([key, value]) => {
+          if (typeof value === 'string') {
+            sectionsMap[key] = value;
+          }
+        });
+        if (Object.keys(sectionsMap).length > 0) {
+          setSections(sectionsMap);
+          setContentConfirmed(true);
+          localStorage.setItem('blog_content_confirmed', 'true');
+          // Also write to the blog writer cache
+          try {
+            const cacheKey = 'blogwriter_content_' + JSON.stringify(Object.keys(sectionsMap));
+            localStorage.setItem(cacheKey, JSON.stringify(sectionsMap));
+          } catch {}
+        }
+      }
+
+      // Restore SEO
+      if (asset.seo_data) {
+        const sd = asset.seo_data;
+        if (sd.analysis) {
+          setSeoAnalysis(sd.analysis);
+          localStorage.setItem('blog_seo_analysis', JSON.stringify(sd.analysis));
+        }
+        if (sd.metadata) {
+          setSeoMetadata(sd.metadata);
+          localStorage.setItem('blog_seo_metadata', JSON.stringify(sd.metadata));
+        }
+        if (sd.recommendations_applied) {
+          localStorage.setItem('blog_seo_recommendations_applied', 'true');
+        }
+      }
+
+      // Restore publish completion
+      if (asset.publish_data) {
+        localStorage.setItem('blog_publish_completed', 'true');
+      }
+
+      // Restore phase
+      const phase = asset.phase || 'research';
+      localStorage.setItem('blogwriter_current_phase', phase);
+      localStorage.setItem('blogwriter_user_selected_phase', 'true');
+
+      console.log('[BlogWriterState] Restored from asset:', asset.id, 'phase:', phase);
+    } catch (e) {
+      console.error('[BlogWriterState] Failed to restore from asset:', e);
+    }
+  }, []);
+
   return {
     // State
     research,
@@ -483,6 +564,9 @@ export const useBlogWriterState = () => {
     handleOutlineConfirmed,
     handleOutlineRefined,
     handleContentUpdate,
-    handleContentSave
+    handleContentSave,
+
+    // Asset restoration
+    restoreFromAsset
   };
 };

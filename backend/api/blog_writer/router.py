@@ -1238,7 +1238,7 @@ async def save_complete_blog_asset(
             user_id=user_id,
             content=full_content,
             source_module="blog_writer",
-            title=f"Published Blog: {request.title[:60]}",
+            title=request.title[:100],
             description=request.meta_description or f"Complete published blog post: {request.title}",
             prompt=f"SEO Title: {request.seo_title or request.title}\nFocus Keyword: {request.focus_keyword or ''}",
             tags=["blog", "published"] + [t for t in (request.tags or []) if t],
@@ -1413,7 +1413,11 @@ async def update_blog_asset(
             if val is not None:
                 meta[field] = val
 
-        if meta.get("selected_title"):
+        # Prefer seo_title from publish_data, then selected_title, then topic, then existing title
+        publish_data = meta.get("publish_data") or {}
+        if isinstance(publish_data, dict) and publish_data.get("seo_title"):
+            new_title = publish_data["seo_title"]
+        elif meta.get("selected_title"):
             new_title = meta["selected_title"]
         elif meta.get("topic"):
             new_title = meta["topic"]

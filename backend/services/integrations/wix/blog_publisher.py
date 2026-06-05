@@ -295,38 +295,38 @@ def create_blog_post(
     wix_logger.log_token_info(token_length, has_blog_scope, meta_site_id)
     
     # Convert markdown to Ricos
-    ricos_content = convert_content_to_ricos(content, None)
+    # PRIMARY: Use Wix Ricos Documents API for best formatting support (tables, complex markdown, etc.)
+    # FALLBACK: Use custom parser if Wix API fails
+    ricos_content = None
+    try:
+        logger.info("Converting markdown via Wix Ricos Documents API...")
+        ricos_content = convert_via_wix_api(content, access_token, base_url)
+        logger.info(f"Wix API conversion succeeded: {len(ricos_content.get('nodes', []))} nodes")
+    except Exception as e:
+        logger.warning(f"Wix API conversion failed, falling back to custom parser: {e}")
+    
+    if not ricos_content or not isinstance(ricos_content, dict) or 'nodes' not in ricos_content:
+        logger.info("Using custom markdown parser for Ricos conversion")
+        ricos_content = convert_content_to_ricos(content, None)
+    
     nodes_count = len(ricos_content.get('nodes', []))
     wix_logger.log_ricos_conversion(nodes_count)
     
     # Validate Ricos content structure
-    # Per Wix Blog API documentation: richContent should ONLY contain 'nodes'
-    # The example in docs shows: { nodes: [...] } - no type, id, metadata, or documentStyle
     if not isinstance(ricos_content, dict):
-        logger.error(f"❌ richContent is not a dict: {type(ricos_content)}")
+        logger.error(f"richContent is not a dict: {type(ricos_content)}")
         raise ValueError("richContent must be a dictionary object")
     
     if 'nodes' not in ricos_content or not isinstance(ricos_content['nodes'], list):
-        logger.error(f"❌ richContent.nodes is missing or not a list: {ricos_content.get('nodes', 'MISSING')}")
+        logger.error(f"richContent.nodes is missing or not a list: {ricos_content.get('nodes', 'MISSING')}")
         raise ValueError("richContent must contain a 'nodes' array")
     
-    # Remove type and id fields (not expected by Blog API)
-    # NOTE: metadata is optional - Wix UPDATE endpoint example shows it, but CREATE example doesn't
-    # We'll keep it minimal (nodes only) for CREATE to match the recipe example
-    fields_to_remove = ['type', 'id']
-    for field in fields_to_remove:
+    # Remove top-level fields not expected by Blog API CREATE endpoint
+    # (Wix API converter may include type, id, metadata, documentStyle — strip them)
+    for field in ['type', 'id', 'metadata', 'documentStyle']:
         if field in ricos_content:
-            logger.debug(f"Removing '{field}' field from richContent (Blog API doesn't expect this)")
+            logger.debug(f"Removing '{field}' from richContent for Blog API compatibility")
             del ricos_content[field]
-    
-    # Remove metadata and documentStyle - Blog API CREATE endpoint example shows only 'nodes'
-    # (UPDATE endpoint shows metadata, but we're using CREATE)
-    if 'metadata' in ricos_content:
-        logger.debug("Removing 'metadata' from richContent (CREATE endpoint expects only 'nodes')")
-        del ricos_content['metadata']
-    if 'documentStyle' in ricos_content:
-        logger.debug("Removing 'documentStyle' from richContent (CREATE endpoint expects only 'nodes')")
-        del ricos_content['documentStyle']
     
     # Ensure we only have 'nodes' in richContent for CREATE endpoint
     ricos_content = {'nodes': ricos_content['nodes']}

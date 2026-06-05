@@ -454,14 +454,12 @@ class SEODashboardService:
     def _get_advertools_insights(self, user_id: str, site_url: str) -> Dict[str, Any]:
         """Fetch Advertools-based insights from WebsiteAnalysis and AdvertoolsTasks."""
         try:
-            # 1. Get augmented persona themes from WebsiteAnalysis
             session = self.db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
             if not session:
                 return {}
 
             analysis = self.db.query(WebsiteAnalysis).filter(WebsiteAnalysis.session_id == session.id).first()
             
-            # 2. Get latest tasks status
             tasks = self.db.query(AdvertoolsTask).filter(AdvertoolsTask.user_id == user_id).all()
             
             audit_status = "pending"
@@ -479,6 +477,14 @@ class SEODashboardService:
 
             return {
                 "augmented_themes": brand_analysis.get('augmented_themes', []),
+                "link_health": brand_analysis.get('link_health', {}),
+                "redirect_audit": brand_analysis.get('redirect_audit', {}),
+                "image_seo": brand_analysis.get('image_seo', {}),
+                "page_status": brand_analysis.get('page_status', {}),
+                "url_structure": brand_analysis.get('url_structure', {}),
+                "freshness": brand_analysis.get('freshness', {}),
+                "robots_txt": brand_analysis.get('robots_txt', {}),
+                "crawl_budget": brand_analysis.get('crawl_budget', {}),
                 "last_audit": brand_analysis.get('last_advertools_audit'),
                 "site_health": seo_audit.get('site_health', {}),
                 "last_health_check": seo_audit.get('last_advertools_health_check'),

@@ -30,6 +30,7 @@ from services.seo_tools.on_page_seo_service import OnPageSEOService
 from services.seo_tools.technical_seo_service import TechnicalSEOService
 from services.seo_tools.enterprise_seo_service import EnterpriseSEOService
 from services.seo_tools.gsc_analyzer_service import GSCAnalyzerService
+from services.seo_tools.gsc_strategy_insights_service import GSCStrategyInsightsService
 from services.seo_tools.content_strategy_service import ContentStrategyService
 from services.seo_tools.llm_insights_service import LLMInsightsService
 from services.database import get_session_for_user
@@ -198,6 +199,34 @@ class KeywordExpansionRequest(BaseModel):
     current_keywords: List[str] = Field(..., description="Current target keywords")
     content_analysis: Dict[str, Any] = Field(..., description="Content analysis data")
     target_difficulty: Optional[str] = Field(None, description="Target difficulty (low/medium/high)")
+
+# ==================== GSC STRATEGY INSIGHTS REQUEST MODELS ====================
+
+class GSCStrategyInsightsRequest(BaseModel):
+    """Request model for GSC strategy insights (dashboard context)"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
+    include_trends: bool = Field(default=True, description="Include trend analysis")
+    include_competitive: bool = Field(default=False, description="Include competitive analysis (Phase 2)")
+    top_n: int = Field(default=20, ge=5, le=100, description="Number of top opportunities to return")
+
+class GSCOpportunityRankingRequest(BaseModel):
+    """Request model for ROI-ranked opportunities"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
+    ranking_metric: str = Field(default="roi_score", description="Metric to rank by (roi_score/effort/impact/timeline)")
+    severity_filter: Optional[str] = Field(None, description="Filter by severity (critical/high/medium/low/watch)")
+    limit: int = Field(default=20, ge=5, le=100, description="Number of opportunities to return")
+
+class GSCTrendAnalysisRequest(BaseModel):
+    """Request model for performance trend analysis"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
+    metric: str = Field(default="all", description="Metric to analyze (position/impressions/clicks/ctr/all)")
+    days_back: int = Field(default=90, ge=7, le=365, description="Days of historical data to analyze")
+
+class GSCHealthMetricsRequest(BaseModel):
+    """Request model for health metrics calculation"""
+    site_url: HttpUrl = Field(..., description="Website URL registered in GSC")
+    include_distribution: bool = Field(default=True, description="Include keyword distribution breakdown")
+    include_trends: bool = Field(default=True, description="Include trend comparison")
 
 # Exception Handler
 async def handle_seo_tool_exception(func_name: str, error: Exception, request_data: Dict) -> ErrorResponse:
@@ -1100,6 +1129,236 @@ async def get_content_opportunities_report(
     except Exception as e:
         logger.error(f"Content opportunities report failed: {str(e)}", exc_info=True)
         return await handle_seo_tool_exception("get_content_opportunities_report", e, request.dict())
+
+
+# ==================== GSC STRATEGY INSIGHTS ENDPOINTS (Dashboard-Focused) ====================
+
+@router.post("/gsc/strategy-insights", response_model=BaseResponse)
+@log_api_call
+async def get_gsc_strategy_insights(
+    request: GSCStrategyInsightsRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Get comprehensive strategy insights from GSC data for SEO Dashboard.
+    
+    Provides strategic insights optimized for dashboard display:
+    - Ranked opportunities by ROI score (0-100)
+    - Health metrics with trend comparison
+    - Quick summary of key insights
+    - Optional: Performance trends and competitive positioning
+    
+    ROI Scoring Formula:
+    ROI = 0.40×traffic_impact + 0.30×ease + 0.20×competitive + 0.10×momentum
+    
+    Severity Levels:
+    - CRITICAL: 80-100 (immediate action)
+    - HIGH: 60-79 (high priority)
+    - MEDIUM: 40-59 (medium priority)
+    - LOW: 20-39 (low priority)
+    - WATCH: <20 (monitoring)
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        
+        service = GSCStrategyInsightsService()
+        insights = await service.get_dashboard_strategy(
+            user_id=user_id,
+            site_url=str(request.site_url),
+            include_trends=request.include_trends,
+            include_competitive=request.include_competitive,
+            top_n=request.top_n
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="GSC strategy insights generated successfully",
+            execution_time=execution_time,
+            data=insights
+        )
+        
+    except Exception as e:
+        logger.error(f"GSC strategy insights failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("get_gsc_strategy_insights", e, request.dict())
+
+
+@router.post("/gsc/opportunity-ranking", response_model=BaseResponse)
+@log_api_call
+async def get_ranked_opportunities(
+    request: GSCOpportunityRankingRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Get ROI-ranked opportunities from GSC data.
+    
+    Returns opportunities sorted by specified metric:
+    - roi_score: ROI-weighted score (recommended)
+    - effort: Easiest to implement first
+    - impact: Highest traffic impact first
+    - timeline: Fastest results first
+    
+    Optional filtering by severity level:
+    - critical: 80-100 ROI (immediate action required)
+    - high: 60-79 ROI (high priority)
+    - medium: 40-59 ROI (medium priority)
+    - low: 20-39 ROI (low priority)
+    - watch: <20 ROI (monitoring)
+    
+    Each opportunity includes:
+    - ROI score and severity level
+    - Implementation effort (hours)
+    - Timeline to impact (weeks)
+    - Recommendations
+    - Related keywords
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        
+        service = GSCStrategyInsightsService()
+        opportunities = await service._get_ranked_opportunities(
+            site_url=str(request.site_url),
+            top_n=request.limit
+        )
+        
+        # Filter by severity if specified
+        if request.severity_filter and opportunities.get('status') == 'success':
+            filtered = [
+                opp for opp in opportunities.get('opportunities', [])
+                if opp.get('severity') == request.severity_filter
+            ]
+            opportunities['opportunities'] = filtered
+        
+        # Sort by metric
+        if opportunities.get('status') == 'success' and request.ranking_metric != 'roi_score':
+            opps = opportunities.get('opportunities', [])
+            if request.ranking_metric == 'effort':
+                opps.sort(key=lambda x: x.get('effort_hours', 0))
+            elif request.ranking_metric == 'impact':
+                opps.sort(key=lambda x: x.get('estimated_impact', 0), reverse=True)
+            elif request.ranking_metric == 'timeline':
+                opps.sort(key=lambda x: x.get('timeline_weeks', 0))
+            opportunities['opportunities'] = opps
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Ranked opportunities retrieved successfully",
+            execution_time=execution_time,
+            data=opportunities
+        )
+        
+    except Exception as e:
+        logger.error(f"Ranked opportunities failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("get_ranked_opportunities", e, request.dict())
+
+
+@router.post("/gsc/health-metrics", response_model=BaseResponse)
+@log_api_call
+async def get_health_metrics(
+    request: GSCHealthMetricsRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Get comprehensive health metrics for SEO Dashboard.
+    
+    Returns overall SEO health with:
+    - Health score (0-100)
+    - Health trend (up/down/stable)
+    - Keyword position distribution
+    - Average metrics (position, CTR, etc.)
+    - Optional: Trend comparison vs period ago
+    
+    Health Score Calculation:
+    Score = 0.60×(Page1_Keywords%) + 0.30×CTR_vs_Benchmark + 0.10×Growth_Rate
+    
+    Interpretation:
+    - 80-100: Excellent SEO health
+    - 60-79: Good SEO health
+    - 40-59: Needs improvement
+    - 0-39: Critical issues
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        
+        service = GSCStrategyInsightsService()
+        metrics = await service._calculate_health_metrics(
+            site_url=str(request.site_url)
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Health metrics calculated successfully",
+            execution_time=execution_time,
+            data=metrics
+        )
+        
+    except Exception as e:
+        logger.error(f"Health metrics calculation failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("get_health_metrics", e, request.dict())
+
+
+@router.post("/gsc/trend-analysis", response_model=BaseResponse)
+@log_api_call
+async def analyze_gsc_trends(
+    request: GSCTrendAnalysisRequest,
+    current_user: dict = Depends(get_current_user)
+) -> Union[BaseResponse, ErrorResponse]:
+    """
+    Analyze performance trends from GSC data.
+    
+    Returns trend analysis for specified metrics:
+    - position: Ranking trend for keywords
+    - impressions: Search volume trends
+    - clicks: Click trend
+    - ctr: Click-through rate trend
+    - all: All metrics combined
+    
+    For each metric includes:
+    - Current value
+    - Value from 30/90 days ago
+    - Trend direction (up/down/stable)
+    - Trend percentage change
+    - Momentum (acceleration of trend)
+    - Seasonal patterns
+    - Anomalies detected
+    
+    Note: This feature requires historical data collection.
+    Phase 1: Manual trend calculation from snapshots.
+    Phase 2: Automated historical tracking.
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        user_id = str(current_user.get("id")) if current_user else None
+        
+        service = GSCStrategyInsightsService()
+        trends = await service._analyze_performance_trends(
+            site_url=str(request.site_url)
+        )
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return BaseResponse(
+            success=True,
+            message="Trend analysis completed",
+            execution_time=execution_time,
+            data=trends
+        )
+        
+    except Exception as e:
+        logger.error(f"Trend analysis failed: {str(e)}", exc_info=True)
+        return await handle_seo_tool_exception("analyze_gsc_trends", e, request.dict())
 
 
 @router.get("/enterprise/health", response_model=BaseResponse)

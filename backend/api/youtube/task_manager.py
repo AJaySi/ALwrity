@@ -1,11 +1,10 @@
 """
 Task Manager for YouTube Creator Studio
 
-Reuses the Story Writer task manager pattern for async video rendering.
+Delegates to the hybrid DB-backed + in-memory YouTubeTaskManager.
+Maintains backward compatibility with the Story Writer TaskManager API.
 """
 
-from api.story_writer.task_manager import TaskManager
+from services.youtube.youtube_task_manager import task_manager
 
-# Shared task manager instance
-task_manager = TaskManager()
-
+__all__ = ["task_manager"]

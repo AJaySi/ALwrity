@@ -1,3 +1,7 @@
+---
+description: ALwrity Blog Writer - AI-powered blog post creation with SEO optimization, research integration, and multi-platform publishing.
+---
+
 # Blog Writer Overview
 
 The ALwrity Blog Writer is a powerful AI-driven content creation tool that helps you generate high-quality, SEO-optimized blog posts with minimal effort. It's designed for users with medium to low technical knowledge, making professional content creation accessible to everyone.

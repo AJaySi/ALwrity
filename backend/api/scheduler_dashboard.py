@@ -19,7 +19,11 @@ from models.monitoring_models import TaskExecutionLog, MonitoringTask
 from models.scheduler_models import SchedulerEventLog
 from models.oauth_token_monitoring_models import OAuthTokenMonitoringTask
 from models.platform_insights_monitoring_models import PlatformInsightsTask, PlatformInsightsExecutionLog
-from models.website_analysis_monitoring_models import WebsiteAnalysisTask, WebsiteAnalysisExecutionLog, DeepWebsiteCrawlTask
+from models.website_analysis_monitoring_models import (
+    WebsiteAnalysisTask, WebsiteAnalysisExecutionLog, DeepWebsiteCrawlTask,
+    OnboardingFullWebsiteAnalysisTask, DeepCompetitorAnalysisTask,
+    SIFIndexingTask, MarketTrendsTask, AdvertoolsTask,
+)
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler-dashboard"])
 
@@ -308,6 +312,198 @@ async def get_scheduler_dashboard(
                 formatted_jobs.append(job_info)
         except Exception as e:
             logger.error(f"Error loading deep website crawl tasks: {e}", exc_info=True)
+        
+        # Load onboarding full website analysis tasks
+        try:
+            onboarding_tasks = db.query(OnboardingFullWebsiteAnalysisTask).filter(
+                OnboardingFullWebsiteAnalysisTask.status.in_(['active', 'failed', 'needs_intervention'])
+            ).all()
+            
+            if user_id_str:
+                onboarding_tasks = [t for t in onboarding_tasks if t.user_id == user_id_str]
+            
+            for task in onboarding_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception:
+                    user_job_store = 'default'
+                
+                job_info = {
+                    'id': f"onboarding_full_website_analysis_{task.user_id}_{task.id}",
+                    'trigger_type': 'DateTrigger' if task.status != 'active' else 'CronTrigger',
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'onboarding_full_website_analysis_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': 'One-time' if task.status == 'completed' else 'Once',
+                    'task_category': 'onboarding_full_website_analysis',
+                    'status': task.status,
+                    'last_success': task.last_success.isoformat() if task.last_success else None,
+                    'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                    'failure_reason': task.failure_reason,
+                    'consecutive_failures': task.consecutive_failures,
+                }
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading onboarding full website analysis tasks: {e}", exc_info=True)
+        
+        # Load deep competitor analysis tasks
+        try:
+            competitor_tasks = db.query(DeepCompetitorAnalysisTask).filter(
+                DeepCompetitorAnalysisTask.status.in_(['active', 'failed', 'needs_intervention'])
+            ).all()
+            
+            if user_id_str:
+                competitor_tasks = [t for t in competitor_tasks if t.user_id == user_id_str]
+            
+            for task in competitor_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception:
+                    user_job_store = 'default'
+                
+                payload = task.payload or {}
+                frequency_label = 'Weekly' if payload.get('mode') == 'strategic_insights' else 'One-time'
+                job_info = {
+                    'id': f"deep_competitor_analysis_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger' if frequency_label == 'Weekly' else 'DateTrigger',
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'deep_competitor_analysis_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': frequency_label,
+                    'task_category': 'deep_competitor_analysis',
+                    'status': task.status,
+                    'last_success': task.last_success.isoformat() if task.last_success else None,
+                    'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                    'failure_reason': task.failure_reason,
+                    'consecutive_failures': task.consecutive_failures,
+                }
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading deep competitor analysis tasks: {e}", exc_info=True)
+        
+        # Load SIF indexing tasks
+        try:
+            sif_tasks = db.query(SIFIndexingTask).filter(
+                SIFIndexingTask.status.in_(['active', 'failed', 'needs_intervention'])
+            ).all()
+            
+            if user_id_str:
+                sif_tasks = [t for t in sif_tasks if t.user_id == user_id_str]
+            
+            for task in sif_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception:
+                    user_job_store = 'default'
+                
+                job_info = {
+                    'id': f"sif_indexing_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger',
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'sif_indexing_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': f'Every {task.frequency_hours}h' if task.frequency_hours else 'Every 48h',
+                    'task_category': 'sif_indexing',
+                    'status': task.status,
+                    'last_success': task.last_success.isoformat() if task.last_success else None,
+                    'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                    'failure_reason': task.failure_reason,
+                    'consecutive_failures': task.consecutive_failures,
+                }
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading SIF indexing tasks: {e}", exc_info=True)
+        
+        # Load market trends tasks
+        try:
+            trends_tasks = db.query(MarketTrendsTask).filter(
+                MarketTrendsTask.status.in_(['active', 'failed', 'needs_intervention'])
+            ).all()
+            
+            if user_id_str:
+                trends_tasks = [t for t in trends_tasks if t.user_id == user_id_str]
+            
+            for task in trends_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception:
+                    user_job_store = 'default'
+                
+                job_info = {
+                    'id': f"market_trends_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger',
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'market_trends_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': f'Every {task.frequency_hours}h' if task.frequency_hours else 'Every 72h',
+                    'task_category': 'market_trends',
+                    'status': task.status,
+                    'last_success': task.last_success.isoformat() if task.last_success else None,
+                    'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                    'failure_reason': task.failure_reason,
+                    'consecutive_failures': task.consecutive_failures,
+                }
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading market trends tasks: {e}", exc_info=True)
+        
+        # Load advertools tasks
+        try:
+            advertools_tasks = db.query(AdvertoolsTask).filter(
+                AdvertoolsTask.status.in_(['active', 'failed', 'paused'])
+            ).all()
+            
+            if user_id_str:
+                advertools_tasks = [t for t in advertools_tasks if t.user_id == user_id_str]
+            
+            for task in advertools_tasks:
+                try:
+                    user_job_store = get_user_job_store_name(task.user_id, db)
+                except Exception:
+                    user_job_store = 'default'
+                
+                job_info = {
+                    'id': f"advertools_{task.user_id}_{task.id}",
+                    'trigger_type': 'CronTrigger',
+                    'next_run_time': task.next_execution.isoformat() if task.next_execution else None,
+                    'user_id': task.user_id,
+                    'job_store': 'default',
+                    'user_job_store': user_job_store,
+                    'function_name': 'advertools_executor.execute_task',
+                    'website_url': task.website_url,
+                    'task_id': task.id,
+                    'is_database_task': True,
+                    'frequency': f'Every {task.frequency_days}d' if task.frequency_days else 'Weekly',
+                    'task_category': 'advertools',
+                    'status': task.status,
+                    'last_success': task.last_success.isoformat() if task.last_success else None,
+                    'last_failure': task.last_failure.isoformat() if task.last_failure else None,
+                    'failure_reason': task.failure_reason,
+                    'consecutive_failures': task.consecutive_failures,
+                }
+                formatted_jobs.append(job_info)
+        except Exception as e:
+            logger.error(f"Error loading advertools tasks: {e}", exc_info=True)
         
         # Get active strategies count
         active_strategies = stats.get('active_strategies_count', 0)
@@ -1237,7 +1433,9 @@ async def manual_trigger_task(
     This bypasses the cool-off check and executes the task immediately.
     
     Args:
-        task_type: Task type (oauth_token_monitoring, website_analysis, gsc_insights, bing_insights)
+        task_type: Task type (oauth_token_monitoring, website_analysis, gsc_insights, bing_insights,
+                    onboarding_full_website_analysis, deep_competitor_analysis, sif_indexing,
+                    market_trends, advertools)
         task_id: Task ID
         
     Returns:
@@ -1260,6 +1458,30 @@ async def manual_trigger_task(
         elif task_type in ["gsc_insights", "bing_insights"]:
             task = db.query(PlatformInsightsTask).filter(
                 PlatformInsightsTask.id == task_id
+            ).first()
+        elif task_type == "onboarding_full_website_analysis":
+            task = db.query(OnboardingFullWebsiteAnalysisTask).filter(
+                OnboardingFullWebsiteAnalysisTask.id == task_id
+            ).first()
+        elif task_type == "deep_competitor_analysis":
+            task = db.query(DeepCompetitorAnalysisTask).filter(
+                DeepCompetitorAnalysisTask.id == task_id
+            ).first()
+        elif task_type == "sif_indexing":
+            task = db.query(SIFIndexingTask).filter(
+                SIFIndexingTask.id == task_id
+            ).first()
+        elif task_type == "market_trends":
+            task = db.query(MarketTrendsTask).filter(
+                MarketTrendsTask.id == task_id
+            ).first()
+        elif task_type == "advertools":
+            task = db.query(AdvertoolsTask).filter(
+                AdvertoolsTask.id == task_id
+            ).first()
+        elif task_type == "deep_website_crawl":
+            task = db.query(DeepWebsiteCrawlTask).filter(
+                DeepWebsiteCrawlTask.id == task_id
             ).first()
         else:
             raise HTTPException(status_code=400, detail=f"Unknown task type: {task_type}")
@@ -1362,4 +1584,220 @@ async def get_platform_insights_logs(
     except Exception as e:
         logger.error(f"Error getting platform insights logs for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get platform insights logs: {str(e)}")
+
+
+TASK_DISPLAY_INFO = {
+    "onboarding_full_website_analysis": {"label": "Full-Site SEO Audit", "description": "Crawls your entire website and generates per-page SEO audit results.", "frequency": "One-time"},
+    "deep_competitor_analysis": {"label": "Deep Competitor Analysis", "description": "Analyzes competitors' content strategy, keywords, and positioning.", "frequency": "Weekly (strategic insights) or One-time"},
+    "sif_indexing": {"label": "SIF Content Indexing", "description": "Indexes your website content into the Semantic Intelligence Framework for agent-powered recommendations.", "frequency": "Every 48 hours"},
+    "market_trends": {"label": "Market Trends", "description": "Monitors search trends and surfaces high-impact content opportunities.", "frequency": "Every 72 hours"},
+    "advertools": {"label": "Advertools Analysis", "description": "Runs brand analysis and site health audits using Advertools.", "frequency": "Weekly"},
+    "oauth_token_monitoring": {"label": "OAuth Token Health", "description": "Monitors and refreshes OAuth tokens for connected platforms (GSC, Bing, WordPress, Wix).", "frequency": "Weekly"},
+    "website_analysis": {"label": "Website Analysis", "description": "Periodically re-crawls your website and updates style analysis, content pillars, and SEO data.", "frequency": "Every 10 days"},
+    "gsc_insights": {"label": "Google Search Console Insights", "description": "Pulls search performance data from Google Search Console.", "frequency": "Weekly"},
+    "bing_insights": {"label": "Bing Insights", "description": "Pulls search performance data from Bing Webmaster Tools.", "frequency": "Weekly"},
+    "deep_website_crawl": {"label": "Deep Website Crawl", "description": "Performs deep crawl of your website for technical SEO issues.", "frequency": "Weekly"},
+    "platform_insights": {"label": "Platform Insights", "description": "Aggregates search performance data from connected platforms.", "frequency": "Weekly"},
+}
+
+
+@router.get("/onboarding-tasks/{user_id}")
+async def get_onboarding_tasks(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all tasks created during onboarding for a user, with status and human-readable descriptions.
+    """
+    try:
+        if str(current_user.get('id')) != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        tasks = []
+
+        def _fmt_status(s):
+            return s.replace('_', ' ').title() if s else 'Unknown'
+
+        def _fmt_dt(dt):
+            return dt.isoformat() if dt else None
+
+        # Onboarding full-site SEO audit
+        for t in db.query(OnboardingFullWebsiteAnalysisTask).filter(
+            OnboardingFullWebsiteAnalysisTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("onboarding_full_website_analysis", {})
+            tasks.append({
+                "task_type": "onboarding_full_website_analysis",
+                "label": info.get("label", "Full-Site SEO Audit"),
+                "description": info.get("description", ""),
+                "frequency": info.get("frequency", "One-time"),
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_execution),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        # Deep competitor analysis
+        for t in db.query(DeepCompetitorAnalysisTask).filter(
+            DeepCompetitorAnalysisTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("deep_competitor_analysis", {})
+            payload = t.payload or {}
+            freq_label = info.get("frequency", "One-time")
+            if payload.get("mode") == "strategic_insights":
+                freq_label = "Weekly"
+            tasks.append({
+                "task_type": "deep_competitor_analysis",
+                "label": info.get("label", "Deep Competitor Analysis"),
+                "description": info.get("description", ""),
+                "frequency": freq_label,
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_execution),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        # SIF indexing
+        for t in db.query(SIFIndexingTask).filter(
+            SIFIndexingTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("sif_indexing", {})
+            tasks.append({
+                "task_type": "sif_indexing",
+                "label": info.get("label", "SIF Content Indexing"),
+                "description": info.get("description", ""),
+                "frequency": f"Every {t.frequency_hours or 48}h",
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_execution),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        # Market trends
+        for t in db.query(MarketTrendsTask).filter(
+            MarketTrendsTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("market_trends", {})
+            tasks.append({
+                "task_type": "market_trends",
+                "label": info.get("label", "Market Trends"),
+                "description": info.get("description", ""),
+                "frequency": f"Every {t.frequency_hours or 72}h",
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_execution),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        # Advertools
+        for t in db.query(AdvertoolsTask).filter(
+            AdvertoolsTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("advertools", {})
+            tasks.append({
+                "task_type": "advertools",
+                "label": info.get("label", "Advertools Analysis"),
+                "description": info.get("description", ""),
+                "frequency": f"Every {t.frequency_days or 7}d",
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_execution),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        # Also include website analysis & OAuth tasks created during onboarding
+        for t in db.query(WebsiteAnalysisTask).filter(
+            WebsiteAnalysisTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("website_analysis", {})
+            tasks.append({
+                "task_type": "website_analysis",
+                "label": info.get("label", "Website Analysis") + (f" ({t.task_type})" if t.task_type == 'competitor' else ""),
+                "description": info.get("description", ""),
+                "frequency": f"Every {t.frequency_days or 10}d",
+                "task_id": t.id,
+                "website_url": t.website_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_check),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        for t in db.query(OAuthTokenMonitoringTask).filter(
+            OAuthTokenMonitoringTask.user_id == user_id
+        ).all():
+            info = TASK_DISPLAY_INFO.get("oauth_token_monitoring", {})
+            tasks.append({
+                "task_type": "oauth_token_monitoring",
+                "label": info.get("label", "OAuth Token Health") + f" ({t.platform})",
+                "description": info.get("description", ""),
+                "frequency": info.get("frequency", "Weekly"),
+                "task_id": t.id,
+                "website_url": None,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_check),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        for t in db.query(PlatformInsightsTask).filter(
+            PlatformInsightsTask.user_id == user_id
+        ).all():
+            task_key = f"{t.platform}_insights"
+            info = TASK_DISPLAY_INFO.get(task_key, {})
+            tasks.append({
+                "task_type": task_key,
+                "label": info.get("label", "Platform Insights") + f" ({t.platform})",
+                "description": info.get("description", ""),
+                "frequency": info.get("frequency", "Weekly"),
+                "task_id": t.id,
+                "website_url": t.site_url,
+                "status": t.status,
+                "status_label": _fmt_status(t.status),
+                "last_success": _fmt_dt(t.last_success),
+                "last_failure": _fmt_dt(t.last_failure),
+                "next_execution": _fmt_dt(t.next_check),
+                "failure_reason": t.failure_reason,
+                "consecutive_failures": t.consecutive_failures,
+            })
+
+        return {"success": True, "tasks": tasks, "count": len(tasks)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting onboarding tasks for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get onboarding tasks: {str(e)}")
 

@@ -68,6 +68,20 @@ The Backlink Outreach feature uses SQLite with automatic table creation:
 
 Tables are created automatically on first use via `_ensure_tables()`. No manual migration is required.
 
+## Feature Flag Configuration
+
+The Backlink Outreach feature can be enabled in isolation via the `ALWRITY_ENABLED_FEATURES` environment variable:
+
+| Variable | Value | Description |
+|---|---|---|
+| `ALWRITY_ENABLED_FEATURES` | `all` (default) | Enable all platform features. |
+| `ALWRITY_ENABLED_FEATURES` | `backlinking` | Enable only Backlink Outreach + core services. |
+
+When set to `backlinking`, only the backlink outreach router and its core dependencies are loaded. Other features (blog writer, podcast, SEO dashboard, etc.) are skipped — reducing startup time and memory usage.
+
+!!! note "Multiple features"
+    You can also enable a combination: `ALWRITY_ENABLED_FEATURES=core,backlinking` or `ALWRITY_ENABLED_FEATURES=podcast,backlinking`.
+
 ## Deployment Checklist
 
 ### Minimal Setup

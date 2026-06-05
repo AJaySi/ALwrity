@@ -76,7 +76,12 @@ const TitleSelector: React.FC<TitleSelectorProps> = ({
                 {selectedTitle === title && (
                   <span style={{ color: '#1976d2', fontSize: '16px' }}>✓</span>
                 )}
-                <span style={{ fontWeight: selectedTitle === title ? '600' : '400' }}>
+                <span style={{
+                  fontWeight: selectedTitle === title ? '600' : '400',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal'
+                }}>
                   {title}
                 </span>
               </div>

@@ -1,3 +1,7 @@
+---
+description: ALwrity SEO Dashboard - 21+ production-ready SEO tools for content optimization, competitive analysis, and performance tracking.
+---
+
 # SEO Dashboard Overview
 
 The ALwrity SEO Dashboard is a comprehensive, AI-powered platform providing **21+ production-ready SEO tools** for content creators, digital marketers, and SEO professionals. Designed for users of all technical levels, it combines advanced AI analysis with real-time platform integrations for actionable SEO insights.
@@ -311,9 +315,9 @@ For detailed information about each tool, see [Tools Reference](tools-reference.
 
 - **[Blog Writer](../blog-writer/overview.md)** - Content creation with integrated SEO
 - **[Content Strategy](../content-strategy/overview.md)** - Strategic planning and gaps
-- **[AI Features](../ai/overview.md)** - Advanced AI capabilities
+- **[AI Features](../ai/assistive-writing.md)** - Advanced AI capabilities
 - **[Persona System](../persona/overview.md)** - Personalized writing assistants
-- **[API Reference](../../api/seo-tools.md)** - Technical integration details
+- **[API Reference](../../api/overview.md)** - Technical integration details
 
 ---
 

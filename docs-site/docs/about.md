@@ -1,3 +1,7 @@
+---
+description: About ALwrity - AI-powered digital marketing platform for solopreneurs and content creators. Learn about our vision, mission, and features.
+---
+
 # About ALwrity
 
 <div class="grid cards" markdown>

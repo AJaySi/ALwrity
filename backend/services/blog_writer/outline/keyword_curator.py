@@ -138,6 +138,15 @@ class KeywordCurator:
             lines.append("   → This is your primary differentiation hook. Surface it prominently in the unique value section.")
 
         lines.append("")
+        lines.append("### SUGGESTED SECTION → KEYWORD MAPPING")
+        lines.append("Map each outline section's keyword focus according to its narrative role:")
+        lines.append("- Hook / Introduction → lead with primary and trending keywords for timeliness & relevance")
+        lines.append("- Problem / Pain Point → anchor on secondary and long-tail keywords (informational intent)")
+        lines.append("- Solution / How-To → weave in primary and secondary keywords for solution-oriented search")
+        lines.append("- Comparison / Analysis → embed semantic keywords to prevent topical drift into tangents")
+        lines.append("- Case Studies / Evidence → surface content gap keywords as differentiation proof points")
+        lines.append("- Future / Trends → leverage trending and content gap keywords for forward-looking authority")
+        lines.append("")
         lines.append("GUIDELINE: Treat these as the primary keyword anchors. You may include closely related")
         lines.append("intent-matching variations where natural, but avoid inserting every raw research keyword.")
         lines.append("Quality over density — each keyword earns its place by serving a clear structural purpose.")
@@ -176,7 +185,11 @@ class KeywordCurator:
         slot_key: Optional[str] = None,
     ) -> List[str]:
         """
-        Pick up to N items from a keyword list.
+        Pick up to N items from a keyword list with diversity sampling.
+        
+        When the raw list is significantly larger than the limit, selects
+        evenly-spaced entries to capture semantic diversity rather than
+        just the first N entries.
         
         Args:
             data: The raw keyword_analysis dict.
@@ -184,11 +197,24 @@ class KeywordCurator:
             slot_key: The internal slot name for looking up the limit.
                       Falls back to source_key if not provided.
         Returns:
-            Sliced list of at most N strings.
+            List of at most N strings with diversity sampling.
         """
         limit_key = slot_key or source_key
         limit = self.SLOTS.get(limit_key, 5)
         raw: Any = data.get(source_key, [])
         if not isinstance(raw, list):
             return []
-        return raw[:limit]
+        if len(raw) <= limit:
+            return raw
+        if len(raw) <= limit * 2:
+            return raw[:limit]
+        indices = set()
+        if limit >= 2:
+            indices.add(0)
+            indices.add(len(raw) - 1)
+            step = (len(raw) - 1) / max(limit - 1, 1)
+            for i in range(1, limit - 1):
+                indices.add(int(round(i * step)))
+        else:
+            indices.add(0)
+        return [raw[i] for i in sorted(indices) if i < len(raw)][:limit]

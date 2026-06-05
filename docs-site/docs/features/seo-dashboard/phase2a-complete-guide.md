@@ -266,14 +266,14 @@ User: Insights, Roadmap, Recommendations
 4. [LLM Insights Generation](phase2a-llm-insights.md)
 
 ### For Integrators
-1. [API Reference](../api.md)
-2. [Integration Guide](../guides/integration-guide.md)
-3. [Code Examples](#)
+1. [API Reference](../../api/overview.md)
+2. [Authentication Guide](../../api/authentication.md)
+3. [Best Practices](../../guides/best-practices.md)
 
 ### For Operators
-1. [Deployment Guide](../guides/deployment.md)
-2. [Health Monitoring](../guides/monitoring.md)
-3. [Troubleshooting](../guides/troubleshooting.md)
+1. [Deployment Guide](../../getting-started/installation.md)
+2. [Troubleshooting](../../guides/troubleshooting.md)
+3. [Performance Guide](../../guides/performance.md)
 
 ---
 
@@ -364,9 +364,8 @@ A: All Phase 2A features are available to Premium and Enterprise subscribers.
 
 ## 📞 Support
 
-- **Documentation**: [Full docs](./index.md)
-- **API Reference**: [Complete reference](../api.md)
-- **Examples**: [Code samples](../examples.md)
+- **Documentation**: [SEO Dashboard Overview](./overview.md)
+- **API Reference**: [Complete API Reference](../../api/overview.md)
 - **Help**: Contact support@alwrity.com
 
 ---

@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -63,27 +64,66 @@ class AdvertoolsExecutor:
 
             result = {}
             if task_type == 'content_audit':
-                # Phase 1: Audit content themes using sample URLs from sitemap
-                # First, get the sitemap to find recent URLs
+                # Phase 1: Get sitemap analysis (freshness, URL structure, pillars)
                 sitemap_result = await self.advertools_service.analyze_sitemap(effective_url)
                 
                 audit_urls = []
+                url_structure = {}
+                freshness = {}
                 if sitemap_result.get('success'):
-                    # Use the sample URLs returned by the service
-                    audit_urls = sitemap_result.get('metrics', {}).get('audit_sample_urls', [])
+                    metrics = sitemap_result.get('metrics', {})
+                    audit_urls = metrics.get('audit_sample_urls', [])
+                    url_structure = metrics.get('url_structure', {})
+                    freshness = {
+                        "freshness_score": metrics.get('freshness_score'),
+                        "publishing_velocity": metrics.get('publishing_velocity'),
+                        "stale_content_percentage": metrics.get('stale_content_percentage'),
+                        "publishing_recency": metrics.get('publishing_recency'),
+                        "publishing_trend": metrics.get('publishing_trend'),
+                    }
                 
                 if not audit_urls:
-                    # Fallback to homepage if sitemap fails or empty
                     audit_urls = [website_url]
                 
-                # Run the audit on the sample
-                result = await self.advertools_service.audit_content(audit_urls)
+                # Phase 2: Theme analysis via content audit
+                audit_result = await self.advertools_service.audit_content(audit_urls)
+                
+                # Phase 3: Site structure analysis (links, redirects, image SEO)
+                site_domain = urlparse(website_url).netloc or website_url
+                structure_result = await self.advertools_service.analyze_site_structure(
+                    audit_urls, site_domain=site_domain
+                )
+                
+                # Phase 4: Robots.txt compliance analysis
+                robots_result = await self.advertools_service.analyze_robots_txt(website_url)
+                
+                # Phase 5: Crawl budget analysis
+                budget_result = await self.advertools_service.analyze_crawl_budget(
+                    effective_url, site_domain
+                )
+                
+                # Merge results
+                result = {
+                    "success": audit_result.get('success', False) or structure_result.get('success', False),
+                    "themes": audit_result.get('themes', []),
+                    "page_count": audit_result.get('page_count', 0),
+                    "avg_word_count": audit_result.get('avg_word_count', 0),
+                    "link_health": structure_result.get('link_health', {}),
+                    "redirect_audit": structure_result.get('redirect_audit', {}),
+                    "image_seo": structure_result.get('image_seo', {}),
+                    "page_status": structure_result.get('page_status', {}),
+                    "url_structure": url_structure,
+                    "freshness": freshness,
+                    "robots_txt": robots_result,
+                    "crawl_budget": budget_result,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
                 
                 if result.get('success'):
                     await self._update_persona_augmentation(user_id, website_url, result, db)
                     
             elif task_type == 'site_health':
-                # Phase 1: Check site health (freshness, velocity)
+                # Site health: freshness, velocity, URL structure
                 result = await self.advertools_service.analyze_sitemap(effective_url)
                 
                 if result.get('success'):
@@ -157,7 +197,8 @@ class AdvertoolsExecutor:
 
     async def _update_persona_augmentation(self, user_id: str, website_url: str, audit_result: Dict[str, Any], db: Session):
         """
-        Updates the user's Brand Persona with discovered themes from the content audit.
+        Updates the user's Brand Persona with discovered themes, site structure,
+        link health, and redirect data from the content audit.
         """
         try:
             session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
@@ -170,18 +211,40 @@ class AdvertoolsExecutor:
                 self.logger.warning(f"No website analysis found for user {user_id}")
                 return
 
-            # Update brand_analysis with augmented themes
             current_brand = analysis.brand_analysis or {}
             
-            # Add or update the 'augmented_themes' field
+            # Core themes
             current_brand['augmented_themes'] = audit_result.get('themes', [])
+            
+            # Link health
+            current_brand['link_health'] = audit_result.get('link_health', {})
+            
+            # Redirect audit
+            current_brand['redirect_audit'] = audit_result.get('redirect_audit', {})
+            
+            # Image SEO
+            current_brand['image_seo'] = audit_result.get('image_seo', {})
+            
+            # Page status distribution
+            current_brand['page_status'] = audit_result.get('page_status', {})
+            
+            # URL structure analysis
+            current_brand['url_structure'] = audit_result.get('url_structure', {})
+            
+            # Freshness
+            current_brand['freshness'] = audit_result.get('freshness', {})
+            
+            # Robots.txt compliance
+            current_brand['robots_txt'] = audit_result.get('robots_txt', {})
+            
+            # Crawl budget analysis
+            current_brand['crawl_budget'] = audit_result.get('crawl_budget', {})
+            
             current_brand['last_advertools_audit'] = datetime.utcnow().isoformat()
             
-            # Force SQLAlchemy to detect change in JSON field
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(analysis, "brand_analysis")
             
-            # Also update content_strategy_insights if relevant
             if 'avg_word_count' in audit_result:
                 current_strategy = analysis.content_strategy_insights or {}
                 current_strategy['avg_content_length'] = audit_result['avg_word_count']
@@ -196,7 +259,8 @@ class AdvertoolsExecutor:
 
     async def _update_site_health_metrics(self, user_id: str, website_url: str, health_result: Dict[str, Any], db: Session):
         """
-        Updates the WebsiteAnalysis with site health metrics (velocity, freshness).
+        Updates the WebsiteAnalysis with site health metrics (velocity, freshness,
+        URL structure analysis, freshness score).
         """
         try:
             session = db.query(OnboardingSession).filter(OnboardingSession.user_id == user_id).first()
@@ -207,7 +271,6 @@ class AdvertoolsExecutor:
             if not analysis:
                 return
 
-            # Update seo_audit with health metrics
             current_seo = analysis.seo_audit or {}
             metrics = health_result.get('metrics', {})
             
@@ -216,7 +279,11 @@ class AdvertoolsExecutor:
                 "publishing_velocity": metrics.get('publishing_velocity'),
                 "stale_content_count": metrics.get('stale_content_count'),
                 "stale_content_percentage": metrics.get('stale_content_percentage'),
-                "top_pillars": metrics.get('top_pillars')
+                "freshness_score": metrics.get('freshness_score'),
+                "publishing_recency": metrics.get('publishing_recency'),
+                "publishing_trend": metrics.get('publishing_trend'),
+                "top_pillars": metrics.get('top_pillars'),
+                "url_structure": metrics.get('url_structure', {})
             }
             current_seo['last_advertools_health_check'] = datetime.utcnow().isoformat()
             

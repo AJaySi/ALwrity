@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { getApiBaseUrl } from '../../utils/apiUrl';
 import {
   Box,
   Paper,
@@ -47,6 +48,8 @@ import { intentResearchApi } from '../../api/intentResearchApi';
 import { AssetFilters as AssetFiltersComponent } from './AssetLibraryComponents/AssetFilters';
 import { AssetCard } from './AssetLibraryComponents/AssetCard';
 import { AssetTableRow } from './AssetLibraryComponents/AssetTableRow';
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const AssetLibrary: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -321,9 +324,10 @@ export const AssetLibrary: React.FC = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch(asset.file_url, { headers });
+      const response = await fetch(`${API_BASE_URL}/api/content-assets/${asset.id}/content`, { headers });
       if (response.ok) {
-        const content = await response.text();
+        const data = await response.json();
+        const content = data.content || '';
         setTextPreviews(prev => ({ ...prev, [asset.id]: { content, loading: false, expanded: false } }));
       } else {
         throw new Error('Failed to fetch text content');

@@ -6,6 +6,7 @@ Different strategies for executing research based on depth and focus.
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any
+from datetime import datetime
 from loguru import logger
 
 from models.blog_models import BlogResearchRequest, ResearchMode, ResearchConfig
@@ -87,7 +88,7 @@ Provide analysis in this EXACT format:
 - For each: Quote/claim, source URL, published date, metric/context.
 
 REQUIREMENTS:
-- Every claim MUST include a source URL (authoritative, recent: 2024-2025 preferred).
+- Every claim MUST include a source URL (authoritative, recent: {datetime.now().year}-{datetime.now().year + 1} preferred).
 - Use concrete numbers, dates, outcomes; avoid generic advice.
 - Keep bullets tight and scannable for spoken narration."""
         return prompt.strip()
@@ -116,7 +117,7 @@ Research Topic: "{topic}"{date_filter}{source_filter}
 
 Provide COMPLETE analysis in this EXACT format:
 
-## WHAT'S CHANGED (2024-2025)
+## WHAT'S CHANGED ({datetime.now().year}-{datetime.now().year + 1})
 [5-7 concise trend bullets with numbers + source URLs]
 
 ## PROOF & NUMBERS
@@ -151,7 +152,7 @@ Primary (3), Secondary (8-10), Long-tail (5-7) with intent hints.
 VERIFICATION REQUIREMENTS:
 - Minimum 2 authoritative sources per major claim.
 - Prefer industry reports > research papers > news > blogs.
-- 2024-2025 data strongly preferred.
+- {datetime.now().year}-{datetime.now().year + 1} data strongly preferred.
 - All numbers must include timeframe and methodology.
 - Every bullet must be concise for spoken narration and actionable for {target_audience}."""
         return prompt.strip()
@@ -213,7 +214,7 @@ REQUIREMENTS:
 - Cite all claims with authoritative source URLs
 - Include specific numbers, dates, examples
 - Focus on actionable insights for {target_audience}
-- Use 2024-2025 data when available"""
+- Use {datetime.now().year}-{datetime.now().year + 1} data when available"""
         return prompt.strip()
 
 

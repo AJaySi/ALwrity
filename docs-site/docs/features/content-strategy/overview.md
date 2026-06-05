@@ -1,3 +1,7 @@
+---
+description: ALwrity Content Strategy - AI-powered strategic planning, persona development, and content calendar generation.
+---
+
 # Content Strategy Overview
 
 ALwrity's Content Strategy module is the brain of your content marketing efforts, providing AI-powered strategic planning, persona development, and content calendar generation to help you create a comprehensive, data-driven content marketing strategy.
@@ -322,6 +326,13 @@ ALwrity generates comprehensive content calendars that align with your strategy:
 - **Performance Monitoring**: Real-time performance tracking
 - **Strategy Updates**: Automatic strategy refinement
 - **Report Generation**: Automated performance reports
+
+## Related Features
+
+- **[Persona System](../persona/overview.md)** — Build audience personas for targeted content
+- **[Blog Writer](../blog-writer/overview.md)** — Create content aligned with your strategy
+- **[SEO Dashboard](../seo-dashboard/overview.md)** — Discover content gaps and opportunities
+- **[Backlink Outreach](../backlink-outreach/overview.md)** — Support strategy with link-building
 
 ---
 

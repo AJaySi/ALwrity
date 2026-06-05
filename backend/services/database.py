@@ -36,6 +36,8 @@ from models.podcast_models import PodcastProject
 from models.research_models import ResearchProject
 # Video Studio models
 from models.video_models import VideoGenerationTask
+# YouTube Creator task models
+from models.youtube_task_models import YouTubeVideoTask
 # Bing Analytics models
 from models.bing_analytics_models import Base as BingAnalyticsBase
 

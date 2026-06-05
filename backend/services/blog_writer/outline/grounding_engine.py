@@ -40,8 +40,10 @@ class GroundingContextEngine:
         }
         
         # Temporal relevance patterns
+        cy = str(datetime.now().year)
+        ny = str(datetime.now().year + 1)
         self.temporal_patterns = {
-            'recent': ['2024', '2025', 'latest', 'new', 'recent', 'current', 'updated'],
+            'recent': [cy, ny, 'latest', 'new', 'recent', 'current', 'updated'],
             'trending': ['trend', 'emerging', 'growing', 'increasing', 'rising'],
             'evergreen': ['fundamental', 'basic', 'principles', 'foundation', 'core']
         }

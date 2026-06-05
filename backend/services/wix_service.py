@@ -143,16 +143,18 @@ class WixService:
             access_token: Valid access token
             
         Returns:
-            Site information
+            Site information (or {_no_site: True} if no site exists)
         """
         token_str = normalize_token_string(access_token)
         if not token_str:
-            raise ValueError("Invalid access token format for create_blog_post")
+            return {"_no_site": True, "error": "Invalid access token format"}
+        meta = extract_meta_from_token(token_str)
+        meta_site_id = meta.get("metaSiteId")
         try:
-            return self.auth_service.get_site_info(token_str)
+            return self.auth_service.get_site_info(token_str, meta_site_id=meta_site_id)
         except requests.RequestException as e:
-            logger.error(f"Failed to get site info: {e}")
-            raise
+            logger.warning(f"Failed to get site info: {e}")
+            return {"_no_site": True, "error": str(e)}
     
     def get_current_member(self, access_token: str) -> Dict[str, Any]:
         """

@@ -1,5 +1,6 @@
 site_name: ALwrity Documentation
-site_description: AI-Powered Digital Marketing Platform - Complete Documentation
+site_description: AI-Powered Digital Marketing Platform - Complete documentation for content creation, SEO optimization, and AI-driven marketing tools.
+site_author: ALwrity Team
 site_url: https://alwrity.github.io/ALwrity
 repo_url: https://github.com/AJaySi/ALwrity
 repo_name: AJaySi/ALwrity
@@ -90,9 +91,14 @@ markdown_extensions:
 
 # Extra configuration
 extra:
+  generator: false
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/AJaySi/ALwrity
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/ALwrity
+    - icon: fontawesome/solid/globe
+      link: https://alwrity.com
 
 # Navigation structure
 nav:
@@ -273,7 +279,7 @@ nav:
       - Phase 2A - Enterprise Suite: features/seo-dashboard/phase2a-enterprise-seo.md
       - Phase 2A - Advanced GSC: features/seo-dashboard/phase2a-advanced-gsc.md
       - Phase 2A - LLM Insights: features/seo-dashboard/phase2a-llm-insights.md
-      - Phase 2A Implementation: ../SEO/PHASE2A_IMPLEMENTATION.md
+      - Phase 2A Implementation: features/seo-dashboard/phase2a-implementation.md
     - Content Strategy:
       - Overview: features/content-strategy/overview.md
       - Persona Development: features/content-strategy/personas.md
@@ -290,9 +296,11 @@ nav:
     - LinkedIn Writer:
       - Overview: features/linkedin-writer/overview.md
     - Podcast Maker:
+      - Overview: features/podcast-maker/overview.md
       - Workflow Guide: features/podcast-maker/workflow-guide.md
       - Persona Journey (Host): features/podcast-maker/persona-journey-host.md
       - Persona Journey (Producer): features/podcast-maker/persona-journey-producer.md
+      - Best Practices: features/podcast-maker/best-practices.md
       - Implementation Overview: features/podcast-maker/implementation-overview.md
       - API Reference: features/podcast-maker/api-reference.md
       - YouTube Publishing: features/podcast-maker/youtube-publishing.md
@@ -328,6 +336,12 @@ nav:
       - Cost Guide: features/image-studio/cost-guide.md
       - API Reference: features/image-studio/api-reference.md
       - Implementation: features/image-studio/implementation-overview.md
+    - Video Studio:
+      - Overview: features/video-studio/overview.md
+    - YouTube Studio:
+      - Overview: features/youtube-studio/overview.md
+    - Story Writer:
+      - Overview: features/story-writer/overview.md
   - API Reference:
     - Overview: api/overview.md
     - Authentication: api/authentication.md

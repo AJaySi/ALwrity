@@ -21,6 +21,9 @@ A campaign requires only a name. Add a description and keywords to make discover
 !!! tip "Naming conventions"
     Use a consistent naming scheme like `[Vertical] [Content Type] [Period]` — e.g., "Fitness Guest Posts June" or "AI Startups Roundup Q3".
 
+!!! warning "Ownership validation"
+    Campaigns are scoped to the authenticated user. API calls with a `campaign_id` that does not exist or belongs to another user return `404 BacklinkCampaignNotFoundError`. This applies to all campaign operations (get, delete, add leads, send emails, etc.).
+
 ## Campaign List View
 
 The campaign list shows:

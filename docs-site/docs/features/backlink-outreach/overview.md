@@ -1,3 +1,7 @@
+---
+description: ALwrity Backlink Outreach - AI-powered backlink discovery, outreach automation, and campaign management.
+---
+
 # Backlink Outreach Overview
 
 Backlink Outreach is an AI-powered guest post outreach platform that takes you from opportunity discovery to published backlink — with smart email composition, policy-safe sending, IMAP reply monitoring, and full campaign analytics.

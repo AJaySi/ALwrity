@@ -9,6 +9,7 @@ import { styled } from '@mui/material/styles';
 import OAuthTokenStatus from './OAuthTokenStatus';
 import WebsiteAnalysisStatus from './WebsiteAnalysisStatus';
 import PlatformInsightsStatus from './PlatformInsightsStatus';
+import OnboardingTasks from './OnboardingTasks';
 import { TerminalPaper, terminalColors } from './terminalTheme';
 
 interface TabPanelProps {
@@ -101,6 +102,11 @@ const TaskMonitoringTabs: React.FC = () => {
             id="task-monitoring-tab-2" 
             aria-controls="task-monitoring-tabpanel-2"
           />
+          <TerminalTab 
+            label="Scheduled Tasks" 
+            id="task-monitoring-tab-3" 
+            aria-controls="task-monitoring-tabpanel-3"
+          />
         </Tabs>
       </Box>
       <TabPanel value={value} index={0}>
@@ -116,6 +122,11 @@ const TaskMonitoringTabs: React.FC = () => {
       <TabPanel value={value} index={2}>
         <Box sx={{ p: 2 }}>
           <PlatformInsightsStatus compact={true} />
+        </Box>
+      </TabPanel>
+      <TabPanel value={value} index={3}>
+        <Box sx={{ p: 2 }}>
+          <OnboardingTasks compact={true} />
         </Box>
       </TabPanel>
     </TerminalPaper>

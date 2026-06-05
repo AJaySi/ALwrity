@@ -104,7 +104,8 @@ const BlogWriter: React.FC = () => {
     handleOutlineConfirmed,
     handleOutlineRefined,
     handleContentUpdate,
-    handleContentSave
+    handleContentSave,
+    restoreFromAsset
   } = useBlogWriterState();
 
   // SEO Manager - handles all SEO-related logic
@@ -275,6 +276,7 @@ const BlogWriter: React.FC = () => {
     updatePhase,
     loadAsset,
     resetAsset,
+    asset,
   } = useBlogAsset();
   // Load blog asset passed via React Router state (from Asset Library)
   const location = useLocation();
@@ -292,6 +294,7 @@ const BlogWriter: React.FC = () => {
       loadAsset(assetIdFromState).then(loaded => {
         if (!loaded) return;
         saveLastAssetId(assetIdFromState);
+        restoreFromAsset(loaded);
         debug.log('[BlogWriter] Loaded blog asset from navigation state', { asset_id: assetIdFromState, phase: loaded.phase });
       });
     } else {
@@ -302,6 +305,7 @@ const BlogWriter: React.FC = () => {
         if (!isNaN(id)) {
           loadAsset(id).then(loaded => {
             if (loaded) {
+              restoreFromAsset(loaded);
               debug.log('[BlogWriter] Restored last active blog', { asset_id: id, phase: loaded.phase });
             } else {
               // Asset was deleted or inaccessible — clear stale localStorage key
@@ -555,9 +559,13 @@ const BlogWriter: React.FC = () => {
   const handleCachedContentComplete = useCallback((cachedSections: Record<string, string>) => {
     if (cachedSections && Object.keys(cachedSections).length > 0) {
       setSections(cachedSections);
-      debug.log('[BlogWriter] Cached content loaded into state', { sections: Object.keys(cachedSections).length });
+      setContentConfirmed(true);
+      debug.log('[BlogWriter] Cached content loaded into state, auto-confirmed', { sections: Object.keys(cachedSections).length });
+      setTimeout(() => {
+        navigateToPhaseRef.current?.('seo');
+      }, 0);
     }
-  }, [setSections]);
+  }, [setSections, setContentConfirmed]);
 
   // Phase action handlers for when CopilotKit is unavailable - extracted to usePhaseActionHandlers
   const {

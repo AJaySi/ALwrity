@@ -1,3 +1,7 @@
+---
+description: ALwrity Image Studio modules - Create, Edit, Upscale, Optimize, and manage image assets.
+---
+
 # Image Studio Modules
 
 Image Studio consists of 7 core modules that provide a complete image workflow from creation to optimization. This guide provides detailed information about each module, their features, and current implementation status.
