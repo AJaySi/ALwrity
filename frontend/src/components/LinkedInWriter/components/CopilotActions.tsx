@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { useCopilotAction, useCopilotContext } from '@copilotkit/react-core';
+import { useCopilotContext } from '@copilotkit/react-core';
 import { usePlatformPersonaContext } from '../../shared/PersonaContext/PlatformPersonaProvider';
-
-const useCopilotActionTyped = useCopilotAction as any;
+import { showToastNotification } from '../../../utils/toastNotifications';
+import { useCopilotActionTyped } from '../../../hooks/useCopilotActionTyped';
+import '../../../types/linkedinWriterEvents';
 
 // Optional debug flag: set to true to enable verbose logs locally
 const DEBUG_LINKEDIN = false;
@@ -66,9 +67,9 @@ export const useCopilotActions = ({
           if (copilotContext && typeof copilotContext === 'object') {
             try {
               // Check if context has any message sending capabilities
-              if ('sendMessage' in copilotContext && typeof copilotContext.sendMessage === 'function') {
+              if ('sendMessage' in copilotContext && typeof (copilotContext as Record<string, unknown>).sendMessage === 'function') {
                 setTimeout(() => {
-                  (copilotContext as any).sendMessage(prompt);
+                  (copilotContext as { sendMessage: (msg: string) => void }).sendMessage(prompt);
                   console.log('Message sent via context');
                   return;
                 }, 500);
@@ -85,7 +86,7 @@ export const useCopilotActions = ({
                                document.querySelector('button[title*="generateFromPrompt"]');
             if (actionButton) {
               // Set the prompt in a temporary storage for the action to pick up
-              (window as any).tempPromptForGeneration = prompt;
+              window.tempPromptForGeneration = prompt;
               (actionButton as HTMLElement).click();
               console.log('Triggered generateFromPrompt action with:', prompt);
               return;
@@ -235,8 +236,8 @@ export const useCopilotActions = ({
       }
     };
     
-    window.addEventListener('linkedinwriter:copilotSeedFromPrompt' as any, handler);
-    return () => window.removeEventListener('linkedinwriter:copilotSeedFromPrompt' as any, handler);
+    window.addEventListener('linkedinwriter:copilotSeedFromPrompt', handler);
+    return () => window.removeEventListener('linkedinwriter:copilotSeedFromPrompt', handler);
   }, []);
 
   // Allow external prompts to trigger content generation
@@ -248,15 +249,15 @@ export const useCopilotActions = ({
     ],
     handler: async ({ prompt }: { prompt: string }) => {
       // Check for temporary prompt from brainstorm flow
-      const finalPrompt = prompt || (window as any).tempPromptForGeneration;
+      const finalPrompt = prompt || window.tempPromptForGeneration;
       
       if (!finalPrompt) {
         return { success: false, message: 'No prompt provided' };
       }
       
       // Clear the temporary prompt
-      if ((window as any).tempPromptForGeneration) {
-        delete (window as any).tempPromptForGeneration;
+      if (window.tempPromptForGeneration) {
+        delete window.tempPromptForGeneration;
       }
       
       // Set the prompt as context and trigger generation
@@ -281,9 +282,21 @@ export const useCopilotActions = ({
     name: 'editLinkedInDraft',
     description: 'Apply a quick style or structural edit to the current LinkedIn draft',
     parameters: [
-      { name: 'operation', type: 'string', description: 'The edit operation to perform', required: true, enum: ['Casual', 'Professional', 'TightenHook', 'AddCTA', 'Shorten', 'Lengthen'] }
+      { name: 'operation', type: 'string', description: 'The edit operation to perform', required: true, enum: ['Casual', 'Professional', 'TightenHook', 'AddCTA', 'Shorten', 'Lengthen', 'AddEmojis', 'AddHashtags', 'ImproveClarity', 'AdjustTone', 'RewriteHook'] }
     ],
     handler: async ({ operation }: { operation: string }) => {
+      const COMING_SOON_OPS = ['ImproveClarity', 'AdjustTone', 'RewriteHook'];
+      if (COMING_SOON_OPS.includes(operation)) {
+        const labels: Record<string, string> = {
+          ImproveClarity: 'Improve Clarity',
+          AdjustTone: 'Tone Adjustment',
+          RewriteHook: 'Hook Rewrite'
+        };
+        const label = labels[operation] || operation;
+        showToastNotification(`${label} is coming soon! This feature will use AI to enhance your content.`, 'info');
+        return { success: false, message: `${label} feature coming soon` };
+      }
+
       const currentDraft = draft || '';
       if (!currentDraft) {
         return { success: false, message: 'No draft content to edit' };
@@ -335,6 +348,49 @@ export const useCopilotActions = ({
             editedContent = currentDraft + '\n\nThis approach has shown remarkable results in our industry. The key is to maintain consistency while adapting to changing market conditions.';
           }
           break;
+
+        case 'AddEmojis': {
+          const selectEmojis = (text: string): string[] => {
+            const lower = text.toLowerCase();
+            let category = 'general';
+            if (/achiev|success|milestone|goal|win/i.test(lower)) category = 'achievement';
+            else if (/strateg|plan|growth|metric/i.test(lower)) category = 'strategy';
+            else if (/collabor|team|partner|connect|network/i.test(lower)) category = 'collaboration';
+            else if (/learn|skill|develop|train|educat/i.test(lower)) category = 'learning';
+            else if (/innovat|new|future|transform|ai|tech/i.test(lower)) category = 'innovation';
+            const emojiSets: Record<string, string[]> = {
+              achievement: ['🏆', '🎯', '⭐', '🚀', '💪'],
+              strategy: ['📈', '📊', '🧭', '💡', '🔑'],
+              collaboration: ['🤝', '👥', '💬', '🌐', '🤝'],
+              learning: ['📚', '🎓', '🧠', '💡', '📖'],
+              innovation: ['💡', '🔬', '⚡', '🔮', '✨'],
+              general: ['✅', '🎯', '💡', '📌', '🔥']
+            };
+            return emojiSets[category];
+          };
+          const emojis = selectEmojis(currentDraft);
+          const enriched = currentDraft.split('\n').map((line: string, i: number) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('---') || trimmed.startsWith('http')) return line;
+            return `${emojis[i % emojis.length]} ${line}`;
+          }).join('\n');
+          editedContent = enriched;
+          break;
+        }
+
+        case 'AddHashtags': {
+          const INDUSTRY_TAGS: Record<string, string[]> = {
+            technology: ['#TechLeadership', '#DigitalTransformation', '#Innovation', '#FutureOfWork', '#AI'],
+            marketing: ['#MarketingStrategy', '#DigitalMarketing', '#ContentMarketing', '#GrowthMarketing', '#BrandBuilding'],
+            default: ['#ProfessionalDevelopment', '#CareerGrowth', '#Leadership', '#IndustryInsights', '#Networking']
+          };
+          const existing: string[] = currentDraft.match(/#[A-Za-z0-9_]+/g) || [];
+          if (existing.length >= 5) break;
+          const tags = (INDUSTRY_TAGS[userPreferences?.industry?.toLowerCase()] || INDUSTRY_TAGS.default)
+            .filter((t: string) => !existing.includes(t)).slice(0, 5);
+          if (tags.length > 0) editedContent = `${currentDraft}\n\n${tags.join(' ')}`;
+          break;
+        }
           
         default:
           return { success: false, message: 'Unknown operation' };
@@ -355,34 +411,57 @@ export const useCopilotActions = ({
     const hasCTA = /\b(call now|sign up|join|try|learn more|cta|comment|share|connect|message|dm|reach out)\b/i.test(draft || '');
     const hasHashtags = /#[A-Za-z0-9_]+/.test(draft || '');
     const isLong = (draft || '').length > 500;
+    const hasPersona = !!(corePersona && platformPersona);
     
     // Debug logging for suggestions
     if (DEBUG_LINKEDIN) console.log('[LinkedIn Writer] Generating suggestions:', {
       hasContent,
       justGeneratedContent,
+      hasPersona,
       draftLength: draft?.length || 0
     });
 
     if (!hasContent) {
       // Initial suggestions for content creation
-      const initialSuggestions = [
+      const initialSuggestions: { title: string; message: string }[] = [];
+      
+      // Persona-aware actions first when persona data is available
+      if (hasPersona) {
+        initialSuggestions.push(
+          { title: '🎭 Post (Persona-Optimized)', message: 'Use tool generateLinkedInPostWithPersona to create a post optimized for your writing style and LinkedIn platform constraints.' },
+          { title: '🎭 Article (Persona-Optimized)', message: 'Use tool generateLinkedInArticleWithPersona to write an article with persona-aware optimization.' }
+        );
+      }
+      
+      // Standard actions
+      initialSuggestions.push(
         { title: '📝 LinkedIn Post', message: 'Use tool generateLinkedInPost to create a professional LinkedIn post for your industry.' },
         { title: '📄 Article', message: 'Use tool generateLinkedInArticle to write a thought leadership article.' },
         { title: '🎠 Carousel', message: 'Use tool generateLinkedInCarousel to create a multi-slide carousel presentation.' },
         { title: '🎬 Video Script', message: 'Use tool generateLinkedInVideoScript to draft a video script for LinkedIn.' },
         { title: '💬 Comment Response', message: 'Use tool generateLinkedInCommentResponse to craft a professional comment reply.' },
-        { title: '🖼️ Generate Post Image', message: 'Use tool generateLinkedInImagePrompts to create professional images for your LinkedIn content.' },
-        { title: '🎨 Visual Content', message: 'Create engaging visual content with AI-generated images optimized for LinkedIn.' }
-      ];
+        { title: '🖼️ Generate Post Image', message: 'Use tool generateLinkedInImagePrompts to create professional images for your LinkedIn content.' }
+      );
+      
+      // Persona validation and suggestions when persona is available
+      if (hasPersona) {
+        initialSuggestions.push(
+          { title: '✅ Validate Against Persona', message: 'Use tool validateContentAgainstPersona to check existing content against your writing persona.' },
+          { title: '🎨 Get Writing Suggestions', message: 'Use tool getPersonaWritingSuggestions to receive personalized recommendations based on your persona.' }
+        );
+      }
+      
       console.log('[LinkedIn Writer] Initial suggestions:', initialSuggestions);
       return initialSuggestions;
     } else {
         // Refinement suggestions for existing content - use direct edit actions
-      const refinementSuggestions = [
+      const refinementSuggestions: { title: string; message: string }[] = [
         { title: '🙂 Make it casual', message: 'Use tool editLinkedInDraft with operation Casual' },
         { title: '💼 Make it professional', message: 'Use tool editLinkedInDraft with operation Professional' },
         { title: '✨ Tighten hook', message: 'Use tool editLinkedInDraft with operation TightenHook' },
         { title: '📣 Add a CTA', message: 'Use tool editLinkedInDraft with operation AddCTA' },
+        { title: '😀 Add emojis', message: 'Use tool editLinkedInDraft with operation AddEmojis' },
+        { title: '🏷️ Add hashtags', message: 'Use tool editLinkedInDraft with operation AddHashtags' },
         { title: '✂️ Shorten', message: 'Use tool editLinkedInDraft with operation Shorten' },
         { title: '➕ Lengthen', message: 'Use tool editLinkedInDraft with operation Lengthen' }
       ];
@@ -413,6 +492,14 @@ export const useCopilotActions = ({
         refinementSuggestions.push({ title: '📝 Summarize intro', message: 'Use tool editLinkedInDraft with operation Shorten' });
       }
       
+      // Persona-aware refinement actions
+      if (hasPersona) {
+        refinementSuggestions.push(
+          { title: '✅ Validate Against Persona', message: 'Use tool validateContentAgainstPersona to check this content against your writing persona.' },
+          { title: '🎨 Get Writing Suggestions', message: 'Use tool getPersonaWritingSuggestions to receive personalized recommendations.' }
+        );
+      }
+      
       // Add image generation suggestion when there's content
       if (draft && draft.trim().length > 0) {
         if (DEBUG_LINKEDIN) console.log('[LinkedIn Writer] Adding image generation suggestion');
@@ -439,7 +526,7 @@ export const useCopilotActions = ({
       if (DEBUG_LINKEDIN) console.log('[LinkedIn Writer] Final suggestions:', refinementSuggestions);
       return refinementSuggestions;
     }
-  }, [draft, justGeneratedContent]);
+  }, [draft, justGeneratedContent, corePersona, platformPersona]);
 
   // Return the suggestions function directly
   return getIntelligentSuggestions;

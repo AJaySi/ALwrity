@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { usePlatformPersonaContext } from '../../shared/PersonaContext/PlatformPersonaProvider';
 import { apiClient } from '../../../api/client';
+import '../../../types/linkedinWriterEvents';
 
 // Define the cache data type
 interface BrainstormCacheData {
@@ -118,7 +119,7 @@ const BrainstormFlow: React.FC<BrainstormFlowProps> = ({
     const handler = async (ev: any) => {
       try {
         // Store the event for refresh functionality
-        (window as any).lastBrainstormEvent = ev;
+        window.lastBrainstormEvent = ev;
         
         const { prompt, seed: ideaSeed, forceRefresh = false } = ev.detail || {};
         const finalSeed = ideaSeed || prompt;
@@ -239,8 +240,8 @@ const BrainstormFlow: React.FC<BrainstormFlowProps> = ({
         setBrainstormVisible(false);
       }
     };
-    window.addEventListener('linkedinwriter:runGoogleSearchForIdeas' as any, handler);
-    return () => window.removeEventListener('linkedinwriter:runGoogleSearchForIdeas' as any, handler);
+    window.addEventListener('linkedinwriter:runGoogleSearchForIdeas', handler);
+    return () => window.removeEventListener('linkedinwriter:runGoogleSearchForIdeas', handler);
   }, [corePersona, platformPersona, loaderMessages, getCacheKey, getCachedIdeas, setCachedIdeas, setBrainstormVisible, setBrainstormStage, setLoaderMessageIndex, setIdeas, setAiSearchPrompts, setSelectedPrompt, setSearchResults, setIsUsingCache]);
 
   return (
@@ -275,7 +276,7 @@ const BrainstormFlow: React.FC<BrainstormFlowProps> = ({
                 <button
                   onClick={() => {
                     // Force refresh by clearing cache and re-running
-                    const { prompt, seed: ideaSeed } = (window as any).lastBrainstormEvent?.detail || {};
+                    const { prompt, seed: ideaSeed } = window.lastBrainstormEvent?.detail || {};
                     if (prompt || ideaSeed) {
                       window.dispatchEvent(new CustomEvent('linkedinwriter:runGoogleSearchForIdeas', { 
                         detail: { prompt, seed: ideaSeed, forceRefresh: true } 

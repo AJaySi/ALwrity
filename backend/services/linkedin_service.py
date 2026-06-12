@@ -1,8 +1,9 @@
 """
 LinkedIn Content Generation Service for ALwrity
 
-This service generates various types of LinkedIn content with enhanced grounding capabilities.
-Integrated with Google Search, Gemini Grounded Provider, and quality analysis.
+This service generates various types of LinkedIn content with provider-agnostic
+LLM access via llm_text_gen. Research is handled by Exa/Tavily through the
+common research infrastructure.
 """
 
 import asyncio
@@ -21,57 +22,44 @@ from models.linkedin_models import (
     HashtagSuggestion, ImageSuggestion, Citation, ContentQualityMetrics,
     GroundingLevel
 )
-from services.research import GoogleSearchService
-from services.llm_providers.gemini_grounded_provider import GeminiGroundedProvider
 from services.citation import CitationManager
 from services.quality import ContentQualityAnalyzer
 
 
 class LinkedInService:
     """
-    Enhanced LinkedIn content generation service with grounding capabilities.
+    LinkedIn content generation service with provider-agnostic LLM access.
     
-    This service integrates real research, grounded content generation,
-    citation management, and quality analysis for enterprise-grade content.
+    Uses llm_text_gen for text generation (respects GPT_PROVIDER).
+    Uses Exa/Tavily for research via common infrastructure.
     """
     
     def __init__(self):
-        """Initialize the LinkedIn service with all required components."""
-        # Google Search Service not used - removed to avoid false warnings
-        self.google_search = None
-            
-        try:
-            self.gemini_grounded = GeminiGroundedProvider()
-            logger.info("✅ Gemini Grounded Provider initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Gemini Grounded Provider not available: {e}")
-            self.gemini_grounded = None
-            
-        try:
-            self.citation_manager = CitationManager()
-            logger.info("✅ Citation Manager initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Citation Manager not available: {e}")
-            self.citation_manager = None
-            
-        try:
-            self.quality_analyzer = ContentQualityAnalyzer()
-            logger.info("✅ Content Quality Analyzer initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Content Quality Analyzer not available: {e}")
-            self.quality_analyzer = None
-        
-        # Initialize fallback provider for non-grounded content
-        try:
-            from services.llm_providers.gemini_provider import gemini_structured_json_response, gemini_text_response
-            self.fallback_provider = {
-                'generate_structured_json': gemini_structured_json_response,
-                'generate_text': gemini_text_response
-            }
-            logger.info("✅ Fallback Gemini provider initialized")
-        except ImportError as e:
-            logger.warning(f"⚠️ Fallback Gemini provider not available: {e}")
-            self.fallback_provider = None
+        """Initialize the LinkedIn service with lazy provider initialization."""
+        self._citation_manager = None
+        self._quality_analyzer = None
+    
+    @property
+    def citation_manager(self):
+        if self._citation_manager is None:
+            try:
+                self._citation_manager = CitationManager()
+                logger.info("✅ Citation Manager initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Citation Manager not available: {e}")
+                self._citation_manager = None
+        return self._citation_manager
+    
+    @property
+    def quality_analyzer(self):
+        if self._quality_analyzer is None:
+            try:
+                self._quality_analyzer = ContentQualityAnalyzer()
+                logger.info("✅ Content Quality Analyzer initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Content Quality Analyzer not available: {e}")
+                self._quality_analyzer = None
+        return self._quality_analyzer
     
     async def generate_linkedin_post(self, request: LinkedInPostRequest) -> LinkedInPostResponse:
         """
@@ -94,8 +82,9 @@ class LinkedInService:
             # Step 1: Conduct research if enabled
             from services.linkedin.research_handler import ResearchHandler
             research_handler = ResearchHandler(self)
+            user_id = str(getattr(request, 'user_id', '') or '')
             research_sources, research_time = await research_handler.conduct_research(
-                request, request.research_enabled, request.search_engine, 10
+                request, request.research_enabled, request.search_engine, 10, user_id=user_id
             )
             
             # Step 2: Generate content based on grounding level
@@ -105,15 +94,14 @@ class LinkedInService:
             from services.linkedin.content_generator import ContentGenerator
             content_generator = ContentGenerator(
                 self.citation_manager, 
-                self.quality_analyzer, 
-                self.gemini_grounded, 
-                self.fallback_provider
+                self.quality_analyzer
             )
             
             if grounding_enabled:
                 content_result = await content_generator.generate_grounded_post_content(
                     request=request,
-                    research_sources=research_sources
+                    research_sources=research_sources,
+                    user_id=str(getattr(request, 'user_id', ''))
                 )
             else:
                 logger.error("Grounding not enabled, Error generating LinkedIn post")
@@ -152,8 +140,9 @@ class LinkedInService:
             # Step 1: Conduct research if enabled
             from services.linkedin.research_handler import ResearchHandler
             research_handler = ResearchHandler(self)
+            user_id = str(getattr(request, 'user_id', '') or '')
             research_sources, research_time = await research_handler.conduct_research(
-                request, request.research_enabled, request.search_engine, 15
+                request, request.research_enabled, request.search_engine, 15, user_id=user_id
             )
             
             # Step 2: Generate content based on grounding level
@@ -163,15 +152,14 @@ class LinkedInService:
             from services.linkedin.content_generator import ContentGenerator
             content_generator = ContentGenerator(
                 self.citation_manager, 
-                self.quality_analyzer, 
-                self.gemini_grounded, 
-                self.fallback_provider
+                self.quality_analyzer
             )
             
             if grounding_enabled:
                 content_result = await content_generator.generate_grounded_article_content(
                     request=request,
-                    research_sources=research_sources
+                    research_sources=research_sources,
+                    user_id=str(getattr(request, 'user_id', ''))
                 )
             else:
                 logger.error("Grounding not enabled - cannot generate LinkedIn article without AI provider")
@@ -210,8 +198,9 @@ class LinkedInService:
             # Step 1: Conduct research if enabled
             from services.linkedin.research_handler import ResearchHandler
             research_handler = ResearchHandler(self)
+            user_id = str(getattr(request, 'user_id', '') or '')
             research_sources, research_time = await research_handler.conduct_research(
-                request, request.research_enabled, request.search_engine, 12
+                request, request.research_enabled, request.search_engine, 12, user_id=user_id
             )
             
             # Step 2: Generate content based on grounding level
@@ -221,15 +210,14 @@ class LinkedInService:
             from services.linkedin.content_generator import ContentGenerator
             content_generator = ContentGenerator(
                 self.citation_manager, 
-                self.quality_analyzer, 
-                self.gemini_grounded, 
-                self.fallback_provider
+                self.quality_analyzer
             )
             
             if grounding_enabled:
                 content_result = await content_generator.generate_grounded_carousel_content(
                     request=request,
-                    research_sources=research_sources
+                    research_sources=research_sources,
+                    user_id=str(getattr(request, 'user_id', ''))
                 )
             else:
                 logger.error("Grounding not enabled - cannot generate LinkedIn carousel without AI provider")
@@ -303,8 +291,9 @@ class LinkedInService:
             # Step 1: Conduct research if enabled
             from services.linkedin.research_handler import ResearchHandler
             research_handler = ResearchHandler(self)
+            user_id = str(getattr(request, 'user_id', '') or '')
             research_sources, research_time = await research_handler.conduct_research(
-                request, request.research_enabled, request.search_engine, 8
+                request, request.research_enabled, request.search_engine, 8, user_id=user_id
             )
             
             # Step 2: Generate content based on grounding level
@@ -314,15 +303,14 @@ class LinkedInService:
             from services.linkedin.content_generator import ContentGenerator
             content_generator = ContentGenerator(
                 self.citation_manager, 
-                self.quality_analyzer, 
-                self.gemini_grounded, 
-                self.fallback_provider
+                self.quality_analyzer
             )
             
             if grounding_enabled:
                 content_result = await content_generator.generate_grounded_video_script_content(
                     request=request,
-                    research_sources=research_sources
+                    research_sources=research_sources,
+                    user_id=str(getattr(request, 'user_id', ''))
                 )
             else:
                 logger.error("Grounding not enabled - cannot generate LinkedIn video script without AI provider")
@@ -387,8 +375,9 @@ class LinkedInService:
             # Step 1: Conduct research if enabled
             from services.linkedin.research_handler import ResearchHandler
             research_handler = ResearchHandler(self)
+            user_id = str(getattr(request, 'user_id', '') or '')
             research_sources, research_time = await research_handler.conduct_research(
-                request, request.research_enabled, request.search_engine, 5
+                request, request.research_enabled, request.search_engine, 5, user_id=user_id
             )
             
             # Step 2: Generate response based on grounding level
@@ -398,15 +387,14 @@ class LinkedInService:
             from services.linkedin.content_generator import ContentGenerator
             content_generator = ContentGenerator(
                 self.citation_manager, 
-                self.quality_analyzer, 
-                self.gemini_grounded, 
-                self.fallback_provider
+                self.quality_analyzer
             )
             
             if grounding_enabled:
                 response_result = await content_generator.generate_grounded_comment_response(
                     request=request,
-                    research_sources=research_sources
+                    research_sources=research_sources,
+                    user_id=str(getattr(request, 'user_id', ''))
                 )
             else:
                 logger.error("Grounding not enabled - cannot generate LinkedIn comment response without AI provider")
@@ -423,20 +411,13 @@ class LinkedInService:
             )
             
             if result['success']:
-                # Convert to LinkedInCommentResponseResult
-                from models.linkedin_models import CommentResponse
-                comment_response = CommentResponse(
-                    response=result['response'],
-                    alternative_responses=result.get('alternative_responses', []),
-                    tone_analysis=result.get('tone_analysis')
-                )
-                
                 return LinkedInCommentResponseResult(
                     success=True,
-                    data=comment_response,
-                    research_sources=result['research_sources'],
-                    generation_metadata=result['generation_metadata'],
-                    grounding_status=result['grounding_status']
+                    response=result['response'],
+                    alternative_responses=result.get('alternative_responses', []),
+                    tone_analysis=result.get('tone_analysis'),
+                    generation_metadata=result.get('generation_metadata', {}),
+                    grounding_status=result.get('grounding_status')
                 )
             else:
                 return LinkedInCommentResponseResult(
@@ -451,35 +432,187 @@ class LinkedInService:
                 error=f"Failed to generate LinkedIn comment response: {str(e)}"
             )
     
-    async def _conduct_research(self, topic: str, industry: str, search_engine: str, max_results: int = 10) -> List[ResearchSource]:
+    async def _conduct_research(self, topic: str, industry: str, search_engine: str, max_results: int = 10, user_id: str = None) -> List[ResearchSource]:
         """
-        Use native Google Search grounding instead of custom search.
-        The Gemini API handles search automatically when the google_search tool is enabled.
+        Conduct research using the configured search engine with caching.
+        
+        For Exa: delegates to ExaResearchProvider.simple_search() with pre-flight validation
+        For Tavily: delegates to TavilyService.search() with pre-flight validation
+        For Google/unknown: falls back to Exa if available
         
         Args:
             topic: Research topic
             industry: Target industry
-            search_engine: Search engine to use (google uses native grounding)
+            search_engine: Search engine to use (exa, tavily)
             max_results: Maximum number of results to return
+            user_id: User ID for subscription pre-flight validation and usage tracking
             
         Returns:
-            List of research sources (empty for google - sources come from grounding metadata)
+            List of research sources
         """
+        from services.cache.research_cache import research_cache
+        
+        search_engine_lower = search_engine.lower().strip()
+        
+        # Default to Exa if Google or unknown engine specified
+        if search_engine_lower in ("google", ""):
+            logger.info(f"Search engine '{search_engine}' not supported for direct research, defaulting to Exa")
+            search_engine_lower = "exa"
+        
+        # Check cache first
+        cached_result = research_cache.get_cached_result(
+            keywords=[topic],
+            industry=industry,
+            target_audience="linkedin"
+        )
+        
+        if cached_result:
+            logger.info(f"Returning cached research result for topic: {topic[:50]}")
+            # Convert cached dict back to ResearchSource objects
+            sources = []
+            for r in cached_result:
+                sources.append(ResearchSource(
+                    title=r.get('title', 'Untitled'),
+                    url=r.get('url', ''),
+                    content=r.get('content', '')[:500],
+                    relevance_score=r.get('relevance_score', 0.5),
+                    credibility_score=r.get('credibility_score', 0.5),
+                    source_type=r.get('source_type', 'web'),
+                    publication_date=r.get('publication_date')
+                ))
+            return sources
+        
         try:
-            # Debug: Log the search engine value received
-            logger.info(f"Received search engine: '{search_engine}' (type: {type(search_engine)})")
+            # Pre-flight validation if user_id provided
+            if user_id:
+                try:
+                    from services.subscription.preflight_validator import validate_exa_research_operations
+                    from services.database import get_session_for_user
+                    from services.subscription import PricingService
+                    import os
+                    
+                    db_val = get_session_for_user(user_id)
+                    if db_val:
+                        try:
+                            pricing_service = PricingService(db_val)
+                            gpt_provider = os.getenv("GPT_PROVIDER", "google")
+                            validate_exa_research_operations(pricing_service, user_id, gpt_provider)
+                        finally:
+                            db_val.close()
+                except Exception as preflight_err:
+                    logger.warning(f"Research pre-flight validation failed: {preflight_err}")
+                    # Continue anyway - don't block research for pre-flight issues
             
-            # Handle both enum value 'google' and enum name 'GOOGLE'
-            if search_engine.lower() == "google":
-                # No need for manual search - Gemini handles it automatically with native grounding
-                logger.info("Using native Google Search grounding via Gemini API - no manual search needed")
-                return []  # Return empty list - sources will come from grounding metadata
+            if search_engine_lower == "exa":
+                from services.research import get_exa_content_provider
+                
+                try:
+                    provider = get_exa_content_provider()
+                except RuntimeError:
+                    logger.warning("Exa API key not configured, falling back to Tavily")
+                    provider = None
+                
+                if provider:
+                    try:
+                        results = await provider.simple_search(
+                            query=f"{topic} {industry}",
+                            num_results=max_results,
+                            user_id=user_id
+                        )
+                        
+                        sources = []
+                        for r in results:
+                            sources.append(ResearchSource(
+                                title=r.get('title', 'Untitled'),
+                                url=r.get('url', ''),
+                                content=r.get('text', '')[:500],
+                                relevance_score=r.get('score', 0.5),
+                                credibility_score=r.get('score', 0.5),
+                                source_type='web',
+                                publication_date=r.get('publishedDate')
+                            ))
+                        
+                        # Cache the results
+                        cache_data = [
+                            {
+                                'title': s.title,
+                                'url': s.url,
+                                'content': s.content,
+                                'relevance_score': s.relevance_score,
+                                'credibility_score': s.credibility_score,
+                                'source_type': s.source_type,
+                                'publication_date': s.publication_date
+                            }
+                            for s in sources
+                        ]
+                        research_cache.cache_result(
+                            keywords=[topic],
+                            industry=industry,
+                            target_audience="linkedin",
+                            result=cache_data
+                        )
+                        
+                        logger.info(f"Exa research returned {len(sources)} sources for topic: {topic[:50]}")
+                        return sources
+                    except Exception as exa_err:
+                        logger.warning(f"Exa research failed ({exa_err}), falling back to Tavily")
+                
+                # Fallback to Tavily
+                search_engine_lower = "tavily"
+            
+            elif search_engine_lower == "tavily":
+                from services.research.tavily_service import TavilyService
+                
+                tavily_service = TavilyService()
+                if not tavily_service.enabled:
+                    logger.warning("Tavily API key not configured, skipping Tavily research")
+                    return []
+                
+                result = await tavily_service.search(
+                    query=f"{topic} {industry}",
+                    max_results=max_results
+                )
+                
+                raw_results = result.get('results', []) if isinstance(result, dict) else []
+                sources = []
+                for r in raw_results:
+                    sources.append(ResearchSource(
+                        title=r.get('title', 'Untitled'),
+                        url=r.get('url', ''),
+                        content=r.get('content', '')[:500],
+                        relevance_score=r.get('score', r.get('relevance_score', 0.5)),
+                        credibility_score=r.get('relevance_score', 0.5),
+                        source_type='web',
+                        publication_date=r.get('published_date')
+                    ))
+                
+                # Cache the results
+                cache_data = [
+                    {
+                        'title': s.title,
+                        'url': s.url,
+                        'content': s.content,
+                        'relevance_score': s.relevance_score,
+                        'credibility_score': s.credibility_score,
+                        'source_type': s.source_type,
+                        'publication_date': s.publication_date
+                    }
+                    for s in sources
+                ]
+                research_cache.cache_result(
+                    keywords=[topic],
+                    industry=industry,
+                    target_audience="linkedin",
+                    result=cache_data
+                )
+                
+                logger.info(f"Tavily research returned {len(sources)} sources for topic: {topic[:50]}")
+                return sources
+            
             else:
-                # Fallback to basic research for other search engines
-                logger.error(f"Search engine {search_engine} not fully implemented, using fallback")
-                raise Exception(f"Search engine {search_engine} not fully implemented, using fallback")
+                logger.warning(f"Unknown search engine '{search_engine}', no research performed")
+                return []
                 
         except Exception as e:
-            logger.error(f"Error conducting research: {str(e)}")
-            # Fallback to basic research
-            raise Exception(f"Error conducting research: {str(e)}")
+            logger.error(f"Research failed for engine {search_engine}: {e}")
+            return []

@@ -17,13 +17,13 @@ from .content_generator_prompts import (
     VideoScriptGenerator
 )
 
-# Import new image generation services
+# Import image generation services
 from .image_generation import (
     LinkedInImageGenerator,
-    LinkedInImageEditor,
     LinkedInImageStorage
 )
 from .image_prompts import LinkedInPromptGenerator
+from .carousel import LinkedInCarouselPDFRenderer
 
 __all__ = [
     # Content Generation
@@ -42,9 +42,10 @@ __all__ = [
     
     # Image Generation Services
     'LinkedInImageGenerator',
-    'LinkedInImageEditor',
     'LinkedInImageStorage',
-    'LinkedInPromptGenerator'
+    'LinkedInPromptGenerator',
+    # Carousel Rendering
+    'LinkedInCarouselPDFRenderer',
 ]
 
 # Version information

@@ -1,5 +1,4 @@
 import React from 'react';
-import { useCopilotAction } from '@copilotkit/react-core';
 import { linkedInWriterApi, GroundingLevel } from '../../services/linkedInWriterApi';
 import {
   mapPostType,
@@ -9,8 +8,7 @@ import {
   readPrefs
 } from './utils/linkedInWriterUtils';
 import { usePlatformPersonaContext } from '../shared/PersonaContext/PlatformPersonaProvider';
-
-const useCopilotActionTyped = useCopilotAction as any;
+import { useCopilotActionTyped } from '../../hooks/useCopilotActionTyped';
 
 const RegisterLinkedInActionsEnhanced: React.FC = () => {
   // Get persona context for enhanced content generation
@@ -102,9 +100,8 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
       }
       
       // Apply persona constraints to parameters
-      const personaConstraints = platformPersona?.content_format_rules as any || {};
-      const maxLength = personaConstraints.character_limit || prefs.max_length || 2000;
-      const optimalLength = personaConstraints.optimal_length || '150-300 words';
+      const maxLength = platformPersona?.content_format_rules?.character_limit || prefs.max_length || 2000;
+      const optimalLength = platformPersona?.content_format_rules?.optimal_length || '150-300 words';
       
       console.log(`🎭 Persona constraints applied: Max ${maxLength} chars, Optimal: ${optimalLength}`);
       
@@ -329,9 +326,11 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
         } 
       }));
       
-      // Continue with article generation...
-      // (Implementation would continue similar to the post generation)
-      
+      // Complete progress and end loading
+      window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'finalize', status: 'completed', message: 'Article generation placeholder' } }));
+      window.dispatchEvent(new CustomEvent('linkedinwriter:progressComplete'));
+      window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
+
       return {
         success: true,
         message: `✅ LinkedIn article generation started with persona optimization!`,
@@ -373,7 +372,7 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
         },
         platform_compliance: {
           character_count: content.length,
-          optimal_range: (platformPersona.content_format_rules as any)?.optimal_length || '150-300 words',
+          optimal_range: platformPersona.content_format_rules?.optimal_length || '150-300 words',
           status: 'analyzing',
           suggestions: [] as string[]
         }
@@ -401,7 +400,7 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
       });
 
       // Platform compliance check
-      const charLimit = (platformPersona.content_format_rules as any)?.character_limit || 3000;
+      const charLimit = platformPersona.content_format_rules?.character_limit || 3000;
       if (content.length > charLimit) {
         validation.platform_compliance.status = 'exceeds_limit';
         validation.platform_compliance.suggestions = [`Content exceeds ${charLimit} character limit by ${content.length - charLimit} characters`];
@@ -445,13 +444,13 @@ const RegisterLinkedInActionsEnhanced: React.FC = () => {
       const suggestions = {
         writing_style: {
           sentence_structure: corePersona.linguistic_fingerprint?.sentence_metrics?.preferred_sentence_type || 'balanced',
-          tone_recommendation: (corePersona as any).tonal_range?.default_tone || 'professional_friendly',
+          tone_recommendation: platformPersona?.tonal_range?.default_tone || 'professional_friendly',
           vocabulary_level: corePersona.linguistic_fingerprint?.lexical_features?.vocabulary_level || 'professional'
         },
         platform_optimization: {
-          character_limit: (platformPersona.content_format_rules as any)?.character_limit || 3000,
-          optimal_length: (platformPersona.content_format_rules as any)?.optimal_length || '150-300 words',
-          hashtag_strategy: (platformPersona.lexical_features as any)?.hashtag_strategy || '3-5 relevant hashtags'
+          character_limit: platformPersona.content_format_rules?.character_limit || 3000,
+          optimal_length: platformPersona.content_format_rules?.optimal_length || '150-300 words',
+          hashtag_strategy: platformPersona.lexical_features?.hashtag_strategy || '3-5 relevant hashtags'
         },
         persona_specific: {
           go_to_words: corePersona.linguistic_fingerprint?.lexical_features?.go_to_words || [],

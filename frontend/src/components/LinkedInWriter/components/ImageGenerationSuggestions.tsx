@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useCopilotAction } from '@copilotkit/react-core';
 import { 
   AutoAwesome as SparklesIcon, 
   PhotoCamera as PhotoIcon, 
@@ -7,6 +6,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as ExclamationTriangleIcon
 } from '@mui/icons-material';
+import { useCopilotActionTyped } from '../../../hooks/useCopilotActionTyped';
 
 interface ImageGenerationSuggestionsProps {
   contentType: 'post' | 'article' | 'carousel' | 'video_script';
@@ -50,9 +50,6 @@ const ImageGenerationSuggestions: React.FC<ImageGenerationSuggestionsProps> = ({
 
   const [prompts, setPrompts] = useState<ImagePrompt[]>([]);
   const [showPrompts, setShowPrompts] = useState(false);
-
-  // Use the same pattern as other components in the project
-  const useCopilotActionTyped = useCopilotAction as any;
 
   // Register Copilot action for generating image prompts
   useCopilotActionTyped({
@@ -119,7 +116,12 @@ const ImageGenerationSuggestions: React.FC<ImageGenerationSuggestionsProps> = ({
     description: 'Generate LinkedIn-optimized image from selected prompt',
     parameters: [
       { name: 'prompt', type: 'string', required: true },
-      { name: 'content_context', type: 'object', required: true },
+      { name: 'content_context', type: 'object', required: true, attributes: [
+        { name: 'topic', type: 'string', required: true },
+        { name: 'industry', type: 'string', required: true },
+        { name: 'content_type', type: 'string', required: true },
+        { name: 'style', type: 'string', required: true }
+      ] },
       { name: 'aspect_ratio', type: 'string', required: false }
     ],
     handler: async (args: any) => {

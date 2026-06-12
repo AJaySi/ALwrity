@@ -1,15 +1,27 @@
 import React, { useState } from 'react';
 import { FeatureCarousel } from './FeatureCarousel';
 import { InfoModals } from './InfoModals';
+import { QuickCreate } from './QuickCreate';
+import { LinkedInPreferences } from '../utils/storageUtils';
 
 interface WelcomeMessageProps {
   draft: string;
   isGenerating: boolean;
+  onGeneratePost: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  onGenerateArticle: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  onGenerateCarousel: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  onGenerateVideoScript: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  userPreferences: LinkedInPreferences;
 }
 
 export const WelcomeMessage: React.FC<WelcomeMessageProps> = ({
   draft,
-  isGenerating
+  isGenerating,
+  onGeneratePost,
+  onGenerateArticle,
+  onGenerateCarousel,
+  onGenerateVideoScript,
+  userPreferences
 }) => {
   const [showCopilotModal, setShowCopilotModal] = useState(false);
   const [showAssistiveModal, setShowAssistiveModal] = useState(false);
@@ -266,6 +278,17 @@ export const WelcomeMessage: React.FC<WelcomeMessageProps> = ({
       }}>
         Choose your preferred AI assistance mode to get started with content creation.
       </p>
+
+      {/* Quick Create - Direct generation buttons */}
+      <div style={{ width: '100%', maxWidth: 640, marginBottom: 24 }}>
+        <QuickCreate
+          onGeneratePost={onGeneratePost}
+          onGenerateArticle={onGenerateArticle}
+          onGenerateCarousel={onGenerateCarousel}
+          onGenerateVideoScript={onGenerateVideoScript}
+          userPreferences={userPreferences}
+        />
+      </div>
 
       {/* Info Modals */}
       <InfoModals

@@ -1,9 +1,10 @@
 """
 LinkedIn Image Prompt Generator Service
 
-This service generates AI-optimized image prompts for LinkedIn content using Gemini's
-capabilities. It creates three distinct prompt styles (professional, creative, industry-specific)
-following best practices for image generation.
+This service generates AI-optimized image prompts for LinkedIn content using
+the provider-agnostic llm_text_gen gateway. It creates three distinct prompt
+styles (professional, creative, industry-specific) following best practices
+for image generation.
 """
 
 import asyncio
@@ -13,14 +14,14 @@ from loguru import logger
 
 # Import existing infrastructure
 from ...onboarding.api_key_manager import APIKeyManager
-from ...llm_providers.gemini_provider import gemini_text_response
+from ...llm_providers.main_text_generation import llm_text_gen
 
 
 class LinkedInPromptGenerator:
     """
     Generates AI-optimized image prompts for LinkedIn content.
     
-    This service creates three distinct prompt styles following Gemini API best practices:
+    This service creates three distinct prompt styles following best practices:
     1. Professional Style - Corporate aesthetics, clean lines, business colors
     2. Creative Style - Engaging visuals, vibrant colors, social media appeal  
     3. Industry-Specific Style - Tailored to specific business sectors
@@ -31,10 +32,9 @@ class LinkedInPromptGenerator:
         Initialize the LinkedIn Prompt Generator.
         
         Args:
-            api_key_manager: API key manager for Gemini authentication
+            api_key_manager: API key manager for authentication
         """
         self.api_key_manager = api_key_manager or APIKeyManager()
-        self.model = "gemini-2.0-flash-exp"
         
         # Prompt generation configuration
         self.max_prompt_length = 500
@@ -49,7 +49,8 @@ class LinkedInPromptGenerator:
     async def generate_three_prompts(
         self, 
         linkedin_content: Dict[str, Any],
-        aspect_ratio: str = "1:1"
+        aspect_ratio: str = "1:1",
+        user_id: str = None
     ) -> List[Dict[str, Any]]:
         """
         Generate three AI-optimized image prompts for LinkedIn content.
@@ -57,6 +58,7 @@ class LinkedInPromptGenerator:
         Args:
             linkedin_content: LinkedIn content context (topic, industry, content_type, content)
             aspect_ratio: Desired image aspect ratio
+            user_id: User ID for subscription checking
             
         Returns:
             List of three prompt objects with style, prompt, and description
@@ -65,11 +67,11 @@ class LinkedInPromptGenerator:
             start_time = datetime.now()
             logger.info(f"Generating image prompts for LinkedIn content: {linkedin_content.get('topic', 'Unknown')}")
             
-            # Generate prompts using Gemini
-            prompts = await self._generate_prompts_with_gemini(linkedin_content, aspect_ratio)
+            # Generate prompts using provider-agnostic gateway
+            prompts = await self._generate_prompts_with_llm(linkedin_content, aspect_ratio, user_id)
             
             if not prompts or len(prompts) < 3:
-                logger.warning("Gemini prompt generation failed, using fallback prompts")
+                logger.warning("Prompt generation failed, using fallback prompts")
                 prompts = self._get_fallback_prompts(linkedin_content, aspect_ratio)
             
             # Ensure exactly 3 prompts
@@ -92,62 +94,65 @@ class LinkedInPromptGenerator:
             logger.error(f"Error generating LinkedIn image prompts: {str(e)}")
             return self._get_fallback_prompts(linkedin_content, aspect_ratio)
     
-    async def _generate_prompts_with_gemini(
+    async def _generate_prompts_with_llm(
         self, 
         linkedin_content: Dict[str, Any],
-        aspect_ratio: str
+        aspect_ratio: str,
+        user_id: str = None
     ) -> List[Dict[str, Any]]:
         """
-        Generate image prompts using Gemini AI.
+        Generate image prompts using provider-agnostic llm_text_gen.
         
         Args:
             linkedin_content: LinkedIn content context
             aspect_ratio: Image aspect ratio
+            user_id: User ID for subscription checking
             
         Returns:
             List of generated prompts
         """
         try:
-            # Build the prompt for Gemini
-            gemini_prompt = self._build_gemini_prompt(linkedin_content, aspect_ratio)
+            # Build the prompt
+            prompt = self._build_image_prompt(linkedin_content, aspect_ratio)
             
-            # Generate response using Gemini
-            response = gemini_text_response(
-                prompt=gemini_prompt,
-                temperature=0.7,
-                top_p=0.8,
-                n=1,
+            # Generate response using provider-agnostic gateway
+            response = llm_text_gen(
+                prompt=prompt,
+                system_prompt="You are an expert AI image prompt engineer specializing in LinkedIn content optimization.",
+                user_id=user_id,
+                flow_type="linkedin_image_prompts",
                 max_tokens=1000,
-                system_prompt="You are an expert AI image prompt engineer specializing in LinkedIn content optimization."
+                temperature=0.7
             )
             
             if not response:
-                logger.warning("No response from Gemini prompt generation")
+                logger.warning("No response from prompt generation")
                 return []
             
-            # Parse Gemini response into structured prompts
-            prompts = self._parse_gemini_response(response, linkedin_content)
+            # Parse response into structured prompts
+            response_text = response if isinstance(response, str) else str(response or "")
+            prompts = self._parse_llm_response(response_text, linkedin_content)
             
             return prompts
             
         except Exception as e:
-            logger.error(f"Error in Gemini prompt generation: {str(e)}")
+            logger.error(f"Error in prompt generation: {str(e)}")
             return []
     
-    def _build_gemini_prompt(
+    def _build_image_prompt(
         self, 
         linkedin_content: Dict[str, Any],
         aspect_ratio: str
     ) -> str:
         """
-        Build comprehensive prompt for Gemini to generate image prompts.
+        Build comprehensive prompt for LLM to generate image prompts.
         
         Args:
             linkedin_content: LinkedIn content context
             aspect_ratio: Image aspect ratio
             
         Returns:
-            Formatted prompt for Gemini
+            Formatted prompt for LLM
         """
         topic = linkedin_content.get('topic', 'business')
         industry = linkedin_content.get('industry', 'business')
@@ -428,16 +433,16 @@ class LinkedInPromptGenerator:
         else:
             return 'Informational & Awareness'
     
-    def _parse_gemini_response(
+    def _parse_llm_response(
         self, 
         response: str, 
         linkedin_content: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Parse Gemini response into structured prompt objects.
+        Parse LLM response into structured prompt objects.
         
         Args:
-            response: Raw response from Gemini
+            response: Raw response from LLM
             linkedin_content: LinkedIn content context
             
         Returns:
@@ -462,7 +467,7 @@ class LinkedInPromptGenerator:
             return self._parse_response_manually(response, linkedin_content)
             
         except Exception as e:
-            logger.error(f"Error parsing Gemini response: {str(e)}")
+            logger.error(f"Error parsing LLM response: {str(e)}")
             return self._parse_response_manually(response, linkedin_content)
     
     def _parse_response_manually(
@@ -474,7 +479,7 @@ class LinkedInPromptGenerator:
         Manually parse response if JSON parsing fails.
         
         Args:
-            response: Raw response from Gemini
+            response: Raw response from LLM
             linkedin_content: LinkedIn content context
             
         Returns:

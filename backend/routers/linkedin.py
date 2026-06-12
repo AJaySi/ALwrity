@@ -7,9 +7,10 @@ proper error handling, monitoring, and documentation.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import Dict, Any, Optional
 import time
+import json
 from loguru import logger
 from pathlib import Path
 
@@ -17,17 +18,51 @@ from models.linkedin_models import (
     LinkedInPostRequest, LinkedInArticleRequest, LinkedInCarouselRequest,
     LinkedInVideoScriptRequest, LinkedInCommentResponseRequest,
     LinkedInPostResponse, LinkedInArticleResponse, LinkedInCarouselResponse,
-    LinkedInVideoScriptResponse, LinkedInCommentResponseResult
+    LinkedInVideoScriptResponse, LinkedInCommentResponseResult,
+    LinkedInEditContentRequest, LinkedInEditContentResponse
 )
+from services.llm_providers.main_text_generation import llm_text_gen
 from services.linkedin_service import LinkedInService
+from services.linkedin.carousel import LinkedInCarouselPDFRenderer
 from middleware.auth_middleware import get_current_user
 from utils.text_asset_tracker import save_and_track_text_content
+from models.api_monitoring import APIRequest
+from sqlalchemy import func
+from collections import defaultdict
 
 # Initialize the LinkedIn service instance
 linkedin_service = LinkedInService()
 from services.subscription.monitoring_middleware import DatabaseAPIMonitor
 from services.database import get_db as get_db_dependency
 from sqlalchemy.orm import Session
+
+# Simple in-memory rate limiter: {user_id: [timestamp, ...]}
+_rate_limit_store: Dict[str, list] = defaultdict(list)
+RATE_LIMIT_MAX_REQUESTS = 30
+RATE_LIMIT_WINDOW = 60  # seconds
+
+def check_rate_limit(user_id: str) -> Optional[int]:
+    """Returns retry-after seconds if rate limited, None otherwise."""
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+    timestamps = _rate_limit_store[user_id]
+    # Prune old entries
+    _rate_limit_store[user_id] = [t for t in timestamps if t > window_start]
+    if len(_rate_limit_store[user_id]) >= RATE_LIMIT_MAX_REQUESTS:
+        return int(_rate_limit_store[user_id][0] + RATE_LIMIT_WINDOW - now)
+    _rate_limit_store[user_id].append(now)
+    return None
+
+ERROR_CODES = {
+    'VALIDATION': 'LINKEDIN_ERR_001',
+    'GENERATION_FAILED': 'LINKEDIN_ERR_002',
+    'RATE_LIMITED': 'LINKEDIN_ERR_003',
+    'SAVE_FAILED': 'LINKEDIN_ERR_004',
+    'NOT_FOUND': 'LINKEDIN_ERR_404',
+}
+
+def error_response(code: str, message: str) -> dict:
+    return {"code": code, "message": message}
 
 # Initialize router
 router = APIRouter(
@@ -112,10 +147,10 @@ async def generate_post(
         
         # Validate request
         if not request.topic.strip():
-            raise HTTPException(status_code=422, detail="Topic cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Topic cannot be empty"))
         
         if not request.industry.strip():
-            raise HTTPException(status_code=422, detail="Industry cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Industry cannot be empty"))
         
         # Extract user_id
         user_id = None
@@ -124,8 +159,20 @@ async def generate_post(
         if not user_id:
             user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
+        # Rate limit check
+        retry_after = check_rate_limit(user_id or 'anonymous')
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail=error_response(ERROR_CODES['RATE_LIMITED'], f"Rate limit exceeded. Retry after {retry_after} seconds."),
+                headers={"Retry-After": str(retry_after)}
+            )
+        
         # Generate post content
         response = await linkedin_service.generate_linkedin_post(request)
+        
+        if not response.success:
+            raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], response.error or "Post generation failed"))
         
         # Log successful request
         duration = time.time() - start_time
@@ -133,13 +180,9 @@ async def generate_post(
             log_api_request, http_request, db, duration, 200
         )
         
-        if not response.success:
-            raise HTTPException(status_code=500, detail=response.error)
-        
-        # Save and track text content (non-blocking)
+        # Save and track text content
         if user_id and response.data and response.data.content:
             try:
-                # Combine all text content
                 text_content = response.data.content
                 if response.data.call_to_action:
                     text_content += f"\n\nCall to Action: {response.data.call_to_action}"
@@ -166,7 +209,7 @@ async def generate_post(
                     subdirectory="posts"
                 )
             except Exception as track_error:
-                logger.warning(f"Failed to track LinkedIn post asset: {track_error}")
+                logger.error(f"Failed to track LinkedIn post asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn post in {duration:.2f} seconds")
         return response
@@ -177,14 +220,13 @@ async def generate_post(
         duration = time.time() - start_time
         logger.error(f"Error generating LinkedIn post: {str(e)}")
         
-        # Log failed request
         background_tasks.add_task(
             log_api_request, http_request, db, duration, 500
         )
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate LinkedIn post: {str(e)}"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate LinkedIn post: {str(e)}")
         )
 
 
@@ -222,10 +264,10 @@ async def generate_article(
         
         # Validate request
         if not request.topic.strip():
-            raise HTTPException(status_code=422, detail="Topic cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Topic cannot be empty"))
         
         if not request.industry.strip():
-            raise HTTPException(status_code=422, detail="Industry cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Industry cannot be empty"))
         
         # Extract user_id
         user_id = None
@@ -234,17 +276,16 @@ async def generate_article(
         if not user_id:
             user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
+        # Rate limit check
+        retry_after = check_rate_limit(user_id or 'anonymous')
+        if retry_after:
+            raise HTTPException(status_code=429, detail=error_response(ERROR_CODES['RATE_LIMITED'], f"Rate limit exceeded. Retry after {retry_after} seconds."), headers={"Retry-After": str(retry_after)})
+        
         # Generate article content
         response = await linkedin_service.generate_linkedin_article(request)
         
-        # Log successful request
-        duration = time.time() - start_time
-        background_tasks.add_task(
-            log_api_request, http_request, db, duration, 200
-        )
-        
         if not response.success:
-            raise HTTPException(status_code=500, detail=response.error)
+            raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], response.error or "Article generation failed"))
         
         # Save and track text content (non-blocking)
         if user_id and response.data:
@@ -282,7 +323,7 @@ async def generate_article(
                     file_extension=".md"
                 )
             except Exception as track_error:
-                logger.warning(f"Failed to track LinkedIn article asset: {track_error}")
+                logger.error(f"Failed to track LinkedIn article asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn article in {duration:.2f} seconds")
         return response
@@ -300,7 +341,7 @@ async def generate_article(
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate LinkedIn article: {str(e)}"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate LinkedIn article: {str(e)}")
         )
 
 
@@ -337,13 +378,13 @@ async def generate_carousel(
         
         # Validate request
         if not request.topic.strip():
-            raise HTTPException(status_code=422, detail="Topic cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Topic cannot be empty"))
         
         if not request.industry.strip():
-            raise HTTPException(status_code=422, detail="Industry cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Industry cannot be empty"))
         
-        if request.slide_count < 3 or request.slide_count > 15:
-            raise HTTPException(status_code=422, detail="Slide count must be between 3 and 15")
+        if request.number_of_slides < 3 or request.number_of_slides > 15:
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Number of slides must be between 3 and 15"))
         
         # Extract user_id
         user_id = None
@@ -352,17 +393,22 @@ async def generate_carousel(
         if not user_id:
             user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
+        # Rate limit check
+        retry_after = check_rate_limit(user_id or 'anonymous')
+        if retry_after:
+            raise HTTPException(status_code=429, detail=error_response(ERROR_CODES['RATE_LIMITED'], f"Rate limit exceeded. Retry after {retry_after} seconds."), headers={"Retry-After": str(retry_after)})
+        
         # Generate carousel content
         response = await linkedin_service.generate_linkedin_carousel(request)
+        
+        if not response.success:
+            raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], response.error or "Carousel generation failed"))
         
         # Log successful request
         duration = time.time() - start_time
         background_tasks.add_task(
             log_api_request, http_request, db, duration, 200
         )
-        
-        if not response.success:
-            raise HTTPException(status_code=500, detail=response.error)
         
         # Save and track text content (non-blocking)
         if user_id and response.data:
@@ -381,10 +427,10 @@ async def generate_carousel(
                     source_module="linkedin_writer",
                     title=f"LinkedIn Carousel: {response.data.title[:80] if response.data.title else request.topic[:80]}",
                     description=f"LinkedIn carousel for {request.industry} industry",
-                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nSlides: {getattr(request, 'number_of_slides', request.slide_count if hasattr(request, 'slide_count') else 5)}",
+                    prompt=f"Topic: {request.topic}\nIndustry: {request.industry}\nSlides: {request.number_of_slides}",
                     tags=["linkedin", "carousel", request.industry.lower().replace(' ', '_')],
                     asset_metadata={
-                        "slide_count": len(response.data.slides),
+                        "number_of_slides": len(response.data.slides),
                         "has_cover": response.data.cover_slide is not None,
                         "has_cta": response.data.cta_slide is not None
                     },
@@ -392,7 +438,7 @@ async def generate_carousel(
                     file_extension=".md"
                 )
             except Exception as track_error:
-                logger.warning(f"Failed to track LinkedIn carousel asset: {track_error}")
+                logger.error(f"Failed to track LinkedIn carousel asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn carousel in {duration:.2f} seconds")
         return response
@@ -410,8 +456,80 @@ async def generate_carousel(
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate LinkedIn carousel: {str(e)}"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate LinkedIn carousel: {str(e)}")
         )
+
+
+@router.post(
+    "/generate-carousel-pdf",
+    summary="Render Carousel as PDF",
+    description="""
+    Render previously generated LinkedIn carousel content as a PDF document.
+    
+    Takes carousel content (slides with title, content, visual_elements) and
+    renders them into visually appealing slide images composed into a PDF
+    ready for LinkedIn upload (1.91:1 aspect ratio, max 300 slides, max 100MB).
+    """
+)
+async def generate_carousel_pdf(
+    request: LinkedInCarouselRequest,
+    background_tasks: BackgroundTasks,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Generate carousel content and render as PDF."""
+    start_time = time.time()
+
+    try:
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        if not user_id:
+            user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
+
+        # First generate carousel content
+        content_result = await linkedin_service.generate_linkedin_carousel(request)
+
+        if not content_result.success or not content_result.data:
+            raise HTTPException(status_code=500, detail=content_result.error or "Carousel generation failed")
+
+        carousel_data = content_result.data.model_dump()
+
+        # Then render to PDF
+        renderer = LinkedInCarouselPDFRenderer()
+        pdf_result = await renderer.render_carousel_to_pdf(
+            carousel_data=carousel_data,
+            color_scheme=request.color_scheme,
+            user_id=user_id,
+        )
+
+        if not pdf_result.get('success'):
+            raise HTTPException(status_code=500, detail=pdf_result.get('error', 'PDF rendering failed'))
+
+        duration = time.time() - start_time
+        background_tasks.add_task(log_api_request, http_request, db, duration, 200)
+
+        pdf_path = pdf_result.get('pdf_path')
+        if pdf_path:
+            return FileResponse(
+                path=pdf_path,
+                media_type="application/pdf",
+                filename=f"linkedin_carousel_{request.topic[:30].replace(' ', '_')}.pdf"
+            )
+
+        return JSONResponse(content={
+            'success': True,
+            'pdf_bytes': pdf_result.get('pdf_bytes'),
+            'metadata': pdf_result.get('metadata'),
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"Error generating carousel PDF: {str(e)}")
+        raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate carousel PDF: {str(e)}"))
 
 
 @router.post(
@@ -447,14 +565,14 @@ async def generate_video_script(
         
         # Validate request
         if not request.topic.strip():
-            raise HTTPException(status_code=422, detail="Topic cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Topic cannot be empty"))
         
         if not request.industry.strip():
-            raise HTTPException(status_code=422, detail="Industry cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Industry cannot be empty"))
         
         video_duration = getattr(request, 'video_duration', getattr(request, 'video_length', 60))
         if video_duration < 15 or video_duration > 300:
-            raise HTTPException(status_code=422, detail="Video length must be between 15 and 300 seconds")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Video length must be between 15 and 300 seconds"))
         
         # Extract user_id
         user_id = None
@@ -463,17 +581,22 @@ async def generate_video_script(
         if not user_id:
             user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
+        # Rate limit check
+        retry_after = check_rate_limit(user_id or 'anonymous')
+        if retry_after:
+            raise HTTPException(status_code=429, detail=error_response(ERROR_CODES['RATE_LIMITED'], f"Rate limit exceeded. Retry after {retry_after} seconds."), headers={"Retry-After": str(retry_after)})
+        
         # Generate video script content
         response = await linkedin_service.generate_linkedin_video_script(request)
+        
+        if not response.success:
+            raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], response.error or "Video script generation failed"))
         
         # Log successful request
         duration = time.time() - start_time
         background_tasks.add_task(
             log_api_request, http_request, db, duration, 200
         )
-        
-        if not response.success:
-            raise HTTPException(status_code=500, detail=response.error)
         
         # Save and track text content (non-blocking)
         if user_id and response.data:
@@ -514,7 +637,7 @@ async def generate_video_script(
                     file_extension=".md"
                 )
             except Exception as track_error:
-                logger.warning(f"Failed to track LinkedIn video script asset: {track_error}")
+                logger.error(f"Failed to track LinkedIn video script asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn video script in {duration:.2f} seconds")
         return response
@@ -532,7 +655,7 @@ async def generate_video_script(
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate LinkedIn video script: {str(e)}"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate LinkedIn video script: {str(e)}")
         )
 
 
@@ -572,10 +695,10 @@ async def generate_comment_response(
         post_context = getattr(request, 'post_context', getattr(request, 'original_post', ''))
         
         if not original_comment.strip():
-            raise HTTPException(status_code=422, detail="Original comment cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Original comment cannot be empty"))
         
         if not post_context.strip():
-            raise HTTPException(status_code=422, detail="Post context cannot be empty")
+            raise HTTPException(status_code=422, detail=error_response(ERROR_CODES['VALIDATION'], "Post context cannot be empty"))
         
         # Extract user_id
         user_id = None
@@ -584,17 +707,22 @@ async def generate_comment_response(
         if not user_id:
             user_id = http_request.headers.get("X-User-ID") or http_request.headers.get("Authorization")
         
+        # Rate limit check
+        retry_after = check_rate_limit(user_id or 'anonymous')
+        if retry_after:
+            raise HTTPException(status_code=429, detail=error_response(ERROR_CODES['RATE_LIMITED'], f"Rate limit exceeded. Retry after {retry_after} seconds."), headers={"Retry-After": str(retry_after)})
+        
         # Generate comment response
         response = await linkedin_service.generate_linkedin_comment_response(request)
+        
+        if not response.success:
+            raise HTTPException(status_code=500, detail=error_response(ERROR_CODES['GENERATION_FAILED'], response.error or "Comment response generation failed"))
         
         # Log successful request
         duration = time.time() - start_time
         background_tasks.add_task(
             log_api_request, http_request, db, duration, 200
         )
-        
-        if not response.success:
-            raise HTTPException(status_code=500, detail=response.error)
         
         # Save and track text content (non-blocking)
         if user_id and hasattr(response, 'response') and response.response:
@@ -626,7 +754,7 @@ async def generate_comment_response(
                     file_extension=".md"
                 )
             except Exception as track_error:
-                logger.warning(f"Failed to track LinkedIn comment response asset: {track_error}")
+                logger.error(f"Failed to track LinkedIn comment response asset: {track_error}")
         
         logger.info(f"Successfully generated LinkedIn comment response in {duration:.2f} seconds")
         return response
@@ -644,7 +772,7 @@ async def generate_comment_response(
         
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate LinkedIn comment response: {str(e)}"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], f"Failed to generate LinkedIn comment response: {str(e)}")
         )
 
 
@@ -691,6 +819,128 @@ async def get_content_types():
     }
 
 
+@router.post(
+    "/edit-content",
+    response_model=LinkedInEditContentResponse,
+    summary="Edit LinkedIn Content with AI",
+    description="""
+    Apply AI-powered edits to LinkedIn content.
+    
+    Supported edit types:
+    - professionalize: Rewrite content with professional business language
+    - optimize_engagement: Optimize hook and structure for maximum engagement
+    - add_hashtags: Generate relevant, industry-specific hashtags
+    - adjust_tone: Rewrite content in a different tone (professional, conversational, authoritative, etc.)
+    - expand: Add depth, examples, and insights to content
+    - condense: Shorten content while preserving key messages
+    - add_cta: Generate a contextual call-to-action
+    """
+)
+async def edit_linkedin_content(
+    request: LinkedInEditContentRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user)
+):
+    """Edit LinkedIn content using AI-powered text generation."""
+    try:
+        # Extract user_id for subscription checking
+        user_id = None
+        if current_user:
+            user_id = str(current_user.get('id', '') or current_user.get('sub', ''))
+        
+        if not request.content.strip():
+            return LinkedInEditContentResponse(
+                success=False, error="Content cannot be empty", edit_type=request.edit_type
+            )
+
+        # Build the system prompt based on edit type
+        system_prompts = {
+            "professionalize": "You are a professional business writer. Rewrite the following LinkedIn content to be more professional, polished, and industry-appropriate. Maintain the original message but use sophisticated business language, improve sentence structure, and ensure a confident executive presence.",
+            "optimize_engagement": "You are a LinkedIn engagement strategist. Rewrite the following content to maximize engagement. Strengthen the hook in the first 2 lines, add thought-provoking elements, improve readability with shorter sentences, and ensure the content encourages comments and shares.",
+            "add_hashtags": "You are a LinkedIn hashtag strategist. Generate 5 highly relevant, industry-specific hashtags for the following content. Return the original content unchanged, followed by two newlines and the hashtags on a single line.",
+            "adjust_tone": "You are a LinkedIn tone specialist. Rewrite the following content in the specified tone while preserving all key information and the overall message.",
+            "expand": "You are a LinkedIn content strategist. Expand the following content by adding relevant examples, data points, actionable insights, and deeper analysis. Maintain the original structure but add substantial value while keeping it LinkedIn-appropriate (under 3000 characters).",
+            "condense": "You are a LinkedIn editing specialist. Condense the following content to be more concise and impactful. Remove filler words, tighten sentences, and preserve only the strongest points. Keep the core message intact.",
+            "add_cta": "You are a LinkedIn conversion strategist. Add a compelling, contextual call-to-action to the following content. The CTA should feel natural, not salesy, and should encourage meaningful engagement (comments, connections, or discussions)."
+        }
+
+        system_prompt = system_prompts.get(request.edit_type)
+        if not system_prompt:
+            return LinkedInEditContentResponse(
+                success=False, error=f"Unknown edit type: {request.edit_type}", edit_type=request.edit_type
+            )
+
+        # Build the user prompt with context
+        user_prompt = f"Content to edit:\n\n{request.content}\n\n"
+        if request.industry:
+            user_prompt += f"Industry: {request.industry}\n"
+        if request.tone:
+            user_prompt += f"Target tone: {request.tone}\n"
+        if request.target_audience:
+            user_prompt += f"Target audience: {request.target_audience}\n"
+        if request.parameters:
+            user_prompt += f"Additional context: {json.dumps(request.parameters)}\n"
+
+        user_prompt += "\nReturn ONLY the edited content without any explanations, labels, or markdown formatting."
+
+        # Generate edited content using provider-agnostic gateway
+        temperature = {
+            "professionalize": 0.3,
+            "optimize_engagement": 0.7,
+            "add_hashtags": 0.4,
+            "adjust_tone": 0.5,
+            "expand": 0.7,
+            "condense": 0.3,
+            "add_cta": 0.6,
+        }.get(request.edit_type, 0.5)
+
+        max_tokens = {
+            "expand": 2048,
+            "professionalize": 1024,
+            "optimize_engagement": 1024,
+            "adjust_tone": 1024,
+            "condense": 1024,
+            "add_cta": 1024,
+            "add_hashtags": 512,
+        }.get(request.edit_type, 1024)
+
+        edited = llm_text_gen(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            user_id=user_id,
+            flow_type=f"linkedin_edit_{request.edit_type}",
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+
+        if not edited:
+            return LinkedInEditContentResponse(
+                success=False, error="AI editing returned empty result", edit_type=request.edit_type
+            )
+
+        edited = edited.strip()
+
+        # For add_hashtags, ensure hashtags are separated from content
+        if request.edit_type == "add_hashtags":
+            if not edited.endswith("\n\n"):
+                # Hashtags might be inline; separate them
+                pass
+
+        logger.info(f"LinkedIn content edited successfully via {request.edit_type}")
+        return LinkedInEditContentResponse(
+            success=True,
+            content=edited,
+            edit_type=request.edit_type,
+            provider="llm_text_gen",
+            model="provider-agnostic"
+        )
+
+    except Exception as e:
+        logger.error(f"Error editing LinkedIn content: {str(e)}", exc_info=True)
+        return LinkedInEditContentResponse(
+            success=False, error=f"Editing failed: {str(e)}", edit_type=request.edit_type
+        )
+
+
 @router.get(
     "/usage-stats",
     summary="Get Usage Statistics",
@@ -699,30 +949,29 @@ async def get_content_types():
 async def get_usage_stats(db: Session = Depends(get_db)):
     """Get usage statistics for LinkedIn content generation."""
     try:
-        # This would query the database for actual usage stats
-        # For now, returning mock data
+        base = db.query(APIRequest).filter(APIRequest.path.like('/api/linkedin/%'))
+        total = base.count()
+        successful = base.filter(APIRequest.status_code < 400).count()
+
+        avg_dur = base.with_entities(func.avg(APIRequest.duration)).scalar() or 0
+
+        content_types = {
+            "posts": base.filter(APIRequest.path.like('%generate-post')).count(),
+            "articles": base.filter(APIRequest.path.like('%generate-article')).count(),
+            "carousels": base.filter(APIRequest.path.like('%generate-carousel')).count(),
+            "video_scripts": base.filter(APIRequest.path.like('%generate-video-script')).count(),
+            "comment_responses": base.filter(APIRequest.path.like('%generate-comment-response')).count(),
+        }
+
         return {
-            "total_requests": 1250,
-            "content_types": {
-                "posts": 650,
-                "articles": 320,
-                "carousels": 180,
-                "video_scripts": 70,
-                "comment_responses": 30
-            },
-            "success_rate": 0.96,
-            "average_generation_time": 4.2,
-            "top_industries": [
-                "Technology",
-                "Healthcare",
-                "Finance",
-                "Marketing",
-                "Education"
-            ]
+            "total_requests": total,
+            "content_types": content_types,
+            "success_rate": round(successful / max(total, 1), 2),
+            "average_generation_time": round(float(avg_dur), 2),
         }
     except Exception as e:
         logger.error(f"Error retrieving usage stats: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to retrieve usage statistics"
+            detail=error_response(ERROR_CODES['GENERATION_FAILED'], "Failed to retrieve usage statistics")
         )

@@ -6,8 +6,10 @@ It provides secure storage, efficient retrieval, and metadata management for gen
 """
 
 import os
+import re
 import hashlib
 import json
+import shutil
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,6 +60,8 @@ class LinkedInImageStorage:
         self.max_storage_size_gb = 10  # Maximum storage size in GB
         self.image_retention_days = 30  # Days to keep images
         self.max_image_size_mb = 10    # Maximum individual image size in MB
+        self.max_images_per_user = 100  # Maximum images per user
+        self._uuid_pattern = re.compile(r'^[a-f0-9]{16}$')
         
         logger.info(f"LinkedIn Image Storage initialized at {self.base_storage_path}")
     
@@ -101,6 +105,22 @@ class LinkedInImageStorage:
         """
         try:
             start_time = datetime.now()
+            
+            # Check per-user storage quota
+            if user_id:
+                user_count = await self._count_user_images(user_id)
+                if user_count >= self.max_images_per_user:
+                    return {
+                        'success': False,
+                        'error': f"User image limit ({self.max_images_per_user}) reached. Delete existing images or increase limit."
+                    }
+            
+            # Check disk space
+            if not await self._check_disk_space(len(image_data)):
+                return {
+                    'success': False,
+                    'error': "Insufficient disk space for image storage."
+                }
             
             # Generate unique image ID
             image_id = self._generate_image_id(image_data, metadata)
@@ -170,6 +190,9 @@ class LinkedInImageStorage:
             Dict containing image data and metadata
         """
         try:
+            if not self._validate_image_id(image_id):
+                return {'success': False, 'error': f'Invalid image ID format: {image_id}'}
+            
             # Find image file
             image_path = await self._find_image_by_id(image_id, user_id)
             if not image_path:
@@ -216,6 +239,9 @@ class LinkedInImageStorage:
             Dict containing deletion result
         """
         try:
+            if not self._validate_image_id(image_id):
+                return {'success': False, 'error': f'Invalid image ID format: {image_id}'}
+            
             # Find image file
             image_path = await self._find_image_by_id(image_id, user_id)
             if not image_path:
@@ -418,6 +444,32 @@ class LinkedInImageStorage:
                 'error': f"Failed to get storage stats: {str(e)}"
             }
     
+    def _validate_image_id(self, image_id: str) -> bool:
+        """Validate image_id against expected format to prevent path traversal."""
+        return bool(self._uuid_pattern.match(image_id))
+    
+    async def _count_user_images(self, user_id: str) -> int:
+        """Count total images stored for a given user."""
+        try:
+            images_path, _ = self._get_workspace_paths(user_id)
+            count = 0
+            if images_path.exists():
+                for content_dir in images_path.iterdir():
+                    if content_dir.is_dir():
+                        count += sum(1 for f in content_dir.glob("*.png") if f.is_file())
+            return count
+        except Exception as e:
+            logger.warning(f"Error counting images for user {user_id}: {e}")
+            return 0
+    
+    async def _check_disk_space(self, required_bytes: int) -> bool:
+        """Check if sufficient disk space is available."""
+        try:
+            usage = shutil.disk_usage(self.base_storage_path)
+            return usage.free > required_bytes * 2  # require 2x headroom
+        except Exception:
+            return True  # if we can't check, allow the write
+    
     def _generate_image_id(self, image_data: bytes, metadata: Dict[str, Any]) -> str:
         """Generate unique image ID based on content and metadata."""
         # Create hash from image data and key metadata
@@ -569,6 +621,9 @@ class LinkedInImageStorage:
         Returns:
             Dict containing image metadata if found
         """
+        if not self._validate_image_id(image_id):
+            logger.warning(f"Invalid image ID format in metadata request: {image_id}")
+            return None
         return await self._load_metadata(image_id, user_id)
 
     async def _load_metadata(self, image_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:

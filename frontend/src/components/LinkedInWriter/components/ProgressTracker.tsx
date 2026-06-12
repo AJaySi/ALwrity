@@ -2,7 +2,7 @@ import React from 'react';
 
 type ProgressStatus = 'pending' | 'active' | 'completed' | 'error';
 
-interface ProgressStep {
+export interface ProgressStep {
   id: string;
   label: string;
   status: ProgressStatus;

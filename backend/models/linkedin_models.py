@@ -36,6 +36,7 @@ class SearchEngine(str, Enum):
     METAPHOR = "metaphor"
     GOOGLE = "google"
     TAVILY = "tavily"
+    EXA = "exa"
 
 
 class GroundingLevel(str, Enum):
@@ -57,7 +58,7 @@ class LinkedInPostRequest(BaseModel):
     include_hashtags: bool = Field(default=True, description="Whether to include hashtags")
     include_call_to_action: bool = Field(default=True, description="Whether to include call to action")
     research_enabled: bool = Field(default=True, description="Whether to include research-backed content")
-    search_engine: SearchEngine = Field(default=SearchEngine.GOOGLE, description="Search engine for research")
+    search_engine: SearchEngine = Field(default=SearchEngine.EXA, description="Search engine for research")
     max_length: int = Field(default=3000, description="Maximum character count", ge=100, le=3000)
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
@@ -94,7 +95,7 @@ class LinkedInArticleRequest(BaseModel):
     include_images: bool = Field(default=True, description="Whether to generate image suggestions")
     seo_optimization: bool = Field(default=True, description="Whether to include SEO optimization")
     research_enabled: bool = Field(default=True, description="Whether to include research-backed content")
-    search_engine: SearchEngine = Field(default=SearchEngine.GOOGLE, description="Search engine for research")
+    search_engine: SearchEngine = Field(default=SearchEngine.EXA, description="Search engine for research")
     word_count: int = Field(default=1500, description="Target word count", ge=500, le=5000)
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
@@ -129,9 +130,11 @@ class LinkedInCarouselRequest(BaseModel):
     number_of_slides: int = Field(default=5, description="Number of slides", ge=3, le=10)
     include_cover_slide: bool = Field(default=True, description="Whether to include a cover slide")
     include_cta_slide: bool = Field(default=True, description="Whether to include a call-to-action slide")
+    key_points: Optional[List[str]] = Field(None, description="Specific key points to cover", max_items=10)
     research_enabled: bool = Field(default=True, description="Whether to include research-backed content")
-    search_engine: SearchEngine = Field(default=SearchEngine.GOOGLE, description="Search engine for research")
+    search_engine: SearchEngine = Field(default=SearchEngine.EXA, description="Search engine for research")
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
+    color_scheme: str = Field(default="professional", description="Color scheme for PDF rendering: professional, creative, industry, dark, minimal")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
     
     class Config:
@@ -144,9 +147,11 @@ class LinkedInCarouselRequest(BaseModel):
                 "number_of_slides": 6,
                 "include_cover_slide": True,
                 "include_cta_slide": True,
+                "key_points": ["Remote collaboration tools", "Work-life balance", "Productivity metrics"],
                 "research_enabled": True,
                 "search_engine": "google",
                 "grounding_level": "enhanced",
+                "color_scheme": "professional",
                 "include_citations": True
             }
         }
@@ -161,8 +166,9 @@ class LinkedInVideoScriptRequest(BaseModel):
     video_duration: int = Field(default=60, description="Target video duration in seconds", ge=30, le=300)
     include_captions: bool = Field(default=True, description="Whether to include captions")
     include_thumbnail_suggestions: bool = Field(default=True, description="Whether to include thumbnail suggestions")
+    key_points: Optional[List[str]] = Field(None, description="Specific key points to cover in the video", max_items=10)
     research_enabled: bool = Field(default=True, description="Whether to include research-backed content")
-    search_engine: SearchEngine = Field(default=SearchEngine.GOOGLE, description="Search engine for research")
+    search_engine: SearchEngine = Field(default=SearchEngine.EXA, description="Search engine for research")
     grounding_level: GroundingLevel = Field(default=GroundingLevel.ENHANCED, description="Level of content grounding")
     include_citations: bool = Field(default=True, description="Whether to include inline citations")
     
@@ -176,6 +182,7 @@ class LinkedInVideoScriptRequest(BaseModel):
                 "video_duration": 90,
                 "include_captions": True,
                 "include_thumbnail_suggestions": True,
+                "key_points": ["Zero trust architecture", "Phishing prevention", "Incident response"],
                 "research_enabled": True,
                 "search_engine": "google",
                 "grounding_level": "enhanced",
@@ -193,7 +200,7 @@ class LinkedInCommentResponseRequest(BaseModel):
     response_length: str = Field(default="medium", description="Length of response: short, medium, long")
     include_questions: bool = Field(default=True, description="Whether to include engaging questions")
     research_enabled: bool = Field(default=False, description="Whether to include research-backed content")
-    search_engine: SearchEngine = Field(default=SearchEngine.GOOGLE, description="Search engine for research")
+    search_engine: SearchEngine = Field(default=SearchEngine.EXA, description="Search engine for research")
     grounding_level: GroundingLevel = Field(default=GroundingLevel.BASIC, description="Level of content grounding")
     
     class Config:
@@ -452,3 +459,23 @@ class LinkedInCommentResponseResult(BaseModel):
     generation_metadata: Dict[str, Any] = {}
     error: Optional[str] = None
     grounding_status: Optional[Dict[str, Any]] = Field(None, description="Grounding operation status")
+
+
+class LinkedInEditContentRequest(BaseModel):
+    """Request model for AI-powered LinkedIn content editing."""
+    content: str = Field(..., description="Content to edit", min_length=1)
+    edit_type: str = Field(..., description="Type of edit: professionalize, optimize_engagement, add_hashtags, adjust_tone, expand, condense, add_cta")
+    industry: Optional[str] = Field(None, description="Industry context for the edit")
+    tone: Optional[str] = Field(None, description="Target tone: professional, conversational, authoritative, educational, friendly")
+    target_audience: Optional[str] = Field(None, description="Target audience for the content")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="Additional parameters specific to edit type")
+
+
+class LinkedInEditContentResponse(BaseModel):
+    """Response model for AI-powered LinkedIn content editing."""
+    success: bool = True
+    content: Optional[str] = None
+    edit_type: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    error: Optional[str] = None

@@ -2,9 +2,10 @@
 Research Handler for LinkedIn Content Generation
 
 Handles research operations and timing for content generation.
+Uses common Exa/Tavily infrastructure with pre-flight validation.
 """
 
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from loguru import logger
 from models.linkedin_models import ResearchSource
@@ -21,11 +22,19 @@ class ResearchHandler:
         request,
         research_enabled: bool,
         search_engine: str,
-        max_results: int = 10
+        max_results: int = 10,
+        user_id: Optional[str] = None
     ) -> tuple[List[ResearchSource], float]:
         """
         Conduct research if enabled and return sources with timing.
         
+        Args:
+            request: Generation request object
+            research_enabled: Whether research is enabled
+            search_engine: Search engine to use (exa, tavily)
+            max_results: Maximum number of results
+            user_id: User ID for pre-flight validation and usage tracking
+            
         Returns:
             Tuple of (research_sources, research_time)
         """
@@ -33,7 +42,6 @@ class ResearchHandler:
         research_time = 0
         
         if research_enabled:
-            # Debug: Log the search engine value being passed
             logger.info(f"ResearchHandler: search_engine='{search_engine}' (type: {type(search_engine)})")
             
             research_start = datetime.now()
@@ -41,7 +49,8 @@ class ResearchHandler:
                 topic=request.topic,
                 industry=request.industry,
                 search_engine=search_engine,
-                max_results=max_results
+                max_results=max_results,
+                user_id=user_id
             )
             research_time = (datetime.now() - research_start).total_seconds()
             logger.info(f"Research completed in {research_time:.2f}s, found {len(research_sources)} sources")
@@ -66,11 +75,6 @@ class ResearchHandler:
         
         if not research_enabled or level == 'none':
             return False
-        
-        # For Google native grounding, Gemini returns sources in the generation metadata,
-        # so we should not require pre-fetched research_sources.
-        if engine_str == 'google':
-            return True
         
         # For other engines, require that research actually returned sources
         return bool(research_sources)

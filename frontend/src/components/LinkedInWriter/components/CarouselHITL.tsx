@@ -23,7 +23,7 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
     target_audience: args.target_audience ?? prefs.target_audience ?? '',
     tone: args.tone ?? prefs.tone ?? 'professional',
     industry: args.industry ?? prefs.industry ?? 'technology',
-    slide_count: args.slide_count ?? (prefs.slide_count ?? 5),
+    number_of_slides: args.number_of_slides ?? (prefs.number_of_slides ?? 5),
     key_takeaways: args.key_takeaways ?? (prefs.key_takeaways ?? []),
     include_cover_slide: args.include_cover_slide ?? (prefs.include_cover_slide ?? true),
     include_cta_slide: args.include_cta_slide ?? (prefs.include_cta_slide ?? true),
@@ -40,7 +40,7 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingStart', {
         detail: {
           action: 'Generating LinkedIn Carousel',
-          message: `Creating a ${form.slide_count}-slide LinkedIn carousel about "${form.topic}". This visual content will engage your ${form.target_audience} with a ${form.visual_style} design approach.`
+          message: `Creating a ${form.number_of_slides}-slide LinkedIn carousel about "${form.topic}". This visual content will engage your ${form.target_audience} with a ${form.visual_style} design approach.`
         }
       }));
       
@@ -59,7 +59,7 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
         target_audience: form.target_audience,
         tone: mapTone(form.tone),
         industry: mapIndustry(form.industry),
-        slide_count: form.slide_count,
+        number_of_slides: form.number_of_slides,
         key_takeaways: form.key_takeaways,
         include_cover_slide: form.include_cover_slide,
         include_cta_slide: form.include_cta_slide,
@@ -73,7 +73,7 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
         tone: form.tone, 
         industry: form.industry,
         target_audience: form.target_audience,
-        slide_count: form.slide_count,
+        number_of_slides: form.number_of_slides,
         key_takeaways: form.key_takeaways,
         include_cover_slide: form.include_cover_slide,
         include_cta_slide: form.include_cta_slide,
@@ -100,7 +100,7 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
           success: true,
           carousel_content: content,
           title: res.data.title,
-          slide_count: res.data.slides.length
+          number_of_slides: res.data.slides.length
         });
       } else {
         throw new Error('No data received from API');
@@ -183,11 +183,11 @@ const CarouselHITL: React.FC<CarouselHITLProps> = ({ args, respond }) => {
       </div>
 
       <div className="form-group">
-        <label htmlFor="slide_count">Number of Slides</label>
+        <label htmlFor="number_of_slides">Number of Slides</label>
         <select
-          id="slide_count"
-          value={form.slide_count}
-          onChange={(e) => setForm({ ...form, slide_count: parseInt(e.target.value) })}
+          id="number_of_slides"
+          value={form.number_of_slides}
+          onChange={(e) => setForm({ ...form, number_of_slides: parseInt(e.target.value) })}
         >
           <option value={3}>3 slides (Quick overview)</option>
           <option value={5}>5 slides (Standard)</option>

@@ -2,6 +2,7 @@
 Content Generator for LinkedIn Content Generation
 
 Handles the main content generation logic for posts and articles.
+Uses llm_text_gen for provider-agnostic LLM access (respects GPT_PROVIDER).
 """
 
 from typing import Dict, Any, List, Optional
@@ -21,6 +22,7 @@ from services.linkedin.content_generator_prompts import (
     CarouselGenerator,
     VideoScriptGenerator
 )
+from services.llm_providers.main_text_generation import llm_text_gen
 from services.persona_analysis_service import PersonaAnalysisService
 import time
 
@@ -28,11 +30,9 @@ import time
 class ContentGenerator:
     """Handles content generation for all LinkedIn content types."""
     
-    def __init__(self, citation_manager=None, quality_analyzer=None, gemini_grounded=None, fallback_provider=None):
+    def __init__(self, citation_manager=None, quality_analyzer=None):
         self.citation_manager = citation_manager
         self.quality_analyzer = quality_analyzer
-        self.gemini_grounded = gemini_grounded
-        self.fallback_provider = fallback_provider
         
         # Persona caching
         self._persona_cache: Dict[str, Dict[str, Any]] = {}
@@ -105,22 +105,24 @@ class ContentGenerator:
                 del self._cache_timestamps[key]
             logger.info(f"Cleared persona cache for user {user_id}")
     
-    def _transform_gemini_sources(self, gemini_sources):
-        """Transform Gemini sources to ResearchSource format."""
-        transformed_sources = []
-        for source in gemini_sources:
-            transformed_source = ResearchSource(
-                title=source.get('title', 'Unknown Source'),
-                url=source.get('url', ''),
-                content=f"Source from {source.get('title', 'Unknown')}",
-                relevance_score=0.8,  # Default relevance score
-                credibility_score=0.7,  # Default credibility score
-                domain_authority=0.6,   # Default domain authority
-                source_type=source.get('type', 'web'),
-                publication_date=datetime.now().strftime('%Y-%m-%d')
-            )
-            transformed_sources.append(transformed_source)
-        return transformed_sources
+    def _build_research_context(self, research_sources: List) -> str:
+        """Build research context string from research sources for prompt injection."""
+        if not research_sources:
+            return ""
+        
+        context_parts = ["\n\nRESEARCH CONTEXT (use this information to ground your content with facts and data):"]
+        for i, source in enumerate(research_sources[:5], 1):  # Limit to top 5 sources
+            title = getattr(source, 'title', f'Source {i}')
+            url = getattr(source, 'url', '')
+            content = getattr(source, 'content', '')
+            context_parts.append(f"\n{i}. {title}")
+            if url:
+                context_parts.append(f"   URL: {url}")
+            if content:
+                context_parts.append(f"   Key insight: {content[:300]}")
+        
+        context_parts.append("\nInstructions: Use the research above to include specific data points, statistics, and factual claims in your content. Cite sources where appropriate.")
+        return "\n".join(context_parts)
     
     async def generate_post(
         self,
@@ -155,21 +157,12 @@ class ContentGenerator:
                 logger.info(f"  - First research source: {research_sources[0] if research_sources else 'None'}")
                 logger.info(f"  - Research sources types: {[type(s) for s in research_sources[:3]]}")
             
-            # Step 3: Add citations if requested - POST METHOD
+            # Step 3: Add citations if requested
             citations = []
             source_list = None
-            final_research_sources = research_sources  # Default to passed research_sources
+            final_research_sources = research_sources
             
-            # Use sources and citations from content_result if available (from Gemini grounding)
-            if content_result.get('citations') and content_result.get('sources'):
-                logger.info(f"Using citations and sources from Gemini grounding: {len(content_result['citations'])} citations, {len(content_result['sources'])} sources")
-                citations = content_result['citations']
-                # Transform Gemini sources to ResearchSource format
-                gemini_sources = self._transform_gemini_sources(content_result['sources'])
-                source_list = self.citation_manager.generate_source_list(gemini_sources) if self.citation_manager else None
-                # Use transformed sources for the response
-                final_research_sources = gemini_sources
-            elif request.include_citations and research_sources and self.citation_manager:
+            if request.include_citations and research_sources and self.citation_manager:
                 try:
                     logger.info(f"Processing citations for content length: {len(content_result['content'])}")
                     citations = self.citation_manager.extract_citations(content_result['content'])
@@ -224,7 +217,7 @@ class ContentGenerator:
                 data=post_content,
                 research_sources=final_research_sources,  # Use final_research_sources
                 generation_metadata={
-                    'model_used': 'gemini-2.0-flash-001',
+                    'model_used': 'llm_text_gen',
                     'generation_time': generation_time,
                     'research_time': research_time,
                     'grounding_enabled': grounding_enabled
@@ -251,21 +244,12 @@ class ContentGenerator:
         try:
             start_time = datetime.now()
             
-            # Step 3: Add citations if requested - ARTICLE METHOD
+            # Step 3: Add citations if requested
             citations = []
             source_list = None
-            final_research_sources = research_sources  # Default to passed research_sources
+            final_research_sources = research_sources
             
-            # Use sources and citations from content_result if available (from Gemini grounding)
-            if content_result.get('citations') and content_result.get('sources'):
-                logger.info(f"Using citations and sources from Gemini grounding: {len(content_result['citations'])} citations, {len(content_result['sources'])} sources")
-                citations = content_result['citations']
-                # Transform Gemini sources to ResearchSource format
-                gemini_sources = self._transform_gemini_sources(content_result['sources'])
-                source_list = self.citation_manager.generate_source_list(gemini_sources) if self.citation_manager else None
-                # Use transformed sources for the response
-                final_research_sources = gemini_sources
-            elif request.include_citations and research_sources and self.citation_manager:
+            if request.include_citations and research_sources and self.citation_manager:
                 try:
                     citations = self.citation_manager.extract_citations(content_result['content'])
                     source_list = self.citation_manager.generate_source_list(research_sources)
@@ -317,7 +301,7 @@ class ContentGenerator:
                 data=article_content,
                 research_sources=final_research_sources,  # Use final_research_sources
                 generation_metadata={
-                    'model_used': 'gemini-2.0-flash-001',
+                    'model_used': 'llm_text_gen',
                     'generation_time': generation_time,
                     'research_time': research_time,
                     'grounding_enabled': grounding_enabled
@@ -386,7 +370,7 @@ class ContentGenerator:
                 'alternative_responses': content_result.get('alternative_responses', []),
                 'tone_analysis': content_result.get('tone_analysis'),
                 'generation_metadata': {
-                    'model_used': 'gemini-2.0-flash-001',
+                    'model_used': 'llm_text_gen',
                     'generation_time': generation_time,
                     'research_time': research_time,
                     'grounding_enabled': grounding_enabled
@@ -402,19 +386,14 @@ class ContentGenerator:
             }
     
     # Grounded content generation methods
-    async def generate_grounded_post_content(self, request, research_sources: List) -> Dict[str, Any]:
-        """Generate grounded post content using the enhanced Gemini provider with native grounding."""
+    async def generate_grounded_post_content(self, request, research_sources: List, user_id: str = None) -> Dict[str, Any]:
+        """Generate post content using provider-agnostic llm_text_gen."""
         try:
-            if not self.gemini_grounded:
-                logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                
-            # Build the prompt for grounded generation using persona if available (DB vs session override)
-            user_id = int(getattr(request, "user_id", 0) or 0)
-            persona_data = self._get_cached_persona_data(user_id, 'linkedin')
+            # Build the prompt using persona if available
+            uid = int(getattr(request, "user_id", 0) or 0)
+            persona_data = self._get_cached_persona_data(uid, 'linkedin')
             if getattr(request, 'persona_override', None):
                 try:
-                    # Merge shallowly: override core and platform adaptation parts
                     override = request.persona_override
                     if persona_data:
                         core = persona_data.get('core_persona', {})
@@ -431,61 +410,40 @@ class ContentGenerator:
                     pass
             prompt = PostPromptBuilder.build_post_prompt(request, persona=persona_data)
             
-            # Generate grounded content using native Google Search grounding
-            result = await self.gemini_grounded.generate_grounded_content(
+            # Inject research context into prompt
+            research_context = self._build_research_context(research_sources)
+            if research_context:
+                prompt += research_context
+            
+            # Generate content using provider-agnostic gateway
+            raw_response = llm_text_gen(
                 prompt=prompt,
-                content_type="linkedin_post",
-                temperature=0.7,
-                max_tokens=request.max_length
+                user_id=user_id,
+                flow_type="linkedin_post",
+                max_tokens=request.max_length,
+                temperature=0.7
             )
             
-            return result
+            content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
+            
+            return {
+                'content': content_text,
+                'sources': [],
+                'citations': [],
+                'grounding_enabled': bool(research_sources),
+                'fallback_used': False
+            }
             
         except Exception as e:
-            logger.error(f"Error generating grounded post content: {str(e)}")
-            logger.info("Attempting fallback to standard content generation...")
-            
-            # Fallback to standard content generation without grounding
-            try:
-                if not self.fallback_provider:
-                    raise Exception("No fallback provider available")
-                
-                # Build a simpler prompt for fallback generation
-                prompt = PostPromptBuilder.build_post_prompt(request)
-                
-                # Generate content using fallback provider (it's a dict with functions)
-                if 'generate_text' in self.fallback_provider:
-                    result = await self.fallback_provider['generate_text'](
-                        prompt=prompt,
-                        temperature=0.7,
-                        max_tokens=request.max_length
-                    )
-                else:
-                    raise Exception("Fallback provider doesn't have generate_text method")
-                
-                # Return result in the expected format
-                return {
-                    'content': result.get('content', '') if isinstance(result, dict) else str(result),
-                    'sources': [],
-                    'citations': [],
-                    'grounding_enabled': False,
-                    'fallback_used': True
-                }
-                
-            except Exception as fallback_error:
-                logger.error(f"Fallback generation also failed: {str(fallback_error)}")
-                raise Exception(f"Failed to generate content: {str(e)}. Fallback also failed: {str(fallback_error)}")
+            logger.error(f"Error generating post content: {str(e)}")
+            raise Exception(f"Failed to generate LinkedIn post: {str(e)}")
     
-    async def generate_grounded_article_content(self, request, research_sources: List) -> Dict[str, Any]:
-        """Generate grounded article content using the enhanced Gemini provider with native grounding."""
+    async def generate_grounded_article_content(self, request, research_sources: List, user_id: str = None) -> Dict[str, Any]:
+        """Generate article content using provider-agnostic llm_text_gen."""
         try:
-            if not self.gemini_grounded:
-                logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                
-            # Build the prompt for grounded generation using persona if available (DB vs session override)
-            user_id = int(getattr(request, "user_id", 0) or 0)
-            persona_data = self._get_cached_persona_data(user_id, 'linkedin')
+            # Build the prompt using persona if available
+            uid = int(getattr(request, "user_id", 0) or 0)
+            persona_data = self._get_cached_persona_data(uid, 'linkedin')
             if getattr(request, 'persona_override', None):
                 try:
                     override = request.persona_override
@@ -504,88 +462,129 @@ class ContentGenerator:
                     pass
             prompt = ArticlePromptBuilder.build_article_prompt(request, persona=persona_data)
             
-            # Generate grounded content using native Google Search grounding
-            result = await self.gemini_grounded.generate_grounded_content(
+            # Inject research context into prompt
+            research_context = self._build_research_context(research_sources)
+            if research_context:
+                prompt += research_context
+            
+            # Generate content using provider-agnostic gateway
+            raw_response = llm_text_gen(
                 prompt=prompt,
-                content_type="linkedin_article",
-                temperature=0.7,
-                max_tokens=request.word_count * 10  # Approximate character count
+                user_id=user_id,
+                flow_type="linkedin_article",
+                max_tokens=request.word_count * 10,
+                temperature=0.7
             )
             
-            return result
+            content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
+            
+            return {
+                'content': content_text,
+                'sources': [],
+                'citations': [],
+                'grounding_enabled': bool(research_sources),
+                'fallback_used': False
+            }
                 
         except Exception as e:
-            logger.error(f"Error generating grounded article content: {str(e)}")
-            raise Exception(f"Failed to generate grounded article content: {str(e)}")
+            logger.error(f"Error generating article content: {str(e)}")
+            raise Exception(f"Failed to generate LinkedIn article: {str(e)}")
     
-    async def generate_grounded_carousel_content(self, request, research_sources: List) -> Dict[str, Any]:
-        """Generate grounded carousel content using the enhanced Gemini provider with native grounding."""
+    async def generate_grounded_carousel_content(self, request, research_sources: List, user_id: str = None) -> Dict[str, Any]:
+        """Generate carousel content using provider-agnostic llm_text_gen."""
         try:
-            if not self.gemini_grounded:
-                logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                
-            # Build the prompt for grounded generation using the new prompt builder
             prompt = CarouselPromptBuilder.build_carousel_prompt(request)
             
-            # Generate grounded content using native Google Search grounding
-            result = await self.gemini_grounded.generate_grounded_content(
+            # Inject research context into prompt
+            research_context = self._build_research_context(research_sources)
+            if research_context:
+                prompt += research_context
+            
+            # Generate content using provider-agnostic gateway
+            raw_response = llm_text_gen(
                 prompt=prompt,
-                content_type="linkedin_carousel",
-                temperature=0.7,
-                max_tokens=2000
+                user_id=user_id,
+                flow_type="linkedin_carousel",
+                max_tokens=2000,
+                temperature=0.7
             )
             
-            return result
+            content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
+            
+            return {
+                'content': content_text,
+                'sources': [],
+                'citations': [],
+                'grounding_enabled': bool(research_sources),
+                'fallback_used': False
+            }
             
         except Exception as e:
-            logger.error(f"Error generating grounded carousel content: {str(e)}")
-            raise Exception(f"Failed to generate grounded carousel content: {str(e)}")
+            logger.error(f"Error generating carousel content: {str(e)}")
+            raise Exception(f"Failed to generate LinkedIn carousel: {str(e)}")
     
-    async def generate_grounded_video_script_content(self, request, research_sources: List) -> Dict[str, Any]:
-        """Generate grounded video script content using the enhanced Gemini provider with native grounding."""
+    async def generate_grounded_video_script_content(self, request, research_sources: List, user_id: str = None) -> Dict[str, Any]:
+        """Generate video script content using provider-agnostic llm_text_gen."""
         try:
-            if not self.gemini_grounded:
-                logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                
-            # Build the prompt for grounded generation using the new prompt builder
             prompt = VideoScriptPromptBuilder.build_video_script_prompt(request)
             
-            # Generate grounded content using native Google Search grounding
-            result = await self.gemini_grounded.generate_grounded_content(
+            # Inject research context into prompt
+            research_context = self._build_research_context(research_sources)
+            if research_context:
+                prompt += research_context
+            
+            # Generate content using provider-agnostic gateway
+            raw_response = llm_text_gen(
                 prompt=prompt,
-                content_type="linkedin_video_script",
-                temperature=0.7,
-                max_tokens=1500
+                user_id=user_id,
+                flow_type="linkedin_video_script",
+                max_tokens=1500,
+                temperature=0.7
             )
             
-            return result
+            content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
+            
+            return {
+                'content': content_text,
+                'sources': [],
+                'citations': [],
+                'grounding_enabled': bool(research_sources),
+                'fallback_used': False
+            }
             
         except Exception as e:
-            logger.error(f"Error generating grounded video script content: {str(e)}")
-            raise Exception(f"Failed to generate grounded video script content: {str(e)}")
+            logger.error(f"Error generating video script content: {str(e)}")
+            raise Exception(f"Failed to generate LinkedIn video script: {str(e)}")
     
-    async def generate_grounded_comment_response(self, request, research_sources: List) -> Dict[str, Any]:
-        """Generate grounded comment response using the enhanced Gemini provider with native grounding."""
+    async def generate_grounded_comment_response(self, request, research_sources: List, user_id: str = None) -> Dict[str, Any]:
+        """Generate comment response using provider-agnostic llm_text_gen."""
         try:
-            if not self.gemini_grounded:
-                logger.error("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                raise Exception("Gemini Grounded Provider not available - cannot generate content without AI provider")
-                
-            # Build the prompt for grounded generation using the new prompt builder
             prompt = CommentResponsePromptBuilder.build_comment_response_prompt(request)
             
-            # Generate grounded content using native Google Search grounding
-            result = await self.gemini_grounded.generate_grounded_content(
+            # Inject research context into prompt
+            research_context = self._build_research_context(research_sources)
+            if research_context:
+                prompt += research_context
+            
+            # Generate content using provider-agnostic gateway
+            raw_response = llm_text_gen(
                 prompt=prompt,
-                content_type="linkedin_comment_response",
-                temperature=0.7,
-                max_tokens=2000
+                user_id=user_id,
+                flow_type="linkedin_comment_response",
+                max_tokens=2000,
+                temperature=0.7
             )
             
-            return result
+            content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
+            
+            return {
+                'content': content_text,
+                'sources': [],
+                'citations': [],
+                'grounding_enabled': bool(research_sources),
+                'fallback_used': False
+            }
                 
         except Exception as e:
-            logger.error(f"Error generating grounded comment response: {str(e)}")
-            raise Exception(f"Failed to generate grounded comment response: {str(e)}")
+            logger.error(f"Error generating comment response: {str(e)}")
+            raise Exception(f"Failed to generate LinkedIn comment response: {str(e)}")

@@ -1,12 +1,13 @@
 """
 LinkedIn Persona Service
 Handles LinkedIn-specific persona generation and optimization.
+Uses provider-agnostic llm_text_gen for LLM access.
 """
 
 from typing import Dict, Any, Optional
 from loguru import logger
 
-from services.llm_providers.gemini_provider import gemini_structured_json_response
+from services.llm_providers.main_text_generation import llm_text_gen
 from .linkedin_persona_prompts import LinkedInPersonaPrompts
 from .linkedin_persona_schemas import LinkedInPersonaSchemas
 
@@ -57,14 +58,15 @@ class LinkedInPersonaService:
             # Extract user_id for tracking
             user_id = onboarding_data.get("session_info", {}).get("user_id")
             
-            # Generate structured response using Gemini with optimized prompts
-            response = gemini_structured_json_response(
+            # Generate structured response using provider-agnostic gateway
+            response = llm_text_gen(
                 prompt=prompt,
-                schema=schema,
-                temperature=0.2,
-                max_tokens=4096,
+                json_struct=schema,
                 system_prompt=system_prompt,
-                user_id=user_id
+                user_id=user_id,
+                flow_type="linkedin_persona_generation",
+                max_tokens=4096,
+                temperature=0.2
             )
             
             if "error" in response:

@@ -657,7 +657,7 @@ export const Header: React.FC<HeaderProps> = ({
                         const words = (seed || '').trim().split(/\s+/).filter(Boolean);
                         if (!useGoogleSearch || words.length < 4) return;
                         const personaLine = corePersona ? `${corePersona.persona_name} (${corePersona.archetype})` : 'the user\'s writing persona';
-                        const tone = (corePersona as any)?.tonal_range?.default_tone || (platformPersona as any)?.tonal_range?.default_tone || 'professional';
+                        const tone = platformPersona?.tonal_range?.default_tone || 'professional';
                         const goTo = corePersona?.linguistic_fingerprint?.lexical_features?.go_to_words?.slice(0,5)?.join(', ');
                         const platformHints = platformPersona ? `Respect LinkedIn constraints like character limits and engagement patterns.` : '';
                         const trending = includeTrending ? 'Blend industry trending topics.' : '';

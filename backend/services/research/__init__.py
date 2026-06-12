@@ -7,6 +7,7 @@ replacing mock research with real-time industry information.
 Available Services:
 - GoogleSearchService: Real-time industry research using Google Custom Search API
 - ExaService: Competitor discovery and analysis using Exa API
+- ExaContentResearchProvider: Shared content research provider for LinkedIn/Blog
 - TavilyService: AI-powered web search with real-time information
 - Source ranking and credibility assessment
 - Content extraction and insight generation
@@ -17,12 +18,13 @@ Core Module (v2.0):
 - ParameterOptimizer: AI-driven parameter optimization
 
 Author: ALwrity Team
-Version: 2.0
-Last Updated: December 2025
+Version: 2.1
+Last Updated: June 2026
 """
 
 from .google_search_service import GoogleSearchService
 from .exa_service import ExaService
+from .exa_content_research import ExaContentResearchProvider, get_exa_content_provider
 from .tavily_service import TavilyService
 
 # Core Research Engine (v2.0)
@@ -42,6 +44,10 @@ __all__ = [
     "GoogleSearchService",
     "ExaService",
     "TavilyService",
+    
+    # Shared content research provider
+    "ExaContentResearchProvider",
+    "get_exa_content_provider",
     
     # Core Research Engine (v2.0)
     "ResearchEngine",

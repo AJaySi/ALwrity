@@ -1,8 +1,9 @@
 """
 LinkedIn Image Generator Service
 
-This service generates LinkedIn-optimized images using Google's Gemini API.
-It provides professional, business-appropriate imagery for LinkedIn content.
+This service generates LinkedIn-optimized images using the common
+llm_providers infrastructure. It provides professional, business-appropriate
+imagery for LinkedIn content.
 """
 
 import os
@@ -17,6 +18,7 @@ from io import BytesIO
 # Import existing infrastructure
 from ...onboarding.api_key_manager import APIKeyManager
 from ...llm_providers.main_image_generation import generate_image
+from ...llm_providers.main_image_editing import edit_image as common_edit_image
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -24,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 class LinkedInImageGenerator:
     """
-    Handles LinkedIn-optimized image generation using Gemini API.
+    Handles LinkedIn-optimized image generation using common infrastructure.
     
-    This service integrates with the existing Gemini provider infrastructure
+    This service integrates with the llm_providers image generation system
     and provides LinkedIn-specific image optimization, quality assurance,
     and professional business aesthetics.
     """
@@ -36,10 +38,9 @@ class LinkedInImageGenerator:
         Initialize the LinkedIn Image Generator.
         
         Args:
-            api_key_manager: API key manager for Gemini authentication
+            api_key_manager: API key manager for authentication
         """
         self.api_key_manager = api_key_manager or APIKeyManager()
-        self.model = "gemini-2.5-flash-image-preview"
         self.default_aspect_ratio = "1:1"  # LinkedIn post optimal ratio
         self.max_retries = 3
         
@@ -55,16 +56,18 @@ class LinkedInImageGenerator:
         prompt: str, 
         content_context: Dict[str, Any],
         aspect_ratio: str = "1:1",
-        style_preference: str = "professional"
+        style_preference: str = "professional",
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Generate LinkedIn-optimized image using Gemini API.
+        Generate LinkedIn-optimized image using AI provider.
         
         Args:
             prompt: User's image generation prompt
             content_context: LinkedIn content context (topic, industry, content_type)
-            aspect_ratio: Image aspect ratio (1:1, 16:9, 4:3)
+            aspect_ratio: Image aspect ratio (1:1, 16:9, 4:3, 1.91:1, 1:1.25)
             style_preference: Style preference (professional, creative, industry-specific)
+            user_id: User ID for tenant provider resolution
             
         Returns:
             Dict containing generation result, image data, and metadata
@@ -78,8 +81,8 @@ class LinkedInImageGenerator:
                 prompt, content_context, style_preference, aspect_ratio
             )
             
-            # Generate image using existing Gemini infrastructure
-            generation_result = await self._generate_with_gemini(enhanced_prompt, aspect_ratio)
+            # Generate image using tenant-aware provider selection
+            generation_result = await self._generate_with_provider(enhanced_prompt, aspect_ratio, user_id)
             
             if not generation_result.get('success'):
                 return {
@@ -108,7 +111,7 @@ class LinkedInImageGenerator:
                     'aspect_ratio': aspect_ratio,
                     'content_context': content_context,
                     'generation_time': generation_time,
-                    'model_used': self.model,
+                    'model_used': generation_result.get('model'),
                     'image_format': processed_image['format'],
                     'image_size': processed_image['size'],
                     'resolution': processed_image['resolution']
@@ -131,17 +134,19 @@ class LinkedInImageGenerator:
     
     async def edit_image(
         self, 
-        base_image: bytes, 
+        input_image_bytes: bytes, 
         edit_prompt: str,
-        content_context: Dict[str, Any]
+        content_context: Dict[str, Any],
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Edit existing image using Gemini's conversational editing capabilities.
+        Edit existing image using unified image editing infrastructure.
         
         Args:
-            base_image: Base image data in bytes
+            input_image_bytes: Input image bytes to edit
             edit_prompt: Description of desired edits
             content_context: LinkedIn content context for optimization
+            user_id: User ID for tenant provider resolution and subscription checks
             
         Returns:
             Dict containing edited image result and metadata
@@ -155,18 +160,46 @@ class LinkedInImageGenerator:
                 edit_prompt, content_context
             )
             
-            # Use Gemini's image editing capabilities
-            # Note: This will be implemented when Gemini's image editing is fully available
-            # For now, we'll return a placeholder implementation
+            # Use unified image editing system.
+            # common_edit_image() handles: provider resolution, pre-flight validation,
+            # generation, and usage tracking — all via user_id.
+            result = common_edit_image(
+                input_image_bytes=input_image_bytes,
+                prompt=enhanced_edit_prompt,
+                user_id=user_id,
+            )
             
-            return {
-                'success': False,
-                'error': 'Image editing not yet implemented - coming in next Gemini API update',
-                'generation_time': (datetime.now() - start_time).total_seconds()
-            }
+            if result and result.image_bytes:
+                generation_time = (datetime.now() - start_time).total_seconds()
+                logger.info(
+                    "LinkedIn image edited successfully via provider=%s model=%s in %.2fs",
+                    result.provider, result.model, generation_time,
+                )
+                return {
+                    'success': True,
+                    'image_data': result.image_bytes,
+                    'image_url': None,  # not using URL-based retrieval
+                    'width': result.width,
+                    'height': result.height,
+                    'provider': result.provider,
+                    'model': result.model,
+                    'metadata': {
+                        'original_prompt': edit_prompt,
+                        'enhanced_prompt': enhanced_edit_prompt,
+                        'generation_time': generation_time,
+                        'content_context': content_context,
+                    },
+                }
+            else:
+                logger.warning("LinkedIn image editing returned no result")
+                return {
+                    'success': False,
+                    'error': 'Image editing returned no result',
+                    'generation_time': (datetime.now() - start_time).total_seconds(),
+                }
             
         except Exception as e:
-            logger.error(f"Error in LinkedIn image editing: {str(e)}")
+            logger.error(f"Error in LinkedIn image editing: {str(e)}", exc_info=True)
             return {
                 'success': False,
                 'error': f"Image editing failed: {str(e)}",
@@ -268,13 +301,16 @@ class LinkedInImageGenerator:
         
         return enhanced_edit_prompt
     
-    async def _generate_with_gemini(self, prompt: str, aspect_ratio: str) -> Dict[str, Any]:
+    async def _generate_with_provider(self, prompt: str, aspect_ratio: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate image using unified image generation infrastructure.
+        Provider resolution, pre-flight validation, and usage tracking
+        are all handled by generate_image() from main_image_generation.
         
         Args:
             prompt: Enhanced prompt for image generation
             aspect_ratio: Desired aspect ratio
+            user_id: User ID for tenant provider resolution and subscription checks
             
         Returns:
             Generation result from image generation provider
@@ -285,26 +321,31 @@ class LinkedInImageGenerator:
                 "1:1": (1024, 1024),
                 "16:9": (1920, 1080),
                 "4:3": (1366, 1024),
-                "9:16": (1080, 1920),  # Portrait for stories
+                "9:16": (1080, 1920),
+                "1.91:1": (1200, 627),  # LinkedIn recommended landscape
+                "1:1.25": (1080, 1350),  # LinkedIn recommended portrait
             }
             width, height = aspect_map.get(aspect_ratio, (1024, 1024))
             
-            # Use unified image generation system (defaults to provider based on GPT_PROVIDER)
+            # Delegate to unified image generation system.
+            # Generate_image() handles: provider resolution, pre-flight validation,
+            # model auto-detection, generation, and usage tracking.
+            # We do NOT pass explicit provider or model — let generate_image() resolve
+            # them from tenant config and user defaults.
             result = generate_image(
                 prompt=prompt,
                 options={
-                    "provider": "gemini",  # LinkedIn uses Gemini by default
-                    "model": self.model if hasattr(self, 'model') else None,
                     "width": width,
                     "height": height,
-                }
+                },
+                user_id=user_id
             )
             
             if result and result.image_bytes:
                 return {
                     'success': True,
                     'image_data': result.image_bytes,
-                    'image_path': None,  # No file path, using bytes directly
+                    'image_path': None,
                     'width': result.width,
                     'height': result.height,
                     'provider': result.provider,
@@ -315,7 +356,7 @@ class LinkedInImageGenerator:
                     'success': False,
                     'error': 'Image generation returned no result'
                 }
-                
+
         except Exception as e:
             logger.error(f"Error in image generation: {str(e)}")
             return {
@@ -487,6 +528,9 @@ class LinkedInImageGenerator:
             (1.6, 1.8),    # 16:9 (landscape)
             (0.7, 0.8),    # 4:3 (portrait)
             (1.2, 1.4),    # 5:4 (landscape)
+            (1.85, 2.0),   # 1.91:1 (LinkedIn recommended landscape)
+            (0.6, 0.72),   # 1:1.25 (LinkedIn recommended portrait, ~0.8)
+            (0.65, 0.85),  # 1:1.25 broader match
         ]
         
         for min_ratio, max_ratio in suitable_ratios:

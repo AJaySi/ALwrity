@@ -1,5 +1,5 @@
 import React from 'react';
-import { useCopilotAction } from '@copilotkit/react-core';
+import { showToastNotification } from '../../utils/toastNotifications';
 import { linkedInWriterApi, GroundingLevel } from '../../services/linkedInWriterApi';
 import {
   mapPostType,
@@ -9,8 +9,7 @@ import {
   readPrefs
 } from './utils/linkedInWriterUtils';
 import { apiClient } from '../../api/client';
-
-const useCopilotActionTyped = useCopilotAction as any;
+import { useCopilotActionTyped } from '../../hooks/useCopilotActionTyped';
 
 const RegisterLinkedInActions: React.FC = () => {
   // LinkedIn Image Generation Actions
@@ -53,7 +52,12 @@ const RegisterLinkedInActions: React.FC = () => {
     description: 'Generate LinkedIn-optimized image from selected prompt',
     parameters: [
       { name: 'prompt', type: 'string', required: true, description: 'The image generation prompt' },
-      { name: 'content_context', type: 'object', required: true, description: 'Content context including topic, industry, content_type, and style' },
+      { name: 'content_context', type: 'object', required: true, description: 'Content context including topic, industry, content_type, and style', attributes: [
+        { name: 'topic', type: 'string', required: true, description: 'Content topic' },
+        { name: 'industry', type: 'string', required: true, description: 'Content industry' },
+        { name: 'content_type', type: 'string', required: true, description: 'Type of content (post, article, carousel)' },
+        { name: 'style', type: 'string', required: true, description: 'Writing style/tone' }
+      ] },
       { name: 'aspect_ratio', type: 'string', required: false, description: 'Image aspect ratio (default: 1:1)' }
     ],
     handler: async (args: any) => {
@@ -83,6 +87,54 @@ const RegisterLinkedInActions: React.FC = () => {
         return { 
           success: false, 
           error: 'Failed to generate image. Please try again.' 
+        };
+      }
+    }
+  });
+
+  // LinkedIn Image Editing Action
+  useCopilotActionTyped({
+    name: 'editLinkedInImage',
+    description: 'Edit an existing LinkedIn image using natural language (change style, background, colors, etc.). Requires an image_id from a previously generated LinkedIn image.',
+    parameters: [
+      { name: 'image_id', type: 'string', required: true, description: 'ID of the previously generated LinkedIn image to edit' },
+      { name: 'prompt', type: 'string', required: true, description: 'Natural language description of desired edits (e.g., "Make the background blue", "Add more professional look")' },
+      { name: 'content_context', type: 'object', required: true, description: 'Content context including topic, industry, content_type', attributes: [
+        { name: 'topic', type: 'string', required: true, description: 'Content topic' },
+        { name: 'industry', type: 'string', required: true, description: 'Content industry' },
+        { name: 'content_type', type: 'string', required: true, description: 'Type of content (post, article, carousel)' },
+      ] },
+    ],
+    handler: async (args: any) => {
+      try {
+        const response = await apiClient.post('/api/linkedin/edit-image', {
+          image_id: args.image_id,
+          prompt: args.prompt,
+          content_context: args.content_context,
+        });
+
+        const result = response.data;
+        if (result.success) {
+          return { 
+            success: true, 
+            image_data: result.image_data,
+            image_id: result.image_id,
+            image_url: result.image_url,
+            message: result.image_id
+              ? `✅ LinkedIn image edited successfully! Your edited image (ID: ${result.image_id}) is ready to use.`
+              : `✅ LinkedIn image edited successfully! The image is ready to use in your content.`
+          };
+        } else {
+          return { 
+            success: false, 
+            error: result.error || 'Image editing failed' 
+          };
+        }
+      } catch (error) {
+        console.error('Error editing image:', error);
+        return { 
+          success: false, 
+          error: 'Failed to edit image. Please try again.' 
         };
       }
     }
@@ -468,7 +520,7 @@ const RegisterLinkedInActions: React.FC = () => {
     parameters: [
       { name: 'topic', type: 'string', required: false },
       { name: 'industry', type: 'string', required: false },
-      { name: 'slide_count', type: 'number', required: false }
+      { name: 'number_of_slides', type: 'number', required: false }
     ],
     handler: async (args: any) => {
       const prefs = readPrefs();
@@ -499,7 +551,7 @@ const RegisterLinkedInActions: React.FC = () => {
       const res = await linkedInWriterApi.generateCarousel({
         topic: args?.topic || prefs.topic || 'Professional development tips',
         industry: mapIndustry(args?.industry || prefs.industry),
-        slide_count: args?.slide_count || prefs.slide_count || 8,
+        number_of_slides: args?.number_of_slides || prefs.number_of_slides || 8,
         tone: mapTone(args?.tone || prefs.tone),
         target_audience: args?.target_audience || prefs.target_audience || 'Professionals seeking growth',
         key_takeaways: args?.key_takeaways || prefs.key_takeaways || [],
@@ -898,7 +950,7 @@ const RegisterLinkedInActions: React.FC = () => {
     }
   });
 
-  // LinkedIn Profile Optimization
+  // LinkedIn Profile Optimization (Coming Soon)
   useCopilotActionTyped({
     name: 'optimizeLinkedInProfile',
     description: 'Optimize LinkedIn profile sections for better professional visibility',
@@ -907,29 +959,13 @@ const RegisterLinkedInActions: React.FC = () => {
       { name: 'industry', type: 'string', required: false },
       { name: 'experience_level', type: 'string', required: false }
     ],
-    handler: async (args: any) => {
-      const res = await linkedInWriterApi.optimizeProfile({
-        current_headline: args?.current_headline || 'Professional',
-        industry: mapIndustry(args?.industry),
-        experience_level: args?.experience_level || 'mid-level',
-        target_role: args?.target_role,
-        key_skills: args?.key_skills || []
-      });
-      
-      if (res.success && res.data) {
-        let content = `# LinkedIn Profile Optimization\n\n`;
-        content += `## Optimized Headline\n${res.data.headline}\n\n`;
-        content += `## About Section\n${res.data.about}\n\n`;
-        content += `## Key Skills\n${res.data.skills?.join(', ')}\n\n`;
-        
-        window.dispatchEvent(new CustomEvent('linkedinwriter:updateDraft', { detail: content }));
-        return { success: true, content };
-      }
-      return { success: false, message: res.error || 'Failed to optimize LinkedIn profile' };
+    handler: async () => {
+      showToastNotification('LinkedIn Profile Optimization is coming soon! Stay tuned for this feature.', 'info');
+      return { success: false, message: 'Feature coming soon' };
     }
   });
 
-  // LinkedIn Poll Generation
+  // LinkedIn Poll Generation (Coming Soon)
   useCopilotActionTyped({
     name: 'generateLinkedInPoll',
     description: 'Generate an engaging LinkedIn poll with professional questions',
@@ -938,31 +974,13 @@ const RegisterLinkedInActions: React.FC = () => {
       { name: 'industry', type: 'string', required: false },
       { name: 'poll_type', type: 'string', required: false }
     ],
-    handler: async (args: any) => {
-      const res = await linkedInWriterApi.generatePoll({
-        topic: args?.topic || 'Professional development',
-        industry: mapIndustry(args?.industry),
-        poll_type: args?.poll_type || 'professional',
-        target_audience: args?.target_audience || 'Industry professionals',
-        question_count: args?.question_count || 1
-      });
-      
-      if (res.success && res.data) {
-        let content = `# LinkedIn Poll: ${res.data.question}\n\n`;
-        content += `## Options\n`;
-        res.data.options?.forEach((option: string, index: number) => {
-          content += `${index + 1}. ${option}\n`;
-        });
-        content += `\n## Context\n${res.data.context || ''}\n\n`;
-        
-        window.dispatchEvent(new CustomEvent('linkedinwriter:updateDraft', { detail: content }));
-        return { success: true, content };
-      }
-      return { success: false, message: res.error || 'Failed to generate LinkedIn poll' };
+    handler: async () => {
+      showToastNotification('LinkedIn Poll Generation is coming soon! Stay tuned for this feature.', 'info');
+      return { success: false, message: 'Feature coming soon' };
     }
   });
 
-  // LinkedIn Company Update Generation
+  // LinkedIn Company Update Generation (Coming Soon)
   useCopilotActionTyped({
     name: 'generateLinkedInCompanyUpdate',
     description: 'Generate a professional company update for LinkedIn',
@@ -971,22 +989,9 @@ const RegisterLinkedInActions: React.FC = () => {
       { name: 'update_type', type: 'string', required: false },
       { name: 'industry', type: 'string', required: false }
     ],
-    handler: async (args: any) => {
-      const res = await linkedInWriterApi.generateCompanyUpdate({
-        company_name: args?.company_name || 'Your Company',
-        update_type: args?.update_type || 'achievement',
-        industry: mapIndustry(args?.industry),
-        announcement: args?.announcement,
-        target_audience: args?.target_audience || 'Industry professionals and clients',
-        include_metrics: args?.include_metrics ?? true
-      });
-      
-      if (res.success && res.data) {
-        const content = res.data.content;
-        window.dispatchEvent(new CustomEvent('linkedinwriter:updateDraft', { detail: content }));
-        return { success: true, content };
-      }
-      return { success: false, message: res.error || 'Failed to generate LinkedIn company update' };
+    handler: async () => {
+      showToastNotification('LinkedIn Company Update Generation is coming soon! Stay tuned for this feature.', 'info');
+      return { success: false, message: 'Feature coming soon' };
     }
   });
 

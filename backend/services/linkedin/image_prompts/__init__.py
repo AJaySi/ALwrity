@@ -2,8 +2,8 @@
 LinkedIn Image Prompts Package
 
 This package provides AI-powered image prompt generation for LinkedIn content
-using Google's Gemini API. It creates three distinct prompt styles optimized
-for professional business image generation.
+using the provider-agnostic llm_text_gen gateway. It creates three distinct
+prompt styles optimized for professional business image generation.
 """
 
 from .linkedin_prompt_generator import LinkedInPromptGenerator

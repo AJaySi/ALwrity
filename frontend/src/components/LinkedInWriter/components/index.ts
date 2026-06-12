@@ -1,9 +1,3 @@
-export { default as PostHITL } from './PostHITL';
-export { default as ArticleHITL } from './ArticleHITL';
-export { default as CarouselHITL } from './CarouselHITL';
-export { default as VideoScriptHITL } from './VideoScriptHITL';
-export { default as CommentResponseHITL } from './CommentResponseHITL';
-
 // New refactored components
 export { Header } from './Header';
 export { ContentEditor } from './ContentEditor';
@@ -12,6 +6,7 @@ export { WelcomeMessage } from './WelcomeMessage';
 export { FeatureCarousel } from './FeatureCarousel';
 export { InfoModals } from './InfoModals';
 export { ProgressTracker } from './ProgressTracker';
+export type { ProgressStep } from './ProgressTracker';
 export { ContentRecommendations } from './ContentRecommendations';
 export { CopilotRecommendationsMessage } from './CopilotRecommendationsMessage';
 export { CustomMessageRenderer } from './CustomMessageRenderer';
@@ -27,3 +22,4 @@ export { default as ImageGenerationTest } from './ImageGenerationTest';
 // Refactored Components
 export { default as BrainstormFlow } from './BrainstormFlow';
 export { useCopilotActions } from './CopilotActions';
+export { QuickCreate } from './QuickCreate';

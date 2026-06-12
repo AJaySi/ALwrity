@@ -81,7 +81,7 @@ class VideoScriptGenerator:
                 'data': video_script,
                 'research_sources': research_sources,
                 'generation_metadata': {
-                    'model_used': 'gemini-2.0-flash-001',
+                    'model_used': 'llm_text_gen',
                     'generation_time': generation_time,
                     'research_time': research_time,
                     'grounding_enabled': grounding_enabled

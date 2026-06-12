@@ -21,7 +21,8 @@ export enum LinkedInTone {
 
 export enum SearchEngine {
   GOOGLE = 'google',
-  TAVILY = 'tavily'
+  TAVILY = 'tavily',
+  EXA = 'exa'
 }
 
 export enum GroundingLevel {
@@ -66,7 +67,7 @@ export interface LinkedInArticleRequest {
 export interface LinkedInCarouselRequest {
   topic: string;
   industry: string;
-  slide_count?: number;
+  number_of_slides?: number;
   tone?: LinkedInTone;
   target_audience?: string;
   key_takeaways?: string[];
@@ -238,6 +239,24 @@ export interface LinkedInCommentResponseResult {
   error?: string;
 }
 
+export interface LinkedInEditContentRequest {
+  content: string;
+  edit_type: 'professionalize' | 'optimize_engagement' | 'add_hashtags' | 'adjust_tone' | 'expand' | 'condense' | 'add_cta';
+  industry?: string;
+  tone?: string;
+  target_audience?: string;
+  parameters?: Record<string, any>;
+}
+
+export interface LinkedInEditContentResponse {
+  success: boolean;
+  content?: string;
+  edit_type: string;
+  provider?: string;
+  model?: string;
+  error?: string;
+}
+
 // API client
 export const linkedInWriterApi = {
   async health(): Promise<any> {
@@ -270,18 +289,64 @@ export const linkedInWriterApi = {
     return data;
   },
 
-  async optimizeProfile(request: any): Promise<any> {
-    const { data } = await apiClient.post('/api/linkedin/optimize-profile', request);
-    return data;
-  },
-
-  async generatePoll(request: any): Promise<any> {
-    const { data } = await apiClient.post('/api/linkedin/generate-poll', request);
-    return data;
-  },
-
-  async generateCompanyUpdate(request: any): Promise<any> {
-    const { data } = await apiClient.post('/api/linkedin/generate-company-update', request);
+  async editContent(request: LinkedInEditContentRequest): Promise<LinkedInEditContentResponse> {
+    const { data } = await aiApiClient.post('/api/linkedin/edit-content', request);
     return data;
   }
+};
+
+// ── Asset Library Save ────────────────────────────────────────────────
+
+export interface SaveLinkedInAssetParams {
+  title: string;
+  content: string;
+  topic?: string;
+  tags?: string[];
+  assetMetadata?: Record<string, any>;
+}
+
+export interface SaveLinkedInAssetResult {
+  assetId: number;
+}
+
+/**
+ * Save a LinkedIn post to the Asset Library.
+ * Uses the generic Content Asset API (POST /api/content-assets/).
+ */
+export const saveLinkedInToAssetLibrary = async (
+  params: SaveLinkedInAssetParams
+): Promise<SaveLinkedInAssetResult> => {
+  // Build a filename from the title
+  const safeTitle = (params.title || 'linkedin-post')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 80);
+  const filename = `${safeTitle}-${Date.now()}.txt`;
+
+  const tags = [
+    'linkedin',
+    'social',
+    'ai_generated',
+    ...(params.tags || []),
+  ];
+
+  const response = await aiApiClient.post('/api/content-assets/', {
+    asset_type: 'text',
+    source_module: 'linkedin_writer',
+    filename,
+    file_url: `linkedin://posts/${filename}`,
+    title: params.title,
+    description: params.content,
+    prompt: params.topic || '',
+    tags,
+    asset_metadata: {
+      platform: 'linkedin',
+      content_type: 'linkedin_post',
+      word_count: params.content ? params.content.split(/\s+/).length : 0,
+      ...(params.assetMetadata || {}),
+    },
+  });
+
+  return { assetId: response.data.id };
 };
