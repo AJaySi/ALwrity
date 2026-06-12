@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
+import { debug } from '../../utils/debug';
 
 export interface Phase {
   id: string;
@@ -120,7 +121,8 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
         break;
       case 'seo':
         if (hasContent) {
-          return { label: hasSEOAnalysis ? 'Re-Analyze SEO' : 'Run SEO Analysis', handler: actionHandlers.onSEOAction || null };
+          const handler = actionHandlers.onSEOAction || null;
+          return { label: hasSEOAnalysis ? 'Re-Analyze SEO' : 'Run SEO Analysis', handler };
         }
         break;
       case 'publish':
@@ -252,7 +254,7 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
               background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
               color: '#fff',
               boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
-              maxWidth: iconOnly ? '36px' : 'none',
+              maxWidth: iconOnly ? '44px' : 'none',
               opacity: iconOnly ? 0.85 : 1,
               '&:hover': {
                 maxWidth: iconOnly ? '160px' : 'none',
@@ -360,12 +362,12 @@ export const PhaseNavigation: React.FC<PhaseNavigationProps> = ({
                   sx={chipSx}
                 >
                   <Box component="span" sx={iconSx}>{phase.icon}</Box>
+                  {isDone && (
+                    <Box component="span" sx={{ fontSize: '12px', flexShrink: 0 }}>✓</Box>
+                  )}
                   <Box component="span" sx={{ flexShrink: 0 }}>
                     {phase.id === 'research' && hasResearch ? 'Re-Research' : phase.id === 'research' && !hasResearch && researchKeywords ? 'Click To Research' : phase.id === 'research' && !hasResearch ? 'Start Now' : phase.id === 'outline' && hasOutline ? 'Re-Generate' : phase.id === 'outline' && !hasOutline ? 'Create Now' : phase.id === 'content' && hasContent ? 'Re-Content' : phase.id === 'seo' ? (hasSEOAnalysis ? 'Re-Analyze SEO' : 'SEO Analysis') : phase.name}
                   </Box>
-                  {isDone && (
-                    <Box component="span" sx={{ fontSize: '12px', flexShrink: 0, ml: 0.25 }}>✓</Box>
-                  )}
                 </Box>
               </Tooltip>
 

@@ -100,18 +100,37 @@ class ResponseProcessor:
                     raise ValueError(f"AI outline generation failed: {error_str}")
     
     def convert_to_sections(self, outline_data: Dict[str, Any], sources: List) -> List[BlogOutlineSection]:
-        """Convert outline data to BlogOutlineSection objects."""
+        """Convert outline data to BlogOutlineSection objects.
+        
+        If the LLM assigned source_indices to sections, populate references
+        directly from those indices. Indices are 1-based (matching the [N] 
+        labels in the prompt) — converted to 0-based for list access.
+        Sections without source_indices will be populated by the algorithmic
+        source mapper in a later step.
+        """
         outline_sections = []
         for i, section_data in enumerate(outline_data.get('outline', [])):
             if not isinstance(section_data, dict) or 'heading' not in section_data:
                 continue
-                
+            
+            # Parse LLM-assigned source indices (1-based)
+            raw_indices = section_data.get('source_indices', [])
+            section_refs = []
+            if raw_indices and sources:
+                for idx in raw_indices:
+                    try:
+                        source_idx = int(idx) - 1  # Convert 1-based → 0-based
+                        if 0 <= source_idx < len(sources):
+                            section_refs.append(sources[source_idx])
+                    except (ValueError, TypeError):
+                        pass
+            
             section = BlogOutlineSection(
                 id=f"s{i+1}",
                 heading=section_data.get('heading', f'Section {i+1}'),
                 subheadings=section_data.get('subheadings', []),
                 key_points=section_data.get('key_points', []),
-                references=[],  # Will be populated by intelligent mapping
+                references=section_refs,  # LLM-assigned if provided, else []
                 target_words=section_data.get('target_words', 200),
                 keywords=section_data.get('keywords', [])
             )

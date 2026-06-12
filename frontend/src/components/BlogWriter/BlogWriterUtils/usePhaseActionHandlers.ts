@@ -201,16 +201,18 @@ export const usePhaseActionHandlers = ({
   }, [outline, research, selectedTitle, sections, navigateToPhase, handleOutlineConfirmed, setIsMediumGenerationStarting, mediumPolling, onContentComplete]);
 
   const handleSEOAction = useCallback(() => {
+    debug.log('[BlogWriter] handleSEOAction called', { contentConfirmed, hasSeoAnalysis: !!seoAnalysis });
     if (!contentConfirmed) {
       setContentConfirmed(true);
     }
-    navigateToPhase('seo');
+    const navResult = navigateToPhase('seo');
+    debug.log('[BlogWriter] navigateToPhase(seo) returned', { navResult });
     if (seoAnalysis) {
       setIsSEOAnalysisModalOpen(true);
       debug.log('[BlogWriter] SEO analysis exists - opening modal for review');
     } else {
-      runSEOAnalysisDirect();
-      debug.log('[BlogWriter] SEO action triggered - running SEO analysis');
+      const result = runSEOAnalysisDirect();
+      debug.log('[BlogWriter] runSEOAnalysisDirect returned', { result });
     }
   }, [contentConfirmed, seoAnalysis, setContentConfirmed, navigateToPhase, setIsSEOAnalysisModalOpen, runSEOAnalysisDirect]);
 

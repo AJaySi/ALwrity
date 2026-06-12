@@ -184,6 +184,7 @@ interface UseSEOManagerProps {
   research: any;
   outline: any[];
   selectedTitle: string | null;
+  selectedCompetitiveAdvantage?: string;
   contentConfirmed: boolean;
   seoAnalysis: any;
   currentPhase: string;
@@ -205,6 +206,7 @@ export const useSEOManager = ({
   research,
   outline,
   selectedTitle,
+  selectedCompetitiveAdvantage,
   contentConfirmed,
   seoAnalysis,
   currentPhase,
@@ -235,8 +237,11 @@ export const useSEOManager = ({
   const originalSectionsRef = useRef<Record<string, string> | null>(null);
   const originalIntroductionRef = useRef<string | null>(null);
 
-  // Restore cached SEO analysis on mount when sections are available
+  // Restore cached SEO analysis only when user is on/past the SEO phase
   useEffect(() => {
+    // Don't run SEO cache lookups on research or outline phases
+    if (currentPhase !== 'seo' && currentPhase !== 'publish') return;
+
     const restoreCachedSEO = async () => {
       if (seoAnalysis) return;
 
@@ -249,18 +254,13 @@ export const useSEOManager = ({
       try {
         const hash = await hashContent(`${title}\n${fullMarkdown}`);
         const cacheKey = getSeoCacheKey(hash, title);
-        console.log('[SEOManager] SEO cache lookup', { cacheKey, hashLength: hash.length, titleLength: title.length, markdownLength: fullMarkdown.length });
         const cached = window.localStorage.getItem(cacheKey);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && typeof parsed.overall_score === 'number' && parsed.category_scores) {
-            console.log('[SEOManager] Restored cached SEO analysis', { cacheKey, score: parsed.overall_score });
+            debug.log('[SEOManager] Restored cached SEO analysis', { score: parsed.overall_score });
             setSeoAnalysis(parsed);
-          } else {
-            console.log('[SEOManager] Cached SEO data invalid', { hasScore: parsed && typeof parsed.overall_score === 'number' });
           }
-        } else {
-          console.log('[SEOManager] SEO cache miss', { cacheKey });
         }
       } catch (e) {
         debug.log('[SEOManager] Failed to restore cached SEO analysis', e);
@@ -273,10 +273,9 @@ export const useSEOManager = ({
       const wasApplied = localStorage.getItem('blog_seo_recommendations_applied') === 'true';
       if (wasApplied) {
         setSeoRecommendationsApplied(true);
-        debug.log('[SEOManager] Restored seoRecommendationsApplied flag');
       }
     } catch {}
-  }, [selectedTitle, sections, outline, seoAnalysis, setSeoAnalysis, setSeoRecommendationsApplied]);
+  }, [currentPhase, selectedTitle, sections, outline, seoAnalysis, setSeoAnalysis, setSeoRecommendationsApplied]);
 
   // Helper: run same checks as analyzeSEO and open modal
   const runSEOAnalysisDirect = useCallback((): string => {
@@ -306,6 +305,7 @@ export const useSEOManager = ({
     
     const hasResearch = !!research && !!(research as any).keyword_analysis;
     
+    console.debug('[SEODirect] runSEOAnalysisDirect', { hasSections, hasValidContent, hasResearch, sectionKeys: Object.keys(sections), outlineLen: outline?.length, isModalOpen: isSEOAnalysisModalOpen, contentConfirmed });
     if (!hasValidContent) {
       return "No blog content available for SEO analysis. Please generate content first. Content generation may still be in progress - please wait for it to complete.";
     }
@@ -373,6 +373,7 @@ export const useSEOManager = ({
       outline,
       research: (research as any) || {},
       recommendations,
+      competitive_advantage: selectedCompetitiveAdvantage || undefined,
     });
 
     if (!response.success) {
@@ -460,7 +461,7 @@ export const useSEOManager = ({
     } catch (cacheError) {
       debug.log('[BlogWriter] Failed to cache SEO-applied content', cacheError);
     }
-  }, [outline, research, sections, introduction, selectedTitle, setSections]);
+  }, [outline, research, sections, introduction, selectedTitle, selectedCompetitiveAdvantage, setSections]);
 
   const acceptDiffChanges = useCallback(() => {
     const normalizedSections = pendingSectionsRef.current;
@@ -538,6 +539,87 @@ export const useSEOManager = ({
     setDiffPreviewData(null);
   }, []);
 
+  const acceptSelectedDiffChanges = useCallback((
+    selectedIds: Record<string, boolean>,
+    acceptIntro: boolean
+  ) => {
+    const pendingSections = pendingSectionsRef.current;
+    const originalSections = originalSectionsRef.current;
+    const uniqueSectionKeys = pendingSectionsKeysRef.current;
+
+    if (!pendingSections || !originalSections || !uniqueSectionKeys) {
+      debug.log('[BlogWriter] acceptSelectedDiffChanges: no pending changes to apply');
+      return;
+    }
+
+    // Merge: selected sections use pending content, unselected use original
+    const mergedSections: Record<string, string> = {};
+    const allKeys = new Set([...Object.keys(pendingSections), ...Object.keys(originalSections)]);
+    allKeys.forEach(key => {
+      if (selectedIds[key]) {
+        mergedSections[key] = pendingSections[key] || originalSections[key] || '';
+      } else {
+        mergedSections[key] = originalSections[key] || pendingSections[key] || '';
+      }
+    });
+
+    const mergedKeys = Object.keys(mergedSections);
+    debug.log('[BlogWriter] Accepting selected diff changes', {
+      selected: Object.entries(selectedIds).filter(([, v]) => v).length,
+      totalSections: mergedKeys.length,
+    });
+
+    setSections(mergedSections);
+    setContinuityRefresh(Date.now());
+    setFlowAnalysisCompleted(false);
+    setFlowAnalysisResults(null);
+
+    // Introduction: only apply if acceptIntro is true
+    const pendingIntro = pendingIntroductionRef.current;
+    if (acceptIntro && pendingIntro !== null && pendingIntro !== introduction) {
+      setIntroduction(pendingIntro);
+      debug.log('[BlogWriter] Introduction updated from selected SEO response', {
+        length: pendingIntro.length,
+      });
+    }
+
+    // Title: always apply if changed (not per-section granularity)
+    const pendingTitle = pendingTitleRef.current;
+    if (pendingTitle && pendingTitle !== selectedTitle) {
+      setSelectedTitle(pendingTitle);
+    }
+
+    if (pendingAppliedRef.current) {
+      setSeoAnalysis((prev: any) => prev ? { ...prev, applied_recommendations: pendingAppliedRef.current } : prev);
+    }
+
+    setSeoRecommendationsApplied(true);
+    try {
+      localStorage.setItem('blog_seo_recommendations_applied', 'true');
+    } catch {}
+
+    if (currentPhase !== 'seo') {
+      navigateToPhase('seo');
+    }
+
+    // Clean up pending and close
+    pendingSectionsRef.current = null;
+    pendingSectionsKeysRef.current = null;
+    pendingIntroductionRef.current = null;
+    pendingTitleRef.current = null;
+    pendingAppliedRef.current = null;
+    originalSectionsRef.current = null;
+    originalIntroductionRef.current = null;
+    setIsDiffModalOpen(false);
+    setDiffPreviewData(null);
+
+    try {
+      blogWriterCache.cacheContent(mergedSections, mergedKeys);
+    } catch (cacheError) {
+      debug.log('[BlogWriter] Failed to cache selected SEO content', cacheError);
+    }
+  }, [setSections, setContinuityRefresh, setFlowAnalysisCompleted, setFlowAnalysisResults, setIntroduction, introduction, setSelectedTitle, selectedTitle, setSeoAnalysis, setSeoRecommendationsApplied, currentPhase, navigateToPhase]);
+
   // Handle SEO analysis completion
   const handleSEOAnalysisComplete = useCallback((analysis: any) => {
     setSeoAnalysis(analysis);
@@ -573,17 +655,11 @@ export const useSEOManager = ({
 
   // Mark SEO phase as completed when recommendations are applied
   useEffect(() => {
-    if (seoRecommendationsApplied && seoAnalysis) {
+    // Only auto-navigate to SEO if user is already on/past the SEO phase
+    if (seoRecommendationsApplied && seoAnalysis && (currentPhase === 'seo' || currentPhase === 'publish')) {
       debug.log('[BlogWriter] SEO recommendations applied, SEO phase marked as complete');
-      
-      // Ensure we stay in SEO phase only once when recommendations are first applied
-      if (currentPhase !== 'seo' && Object.keys(sections).length > 0) {
-        navigateToPhase('seo');
-        debug.log('[BlogWriter] Navigated to SEO phase to show updated content');
-      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seoRecommendationsApplied, seoAnalysis]);
+  }, [seoRecommendationsApplied, seoAnalysis, currentPhase]);
 
   const confirmBlogContent = useCallback(() => {
     debug.log('[BlogWriter] Blog content confirmed by user');
@@ -614,6 +690,7 @@ export const useSEOManager = ({
     diffPreviewData,
     acceptDiffChanges,
     rejectDiffChanges,
+    acceptSelectedDiffChanges,
   };
 };
 

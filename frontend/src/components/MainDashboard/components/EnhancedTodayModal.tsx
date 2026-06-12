@@ -30,6 +30,7 @@ import {
   TrendingFlat as TrendFlatIcon,
   GpsFixed as GapIcon,
   BarChart as VolumeIcon,
+  CalendarMonth as CalendarIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../../../stores/workflowStore';
@@ -85,11 +86,19 @@ const EnhancedTodayModal: React.FC<EnhancedTodayModalProps> = ({
       if (task.action) {
         task.action();
       } else if (task.actionUrl) {
-        navigate(task.actionUrl);
+        const navigationState: Record<string, any> = {
+          workflowTaskId: task.id
+        };
+        if (task.metadata?.source === 'calendar_event') {
+          navigationState.calendarEventId = task.metadata.source_event_id;
+          navigationState.calendarTopic = task.title;
+          navigationState.calendarDescription = task.description;
+        }
+        navigate(task.actionUrl, { state: navigationState });
       }
 
-      // Mark task as completed in workflow
-      if (currentWorkflow) {
+      // Mark task as completed in workflow (skip for calendar tasks — writers handle it after save/publish)
+      if (currentWorkflow && task.metadata?.source !== 'calendar_event') {
         await completeTask(task.id);
       }
     } catch (error) {
@@ -364,6 +373,26 @@ const getTaskStatus = (task: TodayTask) => {
             {pillarTitle} Tasks
           </Typography>
           
+          {pillarTasks.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <CalendarIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
+              <Typography variant="body1" sx={{ color: '#5A5F6A', mb: 1 }}>
+                No content scheduled for this pillar today
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#999', mb: 2 }}>
+                Add content to your Content Calendar to populate workflow tasks
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<CalendarIcon />}
+                onClick={onClose}
+                sx={{ borderColor: pillarColor, color: pillarColor }}
+              >
+                Go to Calendar
+              </Button>
+            </Box>
+          ) : (
           <Stack spacing={2}>
             {pillarTasks.map((task, index) => {
               const status = getTaskStatus(task);
@@ -430,6 +459,28 @@ const getTaskStatus = (task: TodayTask) => {
                         </Box>
                       </Box>
                       
+                      {/* Calendar Event Source Badge */}
+                      {task.metadata?.source === 'calendar_event' && (
+                        <Box sx={{ 
+                          mt: 1.5, 
+                          mb: 1.5,
+                          p: 1.5, 
+                          bgcolor: '#e8f4fd', 
+                          borderRadius: 2,
+                          border: '1px solid #b3d9f2',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 1.5
+                        }}>
+                          <CalendarIcon sx={{ fontSize: 16, color: '#1976d2', mt: 0.3 }} />
+                          <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: '#1565c0' }}>
+                              From your Content Calendar
+                            </Typography>
+                          </Box>
+                        </Box>
+                      )}
+
                       {/* Agent Reasoning Section */}
                       {task.metadata?.source_agent && (
                         <Box sx={{ 
@@ -528,6 +579,7 @@ const getTaskStatus = (task: TodayTask) => {
               );
             })}
           </Stack>
+          )}
         </Box>
 
         {/* Footer Actions */}

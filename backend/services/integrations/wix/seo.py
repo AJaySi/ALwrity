@@ -26,10 +26,6 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
         Wix seoData object with settings.keywords and tags array, or None if empty
     """
     seo_data = {
-        'settings': {
-            'keywords': [],
-            'preventAutoRedirect': False  # Required by Wix API schema
-        },
         'tags': []
     }
     
@@ -77,11 +73,7 @@ def build_seo_data(seo_metadata: Dict[str, Any], default_title: str = None) -> O
         # Keep main keyword + next 4 most important
         keywords_list = keywords_list[:5]
     
-    seo_data['settings']['keywords'] = keywords_list
-    
-    # Validate keywords list is not empty (or ensure at least one keyword exists)
-    if not seo_data['settings']['keywords']:
-        logger.warning("No keywords found in SEO metadata, adding empty keywords array")
+    seo_data['settings'] = {'keywords': keywords_list}
     
     # Build tags array (meta tags, Open Graph, etc.)
     tags_list = []

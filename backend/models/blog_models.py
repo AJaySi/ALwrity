@@ -220,6 +220,8 @@ class BlogSectionRequest(BaseModel):
     tone: Optional[str] = None
     persona: Optional[PersonaInfo] = None
     mode: Optional[str] = "polished"  # 'draft' | 'polished'
+    research: Optional[BlogResearchResponse] = None
+    competitive_advantage: Optional[str] = None
 
 
 class BlogSectionResponse(BaseModel):

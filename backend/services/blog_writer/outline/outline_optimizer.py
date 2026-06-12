@@ -4,7 +4,7 @@ Outline Optimizer - AI-powered outline optimization and rebalancing.
 Optimizes outlines for better flow, SEO, and engagement.
 """
 
-from typing import List
+from typing import List, Dict, Any, Optional
 from loguru import logger
 
 from models.blog_models import BlogOutlineSection
@@ -13,13 +13,14 @@ from models.blog_models import BlogOutlineSection
 class OutlineOptimizer:
     """Optimizes outlines for better flow, SEO, and engagement."""
     
-    async def optimize(self, outline: List[BlogOutlineSection], focus: str, user_id: str) -> List[BlogOutlineSection]:
+    async def optimize(self, outline: List[BlogOutlineSection], focus: str, user_id: str, research_context: str = "") -> List[BlogOutlineSection]:
         """Optimize entire outline for better flow, SEO, and engagement.
         
         Args:
             outline: List of outline sections to optimize
             focus: Optimization focus (e.g., "general optimization")
             user_id: User ID (required for subscription checks and usage tracking)
+            research_context: Optional research context to ground optimization
             
         Returns:
             List of optimized outline sections
@@ -40,19 +41,28 @@ Current Outline:
 Optimization Focus: {focus}
 
 Goals: Improve narrative flow, enhance SEO, increase engagement, ensure comprehensive coverage.
+"""
+        if research_context:
+            optimization_prompt += f"""
+Research Context (use this to ground your optimization in real data):
+{research_context}
 
+Ensure the optimized outline reflects the research insights above — headings should address the key topics, keywords should align with search intent, and sections should cover the most important angles from the research.
+"""
+
+        optimization_prompt += """
 Return JSON format:
-{{
+{
     "outline": [
-        {{
+        {
             "heading": "Optimized heading",
             "subheadings": ["subheading 1", "subheading 2"],
             "key_points": ["point 1", "point 2"],
             "target_words": 300,
             "keywords": ["keyword1", "keyword2"]
-        }}
+        }
     ]
-}}"""
+}"""
         
         try:
             from services.llm_providers.main_text_generation import llm_text_gen
@@ -112,26 +122,34 @@ Return JSON format:
         return outline
     
     def rebalance_word_counts(self, outline: List[BlogOutlineSection], target_words: int) -> List[BlogOutlineSection]:
-        """Rebalance word count distribution across sections."""
+        """Rebalance word count distribution across sections, weighting by source count."""
         total_sections = len(outline)
         if total_sections == 0:
             return outline
         
-        # Calculate target distribution
-        intro_words = int(target_words * 0.12)  # 12% for intro
-        conclusion_words = int(target_words * 0.12)  # 12% for conclusion
+        intro_words = int(target_words * 0.12)
+        conclusion_words = int(target_words * 0.12)
         main_content_words = target_words - intro_words - conclusion_words
         
-        # Distribute main content words across sections
-        words_per_section = main_content_words // total_sections
-        remainder = main_content_words % total_sections
+        # Weight sections by research density (sections with more sources get more words)
+        main_sections = outline[1:-1] if total_sections > 2 else outline
+        source_weights = []
+        for section in main_sections:
+            ref_count = len(getattr(section, 'references', []) or [])
+            source_weights.append(1.0 + ref_count * 0.5)
+        
+        total_weight = sum(source_weights) if source_weights else len(main_sections)
         
         for i, section in enumerate(outline):
-            if i == 0:  # First section (intro)
+            if i == 0 and total_sections > 2:
                 section.target_words = intro_words
-            elif i == total_sections - 1:  # Last section (conclusion)
+            elif i == total_sections - 1 and total_sections > 2:
                 section.target_words = conclusion_words
-            else:  # Main content sections
-                section.target_words = words_per_section + (1 if i < remainder else 0)
+            else:
+                main_idx = i - 1 if total_sections > 2 else i
+                if main_idx < len(source_weights):
+                    section.target_words = int(main_content_words * source_weights[main_idx] / total_weight)
+                else:
+                    section.target_words = main_content_words // max(len(main_sections), 1)
         
         return outline

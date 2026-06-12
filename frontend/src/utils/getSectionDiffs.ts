@@ -5,6 +5,7 @@ export interface DiffSegment {
 }
 
 export interface SectionDiff {
+  id: string;
   heading: string;
   originalContent: string;
   newContent: string;
@@ -105,7 +106,7 @@ export function getSectionDiffs(
     const newContent = newSections[id] || '';
     const segments = computeWordDiff(originalContent, newContent);
     const changed = segments.some(s => s.added || s.removed);
-    return { heading, originalContent, newContent, segments, changed };
+    return { id, heading, originalContent, newContent, segments, changed };
   });
 
   let introductionDiff: DiffSegment[] | null = null;

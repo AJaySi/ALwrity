@@ -171,6 +171,16 @@ def validate_ricos_content(ricos_content: Dict[str, Any]) -> Dict[str, Any]:
     return ricos_content
 
 
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+def _looks_like_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError):
+        return bool(_UUID_RE.match(value))
+
+
 def validate_payload_no_none(obj, path=""):
     """Recursively validate that no None values exist in the payload"""
     if obj is None:
@@ -224,6 +234,7 @@ def create_blog_post(
     """
     # ===== PRE-FLIGHT VALIDATION =====
     errors = []
+    warnings = []
     
     if not member_id:
         errors.append("memberId is required for third-party apps creating blog posts")
@@ -279,6 +290,18 @@ def create_blog_post(
     except Exception:
         pass
     
+    # Add wix-site-id to headers for all API calls (categories, tags, draft post)
+    resolved_site_id = site_id or meta_site_id or os.getenv('WIX_SITE_ID')
+    if resolved_site_id:
+        headers['wix-site-id'] = resolved_site_id
+        logger.info(f"Using wix-site-id: {resolved_site_id[:8]}... (source: {'param' if site_id else 'token' if meta_site_id else 'env'})")
+    else:
+        token_str = str(access_token)
+        if token_str.startswith('IST.'):
+            logger.error("IST. API key requires WIX_SITE_ID environment variable or site_id parameter.")
+        else:
+            logger.warning("No wix-site-id found — API calls may fail if token requires it")
+    
     # Quick permission test (only log failures)
     try:
         test_headers = get_wix_headers(access_token)
@@ -296,14 +319,34 @@ def create_blog_post(
     
     # Convert markdown to Ricos
     # PRIMARY: Use Wix Ricos Documents API for best formatting support (tables, complex markdown, etc.)
-    # FALLBACK: Use custom parser if Wix API fails
+    # FALLBACK: Use custom parser if Wix API fails (no length limit, handles tables natively)
+    has_table = bool(re.search(r'^\|.*\|', content, re.MULTILINE))
+    
+    # Pre-check: Wix Ricos API has a 10,000 character limit for HTML input.
+    # Estimate HTML length from markdown (~1.4x expansion) to avoid silent truncation.
+    # If HTML would exceed limit, skip Wix API and use custom parser.
+    use_wix_api = True
+    MAX_HTML_LIMIT = 9800
+    estimated_html_len = len(content) * 1.4
+    if estimated_html_len > MAX_HTML_LIMIT:
+        logger.warning(f"Content too long for Wix Ricos API (est. HTML: {estimated_html_len:.0f} > {MAX_HTML_LIMIT}) — using custom parser")
+        use_wix_api = False
+    
     ricos_content = None
-    try:
-        logger.info("Converting markdown via Wix Ricos Documents API...")
-        ricos_content = convert_via_wix_api(content, access_token, base_url)
-        logger.info(f"Wix API conversion succeeded: {len(ricos_content.get('nodes', []))} nodes")
-    except Exception as e:
-        logger.warning(f"Wix API conversion failed, falling back to custom parser: {e}")
+    if use_wix_api:
+        try:
+            logger.info("Converting markdown via Wix Ricos Documents API...")
+            ricos_content = convert_via_wix_api(content, access_token, base_url)
+            logger.info(f"Wix API conversion succeeded: {len(ricos_content.get('nodes', []))} nodes")
+        except Exception as e:
+            logger.warning(f"Wix API conversion failed, falling back to custom parser: {e}")
+    
+    # If markdown had tables and Wix API didn't produce TABLE nodes, fall back to custom parser
+    if has_table and ricos_content:
+        node_types = [n.get('type', '') for n in ricos_content.get('nodes', [])]
+        if 'TABLE' not in node_types:
+            logger.info("Markdown had tables but Wix API produced no TABLE nodes — using custom parser for table support")
+            ricos_content = None
     
     if not ricos_content or not isinstance(ricos_content, dict) or 'nodes' not in ricos_content:
         logger.info("Using custom markdown parser for Ricos conversion")
@@ -414,44 +457,50 @@ def create_blog_post(
                 logger.info(f"Cover image imported: {media_id[:16]}...")
             else:
                 logger.warning(f"Cover image import returned no valid media_id (type={type(media_id)}). Continuing without cover image.")
+                warnings.append("Cover image could not be imported — post published without cover image.")
         except Exception as e:
             logger.warning(f"Cover image import failed (non-fatal): {e}. Continuing without cover image.")
+            warnings.append(f"Cover image import failed: {str(e)[:100]}")
     
     # Handle categories - can be either IDs (list of strings) or names (for lookup)
     category_ids_to_use = None
     if category_ids:
         # Check if these are IDs (UUIDs) or names
         if isinstance(category_ids, list) and len(category_ids) > 0:
-            # Assume IDs if first item looks like UUID (has hyphens and is long)
+            # Use proper UUID detection instead of fragile heuristic
             first_item = str(category_ids[0])
-            if '-' in first_item and len(first_item) > 30:
+            if _looks_like_uuid(first_item):
                 category_ids_to_use = category_ids
             elif lookup_categories_func:
                 # These are names, need to lookup/create
                 extra_headers = {}
-                if 'wix-site-id' in headers:
-                    extra_headers['wix-site-id'] = headers['wix-site-id']
+                if resolved_site_id:
+                    extra_headers['wix-site-id'] = resolved_site_id
                 category_ids_to_use = lookup_categories_func(
                     access_token, category_ids, extra_headers if extra_headers else None
                 )
+                if not category_ids_to_use:
+                    warnings.append(f"Categories could not be created ({len(category_ids)} requested) — OAuth app may lack BLOG.CREATE-DRAFT scope.")
     
     # Handle tags - can be either IDs (list of strings) or names (for lookup)
     tag_ids_to_use = None
     if tag_ids:
         # Check if these are IDs (UUIDs) or names
         if isinstance(tag_ids, list) and len(tag_ids) > 0:
-            # Assume IDs if first item looks like UUID (has hyphens and is long)
+            # Use proper UUID detection instead of fragile heuristic
             first_item = str(tag_ids[0])
-            if '-' in first_item and len(first_item) > 30:
+            if _looks_like_uuid(first_item):
                 tag_ids_to_use = tag_ids
             elif lookup_tags_func:
                 # These are names, need to lookup/create
                 extra_headers = {}
-                if 'wix-site-id' in headers:
-                    extra_headers['wix-site-id'] = headers['wix-site-id']
+                if resolved_site_id:
+                    extra_headers['wix-site-id'] = resolved_site_id
                 tag_ids_to_use = lookup_tags_func(
                     access_token, tag_ids, extra_headers if extra_headers else None
                 )
+                if not tag_ids_to_use:
+                    warnings.append(f"Tags could not be created ({len(tag_ids)} requested) — OAuth app may lack BLOG scope for tag management.")
     
     # Add categories if we have IDs (must be non-empty list of strings)
     # CRITICAL: Wix API rejects empty arrays or arrays with None/empty strings
@@ -491,24 +540,12 @@ def create_blog_post(
         logger.debug("No SEO metadata provided to create_blog_post")
     
     try:
-        # Extract wix-site-id from token, parameter, or env var
-        extra_headers = {}
-        wix_site_id = site_id or os.getenv('WIX_SITE_ID')
-        if not wix_site_id:
-            from .utils import extract_meta_from_token
-            meta_info = extract_meta_from_token(access_token)
-            wix_site_id = meta_info.get('metaSiteId')
+        # Use wix-site-id already resolved earlier
+        extra_headers_final = {}
+        wix_site_id = resolved_site_id
         if wix_site_id:
-            extra_headers['wix-site-id'] = wix_site_id
-            logger.info(f"Using wix-site-id: {wix_site_id[:8]}... (source: {'param' if site_id else 'env' if os.getenv('WIX_SITE_ID') else 'token'})")
-        else:
-            token_str = str(access_token)
-            if token_str.startswith('IST.'):
-                logger.error("❌ IST. API key requires WIX_SITE_ID environment variable or site_id parameter. "
-                           "The token's tenant.id is the account ID, not the site ID. "
-                           "Please set WIX_SITE_ID in your .env file to your Wix site's metaSiteId.")
-            else:
-                logger.warning("No wix-site-id found — API calls may fail if token requires it")
+            extra_headers_final['wix-site-id'] = wix_site_id
+            logger.info(f"Using wix-site-id for draft post: {wix_site_id[:8]}...")
     except Exception as e:
         logger.debug(f"Could not extract wix-site-id from token: {e}")
 
@@ -564,12 +601,16 @@ def create_blog_post(
         logger.info(f"📤 Publishing to Wix: title='{blog_data['draftPost'].get('title', '')}', "
                      f"nodes={len(rc.get('nodes', []))}")
 
-        result = blog_service.create_draft_post(access_token, blog_data, extra_headers or None)
+        result = blog_service.create_draft_post(access_token, blog_data, extra_headers_final or None)
 
         draft_post = result.get('draftPost', {})
         post_id = draft_post.get('id', 'N/A')
         wix_logger.log_operation_result("Create Draft Post", True, result)
         logger.success(f"✅ Wix: Blog post created - ID: {post_id}")
+
+        if warnings:
+            result['_warnings'] = warnings
+            logger.info(f"Publish completed with {len(warnings)} warnings: {'; '.join(warnings)}")
 
         return result
     except TypeError as e:

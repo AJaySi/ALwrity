@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { readLSString, readLSBool } from '../utils/persistence';
+import { readLSString } from '../utils/persistence';
 
 export interface PhaseBase {
   id: string;
@@ -71,14 +71,7 @@ export const usePhaseNavigationCore = (
     }
   });
 
-  const [userSelectedPhase, setUserSelectedPhase] = useState<boolean>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        return readLSBool(userSelectedKey, false);
-      }
-    } catch { /* noop */ }
-    return false;
-  });
+  const [userSelectedPhase, setUserSelectedPhase] = useState<boolean>(false);
 
   const lastClickAtRef = useRef<number>(0);
   const oscillationGuardRef = useRef<OscillationState>({
@@ -89,10 +82,6 @@ export const usePhaseNavigationCore = (
   useEffect(() => {
     try { localStorage.setItem(phaseKey, currentPhase); } catch { /* noop */ }
   }, [currentPhase, phaseKey]);
-
-  useEffect(() => {
-    try { localStorage.setItem(userSelectedKey, String(userSelectedPhase)); } catch { /* noop */ }
-  }, [userSelectedPhase, userSelectedKey]);
 
   const navigateToPhase = useCallback((phaseId: string, phases: PhaseBase[]) => {
     const now = Date.now();

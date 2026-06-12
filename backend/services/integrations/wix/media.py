@@ -1,8 +1,25 @@
 from typing import Any, Dict, Optional
 import requests
+from urllib.parse import urlparse
 from loguru import logger
 
 from .retry import wix_api_call_with_retry, WixAPIError
+
+
+def _is_valid_image_url(url: str) -> bool:
+    """Check if a URL looks like a valid, publicly accessible image URL for Wix import."""
+    if not url or not isinstance(url, str):
+        return False
+    url = url.strip()
+    if url.startswith('data:'):
+        return False
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        return False
+    host = parsed.hostname or ''
+    if host in ('localhost', '127.0.0.1', 'example.com') or host.endswith('.example.com'):
+        return False
+    return True
 
 
 class WixMediaService:
@@ -11,7 +28,8 @@ class WixMediaService:
     def __init__(self, base_url: str):
         self.base_url = base_url
 
-    def import_image(self, access_token: str, image_url: str, display_name: str) -> Optional[Dict[str, Any]]:
+    def import_image(self, access_token: str, image_url: str, display_name: str,
+                     client_id: Optional[str] = None, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Import external image to Wix Media Manager.
         
@@ -22,6 +40,8 @@ class WixMediaService:
             access_token: Valid access token
             image_url: URL of the image to import
             display_name: Display name for the image
+            client_id: Optional Wix client ID for wix-client-id header
+            site_id: Optional Wix metaSiteId for wix-site-id header
             
         Returns:
             Media result dict with 'file' key, or None on failure
@@ -29,10 +49,23 @@ class WixMediaService:
         Raises:
             WixAPIError: On non-retryable failure or after retries exhausted
         """
+        if not _is_valid_image_url(image_url):
+            logger.warning(f"Skipping image import — URL not valid for Wix: {image_url[:80]}...")
+            return None
+        
+        logger.info(f"Importing image to Wix: url={image_url[:80]}..., display_name={display_name}")
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
         }
+        if client_id:
+            headers['wix-client-id'] = client_id
+        if not site_id:
+            from .utils import extract_meta_from_token
+            meta_info = extract_meta_from_token(access_token)
+            site_id = meta_info.get('metaSiteId')
+        if site_id:
+            headers['wix-site-id'] = site_id
         payload = {
             'url': image_url,
             'mediaType': 'IMAGE',

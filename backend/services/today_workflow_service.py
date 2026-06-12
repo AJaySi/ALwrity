@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from models.daily_workflow_models import DailyWorkflowPlan, DailyWorkflowTask
 from models.agent_activity_models import AgentAlert
+from models.content_planning import CalendarEvent, ContentStrategy
 from services.agent_activity_service import AgentActivityService, build_agent_event_payload
 from services.llm_providers.main_text_generation import llm_text_gen
 from services.database import get_all_user_ids, get_session_for_user
@@ -16,6 +17,82 @@ from loguru import logger
 PILLAR_IDS = ["plan", "generate", "publish", "analyze", "engage", "remarket"]
 MIN_TASK_EVIDENCE_LINKS = 1
 PLAN_CONTEXT_THRESHOLD = 0.65
+
+# Calendar → Workflow mapping
+CALENDAR_CONTENT_PILLAR = "generate"
+
+_PLATFORM_ACTION_URL = {
+    "linkedin": "/linkedin-writer",
+    "facebook": "/facebook-writer",
+    "twitter": "/twitter-writer",
+    "instagram": "/instagram-writer",
+    "youtube": "/youtube-writer",
+    "tiktok": "/tiktok-writer",
+}
+
+_CONTENT_ACTION_URL = {
+    "blog_post": "/blog-writer",
+    "linkedin_post": "/linkedin-writer",
+    "facebook_post": "/facebook-writer",
+    "seo_page": "/seo-dashboard",
+    "video": "/video-writer",
+}
+
+_CONTENT_ESTIMATED_TIME = {
+    "blog_post": 45, "linkedin_post": 20, "facebook_post": 15,
+    "twitter_post": 10, "instagram_post": 15, "seo_page": 30, "video": 60,
+}
+
+
+def _resolve_calendar_action_url(content_type: str, platform: str) -> Optional[str]:
+    platform_lower = (platform or "").strip().lower()
+    if platform_lower in _PLATFORM_ACTION_URL:
+        return _PLATFORM_ACTION_URL[platform_lower]
+    ct_lower = (content_type or "").strip().lower()
+    if ct_lower in _CONTENT_ACTION_URL:
+        return _CONTENT_ACTION_URL[ct_lower]
+    logger.warning("No action_url mapping for calendar event content_type={!r} platform={!r}", content_type, platform)
+    return None
+
+
+def _resolve_calendar_estimated_time(content_type: str) -> int:
+    return _CONTENT_ESTIMATED_TIME.get((content_type or "").strip().lower(), 30)
+
+
+def _generate_calendar_event_plan(date: str, grounding: Dict[str, Any]) -> Dict[str, Any]:
+    calendar_events = grounding.get("calendar_events_today", [])
+    if not calendar_events:
+        return {"date": date, "tasks": []}
+
+    tasks = []
+    for event in calendar_events:
+        action_url = _resolve_calendar_action_url(
+            event.get("content_type", ""), event.get("platform", "")
+        )
+        if action_url is None:
+            continue
+
+        task = {
+            "pillarId": CALENDAR_CONTENT_PILLAR,
+            "title": (event.get("title") or "Untitled").strip()[:255],
+            "description": (event.get("description") or "").strip(),
+            "priority": "high",
+            "estimatedTime": _resolve_calendar_estimated_time(event.get("content_type", "")),
+            "actionType": "navigate",
+            "actionUrl": action_url,
+            "enabled": True,
+            "dependencies": [],
+            "metadata": {
+                "source": "calendar_event",
+                "source_event_id": event.get("id"),
+                "calendar_title": event.get("title"),
+                "content_type": event.get("content_type"),
+                "platform": event.get("platform"),
+            },
+        }
+        tasks.append(task)
+
+    return {"date": date, "tasks": tasks}
 
 
 def _today_date_str() -> str:
@@ -46,70 +123,6 @@ def _proposal_order_key(proposal: Any) -> tuple:
         str(getattr(proposal, "action_url", "") or "").lower(),
     )
 
-
-def _fallback_tasks(date: str) -> List[Dict[str, Any]]:
-    return [
-        {
-            "pillarId": "plan",
-            "title": "Review today’s plan",
-            "description": "Confirm priorities and adjust the content calendar for today.",
-            "priority": "high",
-            "estimatedTime": 15,
-            "actionType": "navigate",
-            "actionUrl": "/content-planning-dashboard",
-            "enabled": True,
-        },
-        {
-            "pillarId": "generate",
-            "title": "Generate one core content asset",
-            "description": "Create a draft aligned with your current strategy and voice.",
-            "priority": "high",
-            "estimatedTime": 45,
-            "actionType": "navigate",
-            "actionUrl": "/blog-writer",
-            "enabled": True,
-        },
-        {
-            "pillarId": "publish",
-            "title": "Publish or schedule today’s content",
-            "description": "Publish or schedule content across the selected channel(s).",
-            "priority": "medium",
-            "estimatedTime": 20,
-            "actionType": "navigate",
-            "actionUrl": "/content-planning-dashboard",
-            "enabled": True,
-        },
-        {
-            "pillarId": "analyze",
-            "title": "Check semantic health and performance",
-            "description": "Review semantic health metrics and key performance indicators.",
-            "priority": "medium",
-            "estimatedTime": 15,
-            "actionType": "navigate",
-            "actionUrl": "/seo-dashboard",
-            "enabled": True,
-        },
-        {
-            "pillarId": "engage",
-            "title": "Engage on one channel",
-            "description": "Respond to comments and share one post to keep momentum.",
-            "priority": "medium",
-            "estimatedTime": 15,
-            "actionType": "navigate",
-            "actionUrl": "/linkedin-writer",
-            "enabled": True,
-        },
-        {
-            "pillarId": "remarket",
-            "title": "Repurpose and remarket content",
-            "description": "Create one repurposed snippet and distribute it to increase reach.",
-            "priority": "low",
-            "estimatedTime": 20,
-            "actionType": "navigate",
-            "actionUrl": "/facebook-writer",
-            "enabled": True,
-        },
-    ]
 
 
 def _is_coverage_guardrail_enabled(grounding: Dict[str, Any]) -> bool:
@@ -315,9 +328,6 @@ def _ensure_pillar_coverage(
         return sanitized_tasks
 
     covered_pillars = {task["pillarId"] for task in sanitized_tasks}
-    fallback_by_pillar = {
-        task["pillarId"]: task for task in (_sanitize_task(t) for t in _fallback_tasks(date)) if task
-    }
 
     for pillar_id in PILLAR_IDS:
         if pillar_id in covered_pillars:
@@ -326,15 +336,6 @@ def _ensure_pillar_coverage(
         generated = _build_single_task_for_missing_pillar(user_id, date, pillar_id, grounding)
         if generated:
             sanitized_tasks.append(generated)
-            covered_pillars.add(pillar_id)
-            continue
-
-        controlled_fallback = fallback_by_pillar.get(pillar_id)
-        if controlled_fallback:
-            metadata = controlled_fallback.get("metadata") if isinstance(controlled_fallback.get("metadata"), dict) else {}
-            metadata["source"] = "controlled_fallback"
-            controlled_fallback["metadata"] = metadata
-            sanitized_tasks.append(controlled_fallback)
             covered_pillars.add(pillar_id)
 
     return sanitized_tasks
@@ -367,6 +368,28 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
     if "workflow_config" not in onboarding_context:
         onboarding_context["workflow_config"] = {}
 
+    # 3. Fetch calendar events for today
+    calendar_events_today = []
+    try:
+        from datetime import datetime as dt_func, timedelta
+
+        today_start = dt_func.strptime(date, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+        today_end = today_start + timedelta(days=1)
+
+        calendar_events_today = (
+            db.query(CalendarEvent)
+            .join(ContentStrategy, CalendarEvent.strategy_id == ContentStrategy.id)
+            .filter(
+                ContentStrategy.user_id == user_id,
+                CalendarEvent.scheduled_date >= today_start,
+                CalendarEvent.scheduled_date < today_end,
+                CalendarEvent.status.in_(["draft", "scheduled"]),
+            )
+            .all()
+        )
+    except Exception as e:
+        logger.warning(f"Failed to fetch calendar events for grounding context: {e}")
+
     return {
         "recent_agent_alerts": [
             {
@@ -379,7 +402,19 @@ def build_grounding_context(db: Session, user_id: str, date: str) -> Dict[str, A
             for a in unread_agent_alerts
         ],
         "onboarding_data": onboarding_context,
-        "workflow_config": onboarding_context.get("workflow_config", {})
+        "workflow_config": onboarding_context.get("workflow_config", {}),
+        "calendar_events_today": [
+            {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "content_type": event.content_type,
+                "platform": event.platform,
+                "status": event.status,
+                "scheduled_date": event.scheduled_date.isoformat() if event.scheduled_date else None,
+            }
+            for event in calendar_events_today
+        ],
     }
 
 
@@ -406,7 +441,7 @@ async def generate_agent_enhanced_plan(
         orchestrator = await orchestration_service.get_or_create_orchestrator(user_id)
     except Exception as e:
         logger.error(f"Failed to get orchestrator: {e}")
-        return {"date": date, "tasks": _fallback_tasks(date)}
+        return {"date": date, "tasks": []}
 
     # 2. Parallel "Committee" Proposal Gathering
     logger.info(f"Gathering daily task proposals from agent committee for user {user_id}")
@@ -689,21 +724,21 @@ async def generate_agent_enhanced_plan(
             try:
                 result = json.loads(raw)
             except Exception:
-                result = {"date": date, "tasks": _fallback_tasks(date)}
+                result = {"date": date, "tasks": []}
     except Exception as e:
         activity.log_event(
             event_type="warning",
             severity="warning",
             message=str(e)[:2000],
-            payload=build_agent_event_payload(phase="generation", step="llm_failed_fallback", tool_name="llm_text_gen", progress_percent=70, output_summary="LLM generation failed, using fallback tasks", decision_reason="Exception during workflow generation", safe_debug=False, metadata={"fallback": True}),
+            payload=build_agent_event_payload(phase="generation", step="llm_failed", tool_name="llm_text_gen", progress_percent=70, output_summary="LLM generation failed, returning empty tasks", decision_reason="Exception during workflow generation", safe_debug=False, metadata={"error": str(e)[:200]}),
             run_id=run.id,
             agent_type="TodayWorkflowGenerator",
         )
-        result = {"date": date, "tasks": _fallback_tasks(date)}
+        result = {"date": date, "tasks": []}
 
     tasks = result.get("tasks") if isinstance(result, dict) else None
-    if not isinstance(tasks, list) or not tasks:
-        tasks = _fallback_tasks(date)
+    if not isinstance(tasks, list):
+        tasks = []
     result = {
         "date": date,
         "tasks": _ensure_pillar_coverage(tasks, user_id, date, grounding),
@@ -744,23 +779,38 @@ async def get_or_create_daily_workflow_plan(
         return existing, False
 
     grounding = build_grounding_context(db, user_id, date_str)
-    plan_data = await generate_agent_enhanced_plan(db, user_id, date_str, grounding=grounding)
+
+    # Step 1: Calendar events → generate pillar (SSOT for content creation)
+    calendar_plan = _generate_calendar_event_plan(date_str, grounding)
+    calendar_task_titles = {t.get("title") for t in calendar_plan.get("tasks", []) if t.get("title")}
+
+    # Step 2: Agent committee → proposals for plan + analyze + engage + publish + remarket
+    agent_plan_data = await generate_agent_enhanced_plan(db, user_id, date_str, grounding=grounding, strict_contextuality=False)
+
+    # Filter agent proposals: keep only non-generate pillars, dedup by title
+    committee_pillars = {"plan", "analyze", "engage", "publish", "remarket"}
+    filtered_agent_tasks = [
+        t for t in agent_plan_data.get("tasks", [])
+        if t.get("pillarId") in committee_pillars
+        and t.get("title") not in calendar_task_titles
+    ]
+
+    # Step 3: Merge — calendar wins for generate, agents fill other pillars
+    all_tasks = calendar_plan.get("tasks", []) + filtered_agent_tasks
+    calendar_source = bool(calendar_plan.get("tasks"))
+
+    # Step 4: Pillar coverage — LLM backfill for any pillar still uncovered
+    all_tasks = _ensure_pillar_coverage(all_tasks, user_id, date_str, grounding)
+
+    # Step 5: Validation
+    plan_data = {**agent_plan_data, "tasks": all_tasks}
     validation = validate_plan_contextuality(plan_data, grounding)
 
-    if not validation.get("is_contextual"):
-        logger.info("Plan contextuality below threshold for user {}. Running strict regeneration.", user_id)
-        regenerated_plan = await generate_agent_enhanced_plan(
-            db,
-            user_id,
-            date_str,
-            grounding=grounding,
-            strict_contextuality=True,
-        )
-        regenerated_validation = validate_plan_contextuality(regenerated_plan, grounding)
-        plan_data = regenerated_plan
-        validation = regenerated_validation
-
-    plan_data["quality_status"] = "contextual" if validation.get("is_contextual") else "low_context"
+    plan_data["quality_status"] = (
+        "calendar_driven" if calendar_source
+        else "contextual" if validation.get("is_contextual")
+        else "low_context"
+    )
     plan_data["contextuality_validation"] = validation
     tasks = plan_data.get("tasks", [])
 
@@ -769,9 +819,9 @@ async def get_or_create_daily_workflow_plan(
             user_id=user_id,
             date=date_str,
             source=creation_source,
-            generation_mode=_derive_generation_mode(plan_data),
+            generation_mode="calendar_driven" if calendar_source else _derive_generation_mode(plan_data),
             committee_agent_count=_count_committee_agents(tasks),
-            fallback_used=_plan_uses_fallback(tasks),
+            fallback_used=False,
             plan_json=plan_data,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -824,15 +874,17 @@ def _derive_generation_mode(plan_data: Dict[str, Any]) -> str:
         metadata = metadata if isinstance(metadata, dict) else {}
         source_agent = str(metadata.get("source_agent") or "").strip()
         source = str(metadata.get("source") or "").strip()
+        if source == "calendar_event":
+            return "calendar_driven"
         if source_agent:
             source_modes.add("agent_committee")
-        elif source in {"controlled_fallback", "llm_pillar_backfill"}:
+        elif source in {"llm_pillar_backfill"}:
             source_modes.add(source)
 
+    if "calendar_driven" in source_modes:
+        return "calendar_driven"
     if "agent_committee" in source_modes:
         return "agent_committee"
-    if "controlled_fallback" in source_modes:
-        return "controlled_fallback"
     if "llm_pillar_backfill" in source_modes:
         return "llm_pillar_backfill"
     return "llm_generation"
@@ -929,4 +981,28 @@ def update_task_status(
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    # If a calendar-sourced task is completed, mark the calendar event as published
+    if status == "completed" and task.metadata_json:
+        source = task.metadata_json.get("source")
+        source_event_id = task.metadata_json.get("source_event_id")
+        if source == "calendar_event" and source_event_id:
+            try:
+                cal_event = (
+                    db.query(CalendarEvent)
+                    .join(ContentStrategy, CalendarEvent.strategy_id == ContentStrategy.id)
+                    .filter(
+                        CalendarEvent.id == source_event_id,
+                        ContentStrategy.user_id == user_id,
+                    )
+                    .first()
+                )
+                if cal_event and cal_event.status != "published":
+                    cal_event.status = "published"
+                    cal_event.updated_at = datetime.utcnow()
+                    db.add(cal_event)
+                    db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to update calendar event {source_event_id} on task completion: {e}")
+
     return task

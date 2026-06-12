@@ -148,10 +148,8 @@ class WixService:
         token_str = normalize_token_string(access_token)
         if not token_str:
             return {"_no_site": True, "error": "Invalid access token format"}
-        meta = extract_meta_from_token(token_str)
-        meta_site_id = meta.get("metaSiteId")
         try:
-            return self.auth_service.get_site_info(token_str, meta_site_id=meta_site_id)
+            return self.auth_service.get_site_info(token_str)
         except requests.RequestException as e:
             logger.warning(f"Failed to get site info: {e}")
             return {"_no_site": True, "error": str(e)}
@@ -181,26 +179,34 @@ class WixService:
     def _normalize_token_string(self, access_token: Any) -> Optional[str]:
         return normalize_token_string(access_token)
     
-    def check_blog_permissions(self, access_token: str) -> Dict[str, Any]:
+    def check_blog_permissions(self, access_token: str, site_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Check if the app has required blog permissions
         
         Args:
             access_token: Valid access token
+            site_id: Optional Wix metaSiteId for multi-site token context
             
         Returns:
             Permission status
         """
+        extra_headers = {}
+        if not site_id:
+            meta_info = extract_meta_from_token(access_token)
+            site_id = meta_info.get('metaSiteId')
+        if site_id:
+            extra_headers['wix-site-id'] = site_id
+        
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
             'wix-client-id': self.client_id or ''
         }
+        headers.update(extra_headers)
         
         try:
-            # Try to list blog categories to check permissions
             response = requests.get(
-                f"{self.base_url}/blog/v1/categories",
+                f"{self.base_url}/blog/v3/categories",
                 headers=headers
             )
             
@@ -215,13 +221,23 @@ class WixService:
                     'has_permissions': False,
                     'can_create_posts': False,
                     'can_publish': False,
-                    'error': 'Insufficient permissions'
+                    'error': 'Insufficient permissions — OAuth app lacks blog scopes'
+                }
+            elif response.status_code == 404:
+                return {
+                    'has_permissions': False,
+                    'error': 'Blog feature not available or site ID not recognized'
+                }
+            elif response.status_code == 401:
+                return {
+                    'has_permissions': False,
+                    'error': 'Token expired or invalid'
                 }
             else:
                 response.raise_for_status()
                 
         except requests.RequestException as e:
-            logger.error(f"Failed to check blog permissions: {e}")
+            logger.warning(f"Failed to check blog permissions: {e}")
             return {
                 'has_permissions': False,
                 'error': str(e)
@@ -243,7 +259,8 @@ class WixService:
             result = self.media_service.import_image(
                 access_token,
                 image_url,
-                display_name or f'Imported Image {datetime.now().strftime("%Y%m%d_%H%M%S")}'
+                display_name or f'Imported Image {datetime.now().strftime("%Y%m%d_%H%M%S")}',
+                client_id=self.client_id,
             )
             if result and isinstance(result, dict) and 'file' in result:
                 media_id = result['file'].get('id')
@@ -431,8 +448,8 @@ class WixService:
             
             return category_ids
             
-        except requests.RequestException as e:
-            logger.error(f"Failed to lookup/create categories: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to lookup/create categories (will skip): {e}")
             return []
     
     def lookup_or_create_tags(self, access_token: str, tag_names: List[str],
@@ -497,8 +514,8 @@ class WixService:
             
             return tag_ids
             
-        except requests.RequestException as e:
-            logger.error(f"Failed to lookup/create tags: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to lookup/create tags (will skip): {e}")
             return []
 
     def publish_draft_post(self, access_token: str, draft_post_id: str) -> Dict[str, Any]:

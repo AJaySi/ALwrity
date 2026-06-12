@@ -1,6 +1,7 @@
 """Authentication middleware for ALwrity backend."""
 
 import os
+import base64
 import inspect
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, Depends, status, Request, Query
@@ -61,12 +62,23 @@ class ClerkAuthMiddleware:
                 if self.clerk_secret_key and self.clerk_publishable_key:
                     # Extract instance from publishable key for JWKS URL and issuer validation
                     # Format: pk_test_<instance>.<domain> or pk_live_<instance>.<domain>
+                    # Production keys may have base64-encoded instance IDs
                     parts = self.clerk_publishable_key.replace('pk_test_', '').replace('pk_live_', '').split('.')
                     if len(parts) >= 1:
-                        # Extract the domain from publishable key or use default
-                        # Clerk URLs are typically: https://<instance>.clerk.accounts.dev
-                        instance = parts[0]
-                        issuer_url = f"https://{instance}.clerk.accounts.dev"
+                        # Attempt base64 decode (production Clerk keys encode the instance)
+                        raw_instance = parts[0]
+                        try:
+                            padded = raw_instance + '=' * (4 - len(raw_instance) % 4) if len(raw_instance) % 4 else raw_instance
+                            decoded_bytes = base64.b64decode(padded)
+                            instance = decoded_bytes.decode('utf-8').rstrip('\x00 $\n\r\t')
+                        except Exception:
+                            instance = raw_instance
+
+                        # If decoded value contains a dot, it's already a full domain path
+                        if '.' in instance:
+                            issuer_url = f"https://{instance}"
+                        else:
+                            issuer_url = f"https://{instance}.clerk.accounts.dev"
                         jwks_url = f"{issuer_url}/.well-known/jwks.json"
 
                         # Create Clerk configuration with JWKS URL
@@ -288,7 +300,7 @@ async def get_current_user(
                       user_agent = request.headers.get('user-agent', 'unknown')
                  
                  if hasattr(request.headers, 'items'):
-                      all_headers = {k: v[:50] if len(v) > 50 else v for k, v in request.headers.items()}
+                       all_headers = {k: (v[:50] if len(v) > 50 else v) for k, v in request.headers.items() if k.lower() != 'authorization'}
         except:
              pass
              
@@ -300,7 +312,6 @@ async def get_current_user(
                 f"🔒 AUTHENTICATION ERROR: No credentials provided for authenticated endpoint: {endpoint_path} "
                 f"(client_ip={request.client.host if request.client else 'unknown'}, "
                 f"auth_header_received={'YES' if auth_header else 'NO'}, "
-                f"auth_header_value={auth_header[:50] + '...' if auth_header and len(auth_header) > 50 else (auth_header or 'None')}, "
                 f"all_headers={list(all_headers.keys())}, "
                 f"user_agent={user_agent})"
             )

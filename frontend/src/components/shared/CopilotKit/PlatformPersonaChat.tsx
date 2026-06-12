@@ -198,8 +198,8 @@ export const PlatformPersonaChat: React.FC<PlatformPersonaChatProps> = ({
     return `${systemMessage}\n\nCurrent Context: ${contextString}`;
   }, [systemMessage]);
 
-  // Loading state
-  if (loading) {
+  // Loading state — only block if persona data is not yet available
+  if (loading && !corePersona) {
     return (
       <div className="flex items-center justify-center p-6 border rounded-lg">
         <div className="text-center">
@@ -210,8 +210,8 @@ export const PlatformPersonaChat: React.FC<PlatformPersonaChatProps> = ({
     );
   }
 
-  // Error state
-  if (error) {
+  // Error state — only block if persona data is missing; with defaults, continue normally
+  if (error && !corePersona) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <div className="flex items-center">

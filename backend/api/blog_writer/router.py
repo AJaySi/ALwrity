@@ -71,6 +71,7 @@ class SEOApplyRecommendationsRequest(BaseModel):
     outline: List[Dict[str, Any]] = Field(default_factory=list, description="Outline structure for context")
     research: Dict[str, Any] = Field(default_factory=dict, description="Research data used for the blog")
     recommendations: List[RecommendationItem] = Field(..., description="Actionable recommendations to apply")
+    competitive_advantage: str | None = Field(default=None, description="Selected competitive advantage for emphasis")
     persona: Dict[str, Any] = Field(default_factory=dict, description="Persona settings if available")
     tone: str | None = Field(default=None, description="Desired tone override")
     audience: str | None = Field(default=None, description="Target audience override")
@@ -688,9 +689,11 @@ async def get_section_continuity(section_id: str) -> Dict[str, Any]:
 
 
 @router.post("/flow-analysis/basic")
-async def analyze_flow_basic(request: Dict[str, Any]) -> Dict[str, Any]:
+async def analyze_flow_basic(request: Dict[str, Any], current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """Analyze flow metrics for entire blog using single AI call (cost-effective)."""
     try:
+        user_id = str(current_user.get('id', '')) if current_user else None
+        request['user_id'] = user_id
         result = await service.analyze_flow_basic(request)
         return result
     except Exception as e:
@@ -699,9 +702,11 @@ async def analyze_flow_basic(request: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.post("/flow-analysis/advanced")
-async def analyze_flow_advanced(request: Dict[str, Any]) -> Dict[str, Any]:
+async def analyze_flow_advanced(request: Dict[str, Any], current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """Analyze flow metrics for each section individually (detailed but expensive)."""
     try:
+        user_id = str(current_user.get('id', '')) if current_user else None
+        request['user_id'] = user_id
         result = await service.analyze_flow_advanced(request)
         return result
     except Exception as e:
@@ -808,9 +813,12 @@ async def seo_metadata(
 
 
 # Publishing Endpoints
+# NOTE: Real publishing bypasses this stub. Frontend calls platform-specific
+# endpoints directly: /api/wix/publish and /api/wordpress/publish.
+# This endpoint is kept as a placeholder for the future unified publish flow.
 @router.post("/publish", response_model=BlogPublishResponse)
 async def publish(request: BlogPublishRequest) -> BlogPublishResponse:
-    """Publish the blog post to the specified platform."""
+    """Publish the blog post to the specified platform. [STUB - see note above]"""
     try:
         return await service.publish(request)
     except Exception as e:
@@ -1209,6 +1217,9 @@ async def generate_introductions(
 class SaveCompleteBlogAssetRequest(BaseModel):
     title: str
     content: str
+    platform: Optional[str] = None
+    post_url: Optional[str] = None
+    post_id: Optional[str] = None
     seo_title: Optional[str] = None
     meta_description: Optional[str] = None
     focus_keyword: Optional[str] = None
@@ -1233,6 +1244,19 @@ async def save_complete_blog_asset(
 
         full_content = f"# {request.title}\n\n{request.content}"
 
+        asset_metadata = {
+            "status": "published",
+            "focus_keyword": request.focus_keyword,
+            "categories": request.categories,
+            "word_count": len(full_content.split()),
+        }
+        if request.platform:
+            asset_metadata["platform"] = request.platform
+        if request.post_url:
+            asset_metadata["post_url"] = request.post_url
+        if request.post_id:
+            asset_metadata["post_id"] = request.post_id
+
         asset_id = save_and_track_text_content(
             db=db,
             user_id=user_id,
@@ -1242,12 +1266,7 @@ async def save_complete_blog_asset(
             description=request.meta_description or f"Complete published blog post: {request.title}",
             prompt=f"SEO Title: {request.seo_title or request.title}\nFocus Keyword: {request.focus_keyword or ''}",
             tags=["blog", "published"] + [t for t in (request.tags or []) if t],
-            asset_metadata={
-                "status": "published",
-                "focus_keyword": request.focus_keyword,
-                "categories": request.categories,
-                "word_count": len(full_content.split()),
-            },
+            asset_metadata=asset_metadata,
             subdirectory="published",
             file_extension=".md"
         )
@@ -1263,6 +1282,57 @@ async def save_complete_blog_asset(
         raise
     except Exception as e:
         logger.error(f"Failed to save complete blog asset: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/publish-history")
+async def get_publish_history(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Get publish history for the current user from the asset library."""
+    try:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        user_id = str(current_user.get('id', ''))
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user ID in authentication token")
+
+        svc = ContentAssetService(db)
+        assets, total = svc.get_user_assets(
+            user_id=user_id,
+            tags=["published"],
+            source_module=AssetSource.BLOG_WRITER,
+            sort_by="created_at",
+            sort_order="desc",
+            limit=limit,
+            offset=offset,
+        )
+
+        entries = []
+        for a in assets:
+            meta = a.asset_metadata or {}
+            entries.append({
+                "asset_id": a.id,
+                "title": a.title,
+                "platform": meta.get("platform", "unknown"),
+                "post_url": meta.get("post_url"),
+                "post_id": meta.get("post_id"),
+                "word_count": meta.get("word_count", 0),
+                "focus_keyword": meta.get("focus_keyword"),
+                "categories": meta.get("categories", []),
+                "published_at": a.created_at.isoformat() if a.created_at else None,
+            })
+
+        return {"success": True, "entries": entries, "total": total}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get publish history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

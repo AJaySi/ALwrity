@@ -129,9 +129,9 @@ class BlogWriterService:
         """Enhance a section using AI."""
         return await self.outline_service.enhance_section_with_ai(section, focus)
     
-    async def optimize_outline_with_ai(self, outline: List[BlogOutlineSection], focus: str = "general optimization") -> List[BlogOutlineSection]:
+    async def optimize_outline_with_ai(self, outline: List[BlogOutlineSection], focus: str = "general optimization", research_context: str = "") -> List[BlogOutlineSection]:
         """Optimize entire outline for better flow and SEO."""
-        return await self.outline_service.optimize_outline_with_ai(outline, focus)
+        return await self.outline_service.optimize_outline_with_ai(outline, focus, research_context=research_context)
     
     def rebalance_word_counts(self, outline: List[BlogOutlineSection], target_words: int) -> List[BlogOutlineSection]:
         """Rebalance word count distribution across sections."""
@@ -140,14 +140,15 @@ class BlogWriterService:
     # Content Generation Methods
     async def generate_section(self, request: BlogSectionRequest, user_id: str = None) -> BlogSectionResponse:
         """Generate section content from outline."""
-        # Compose research-lite object with minimal continuity summary if available
-        research_ctx: Any = getattr(request, 'research', None)
+        research_ctx = request.research
+        competitive_advantage = request.competitive_advantage
         try:
             ai_result = await self.content_generator.generate_section(
                 section=request.section,
                 research=research_ctx,
                 mode=(request.mode or "polished"),
-                user_id=user_id
+                user_id=user_id,
+                competitive_advantage=competitive_advantage,
             )
             markdown = ai_result.get('content') or ai_result.get('markdown') or ''
             citations = []
@@ -339,8 +340,19 @@ class BlogWriterService:
             )
 
     async def publish(self, request: BlogPublishRequest) -> BlogPublishResponse:
-        """Publish content to specified platform."""
-        # TODO: Move to content module
+        """Publish content to specified platform.
+        
+        NOTE: This endpoint is a STUB / placeholder. The actual publish flow
+        bypasses this method entirely — the frontend calls platform-specific
+        endpoints directly:
+          - Wix:  POST /api/wix/publish  (wix_routes.py)
+          - WordPress: POST /api/wordpress/publish  (routers/wordpress.py)
+        
+        TODO: Either remove this stub or wire it as a unified dispatcher that
+        routes to the correct platform service. Keep alive until the new
+        unified publish flow (pre-publish checklist + schedule + history) is
+        built and this becomes the single entry point for all publishing.
+        """
         return BlogPublishResponse(success=True, platform=request.platform, url="https://example.com/post")
 
     async def generate_medium_blog_with_progress(self, req: MediumBlogGenerateRequest, task_id: str, user_id: str, db: Session = None) -> MediumBlogGenerateResult:
@@ -359,9 +371,11 @@ class BlogWriterService:
     async def analyze_flow_basic(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze flow metrics for entire blog using single AI call (cost-effective)."""
         try:
+            import asyncio
             # Extract blog content from request
             sections = request.get("sections", [])
             title = request.get("title", "Untitled Blog")
+            user_id = request.get("user_id")
             
             if not sections:
                 return {"error": "No sections provided for analysis"}
@@ -397,8 +411,7 @@ class BlogWriterService:
             Provide detailed analysis with specific, actionable suggestions for improvement.
             """
             
-            # Use Gemini for structured analysis
-            from services.llm_providers.gemini_provider import gemini_structured_json_response
+            from services.llm_providers.main_text_generation import llm_text_gen
             
             schema = {
                 "type": "object",
@@ -440,12 +453,17 @@ class BlogWriterService:
                 "required": ["overall_flow_score", "overall_consistency_score", "overall_progression_score", "overall_coherence_score", "sections", "overall_suggestions"]
             }
             
-            result = gemini_structured_json_response(
-                prompt=analysis_prompt,
-                schema=schema,
-                temperature=0.3,
-                max_tokens=4096,
-                system_prompt=system_prompt
+            result = await asyncio.to_thread(
+                llm_text_gen,
+                analysis_prompt,
+                system_prompt,
+                schema,
+                user_id,
+                None,   # preferred_hf_models
+                None,   # preferred_provider
+                None,   # flow_type
+                4096,   # max_tokens
+                0.3     # temperature
             )
             
             if result and not result.get("error"):
@@ -466,6 +484,7 @@ class BlogWriterService:
             # Use the existing enhanced content generator for detailed analysis
             sections = request.get("sections", [])
             title = request.get("title", "Untitled Blog")
+            user_id = request.get("user_id")
             
             if not sections:
                 return {"error": "No sections provided for analysis"}
@@ -485,7 +504,8 @@ class BlogWriterService:
                 flow_metrics = self.content_generator.flow.assess_flow(
                     prev_section_content, 
                     section_content, 
-                    use_llm=True
+                    use_llm=True,
+                    user_id=user_id
                 )
                 
                 results.append({

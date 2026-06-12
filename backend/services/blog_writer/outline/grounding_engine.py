@@ -241,9 +241,23 @@ class GroundingContextEngine:
             else:
                 authority_distribution['low'] += 1
         
+        # Extract actual high-authority sources from chunks
+        high_authority_sources = []
+        for chunk in grounding_metadata.grounding_chunks:
+            chunk_authority = self._calculate_chunk_authority(chunk)
+            if chunk_authority >= 0.8:
+                high_authority_sources.append({
+                    'title': chunk.title if chunk.title else 'Unknown Source',
+                    'url': chunk.url if chunk.url else '',
+                    'score': round(chunk_authority, 3)
+                })
+        # Sort by authority score descending, keep top 5
+        high_authority_sources.sort(key=lambda x: x['score'], reverse=True)
+        high_authority_sources = high_authority_sources[:5]
+
         return {
             'average_authority_score': sum(authority_scores) / len(authority_scores) if authority_scores else 0.0,
-            'high_authority_sources': [{'title': 'High Authority Source', 'url': 'example.com', 'score': 0.9}],  # Placeholder
+            'high_authority_sources': high_authority_sources,
             'authority_distribution': dict(authority_distribution)
         }
     

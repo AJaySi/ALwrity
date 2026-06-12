@@ -91,6 +91,8 @@ markdown_extensions:
 
 # Extra configuration
 extra:
+  verification:
+    google: ROJvq1TNFtABjd8t35PZLg1FYAJoUgLHl0bn4roXkFA
   generator: false
   social:
     - icon: fontawesome/brands/github

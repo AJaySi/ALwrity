@@ -6,6 +6,7 @@ interface SectionGeneratorProps {
   outline: BlogOutlineSection[];
   research: BlogResearchResponse | null;
   genMode: 'draft' | 'polished';
+  competitiveAdvantage?: string;
   onSectionGenerated: (sectionId: string, markdown: string) => void;
   onContinuityRefresh: () => void;
   navigateToPhase?: (phase: string) => void;
@@ -17,6 +18,7 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
   outline,
   research,
   genMode,
+  competitiveAdvantage,
   onSectionGenerated,
   onContinuityRefresh,
   navigateToPhase
@@ -33,7 +35,7 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
       navigateToPhase?.('content');
       
       try {
-        const res = await blogWriterApi.generateSection({ section, mode: genMode });
+        const res = await blogWriterApi.generateSection({ section, mode: genMode, research: research || undefined, competitive_advantage: competitiveAdvantage });
         if (res?.markdown) {
           onSectionGenerated(sectionId, res.markdown);
           onContinuityRefresh();
@@ -107,7 +109,7 @@ export const SectionGenerator: React.FC<SectionGeneratorProps> = ({
       navigateToPhase?.('content');
       
       for (const s of outline) {
-        const res = await blogWriterApi.generateSection({ section: s, mode: genMode });
+        const res = await blogWriterApi.generateSection({ section: s, mode: genMode, research: research || undefined, competitive_advantage: competitiveAdvantage });
         onSectionGenerated(s.id, res.markdown);
         onContinuityRefresh();
       }

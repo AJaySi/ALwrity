@@ -1,6 +1,21 @@
 import axios from 'axios';
 import { getApiBaseUrl } from '../utils/apiUrl';
 
+// Harden axios against prototype pollution gadgets for config properties
+// not present in default config.  Setting explicit own properties on the
+// defaults object forces mergeConfig to copy them into every request config,
+// so they shadow any polluted value on Object.prototype.
+//
+// See https://github.com/AJaySi/ALwrity/security/dependabot/120
+Object.assign(axios.defaults, {
+  proxy: false,
+  socketPath: '',
+  transport: null,
+  beforeRedirect: null,
+  httpAgent: null,
+  httpsAgent: null,
+});
+
 const sanitizeUrlForLogging = (url: string | undefined): string => {
   if (!url) return '';
   try {

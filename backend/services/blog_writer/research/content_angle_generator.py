@@ -17,7 +17,7 @@ class ContentAngleGenerator:
         Analyze the following research content and create strategic content angles for: {topic} in {industry}
         
         Research Content:
-        {content[:3000]}
+        {content[:8000]}
         
         Create 7 compelling content angles that:
         1. Leverage current trends and data from the research

@@ -36,7 +36,7 @@ import {
   Tag as TagIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { apiClient, triggerSubscriptionError } from '../../api/client';
+import { aiApiClient, triggerSubscriptionError } from '../../api/client';
 
 // Import metadata display components
 import { CoreMetadataTab } from './SEO/MetadataDisplay/CoreMetadataTab';
@@ -51,8 +51,9 @@ interface SEOMetadataModalProps {
   blogContent: string;
   blogTitle: string;
   researchData: any;
-  outline?: any[]; // Add outline structure
-  seoAnalysis?: any; // Add SEO analysis results
+  outline?: any[];
+  seoAnalysis?: any;
+  sectionImages?: Record<string, string>;
   onMetadataGenerated: (metadata: any) => void;
 }
 
@@ -102,6 +103,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
   researchData,
   outline,
   seoAnalysis,
+  sectionImages,
   onMetadataGenerated
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -166,6 +168,55 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       const cacheKey = getMetadataCacheKey(hash, blogTitle);
       console.log('🔍 Checking SEO metadata cache', { cacheKey, hasHash: !!hash, forceRefresh });
 
+      // Define early so both cache and API paths can use it
+      const sanitizeMetadata = (data: any) => {
+        const safe = { ...data };
+        safe.seo_title = safe.seo_title ?? '';
+        safe.meta_description = safe.meta_description ?? '';
+        safe.url_slug = safe.url_slug ?? '';
+        safe.focus_keyword = safe.focus_keyword ?? '';
+        safe.reading_time = typeof safe.reading_time === 'number' ? safe.reading_time : 0;
+        safe.blog_tags = Array.isArray(safe.blog_tags) ? safe.blog_tags : [];
+        safe.blog_categories = Array.isArray(safe.blog_categories) ? safe.blog_categories : [];
+        safe.social_hashtags = Array.isArray(safe.social_hashtags) ? safe.social_hashtags : [];
+        safe.open_graph = {
+          ...(safe.open_graph || {}),
+          title: safe.open_graph?.title ?? '',
+          description: safe.open_graph?.description ?? '',
+          image: safe.open_graph?.image ?? '',
+          url: safe.open_graph?.url ?? ''
+        };
+        safe.twitter_card = {
+          ...(safe.twitter_card || {}),
+          title: safe.twitter_card?.title ?? '',
+          description: safe.twitter_card?.description ?? '',
+          image: safe.twitter_card?.image ?? '',
+          site: safe.twitter_card?.site ?? ''
+        };
+        safe.json_ld_schema = { ...(safe.json_ld_schema || {}) };
+
+        const firstSectionImage = (() => {
+          try {
+            const images = sectionImages && Object.keys(sectionImages).length > 0
+              ? sectionImages
+              : JSON.parse(localStorage.getItem('blog_section_images') || '{}');
+            const values = Object.values(images).filter(Boolean);
+            return values.length > 0 ? String(values[0]) : null;
+          } catch { return null; }
+        })();
+        if (firstSectionImage) {
+          const isPlaceholder = (url: string) => !url || url === 'https://example.com/image.jpg' || url.includes('example.com') || url.includes('placeholder');
+          if (isPlaceholder(safe.open_graph?.image || '')) {
+            safe.open_graph = { ...safe.open_graph, image: firstSectionImage };
+          }
+          if (isPlaceholder(safe.twitter_card?.image || '')) {
+            safe.twitter_card = { ...safe.twitter_card, image: firstSectionImage };
+          }
+        }
+
+        return safe;
+      };
+
       // Check cache first (unless force refresh)
       if (!forceRefresh && typeof window !== 'undefined') {
         const cached = window.localStorage.getItem(cacheKey);
@@ -175,12 +226,13 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
             // Validate cached data has required fields
             if (parsed && parsed.success !== undefined) {
               console.log('✅ Using cached SEO metadata', { cacheKey, success: parsed.success });
-              setMetadataResult(parsed);
-              setEditableMetadata(parsed);
+              const sanitized = sanitizeMetadata(parsed);
+              setMetadataResult(sanitized);
+              setEditableMetadata(sanitized);
               setIsGenerating(false);
               // Notify parent that metadata is available
               if (onMetadataGenerated) {
-                onMetadataGenerated(parsed);
+                onMetadataGenerated(sanitized);
               }
               return;
             } else {
@@ -201,7 +253,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       }
 
       // Make API call to generate metadata
-      const response = await apiClient.post('/api/blog/seo/metadata', {
+      const response = await aiApiClient.post('/api/blog/seo/metadata', {
         content: blogContent,
         title: blogTitle,
         research_data: researchData,
@@ -267,33 +319,6 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
         }
       }
 
-      const sanitizeMetadata = (data: any) => {
-        const safe = { ...data };
-        safe.seo_title = safe.seo_title ?? '';
-        safe.meta_description = safe.meta_description ?? '';
-        safe.url_slug = safe.url_slug ?? '';
-        safe.focus_keyword = safe.focus_keyword ?? '';
-        safe.reading_time = typeof safe.reading_time === 'number' ? safe.reading_time : 0;
-        safe.blog_tags = Array.isArray(safe.blog_tags) ? safe.blog_tags : [];
-        safe.blog_categories = Array.isArray(safe.blog_categories) ? safe.blog_categories : [];
-        safe.social_hashtags = Array.isArray(safe.social_hashtags) ? safe.social_hashtags : [];
-        safe.open_graph = {
-          ...(safe.open_graph || {}),
-          title: safe.open_graph?.title ?? '',
-          description: safe.open_graph?.description ?? '',
-          image: safe.open_graph?.image ?? '',
-          url: safe.open_graph?.url ?? ''
-        };
-        safe.twitter_card = {
-          ...(safe.twitter_card || {}),
-          title: safe.twitter_card?.title ?? '',
-          description: safe.twitter_card?.description ?? '',
-          image: safe.twitter_card?.image ?? '',
-          site: safe.twitter_card?.site ?? ''
-        };
-        safe.json_ld_schema = { ...(safe.json_ld_schema || {}) };
-        return safe;
-      };
       const sanitized = sanitizeMetadata(result);
       setMetadataResult(sanitized);
       setEditableMetadata(sanitized);
@@ -363,6 +388,8 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       
       // For non-subscription errors, show local error message
       setError(err instanceof Error ? err.message : 'Failed to generate SEO metadata');
+      setIsGenerating(false);
+    } finally {
       setIsGenerating(false);
     }
   }, [blogContent, blogTitle, researchData, outline, seoAnalysis, contentHash, onMetadataGenerated]);
@@ -490,7 +517,7 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <TagIcon sx={{ color: 'primary.main' }} />
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#202124' }}>
             SEO Metadata Generator
           </Typography>
           {metadataResult && (
@@ -617,6 +644,14 @@ export const SEOMetadataModal: React.FC<SEOMetadataModalProps> = ({
 
       {metadataResult && (
         <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(0,0,0,0.1)' }}>
+          <Button
+            variant="outlined"
+            onClick={() => generateMetadata(true)}
+            startIcon={<RefreshIcon />}
+            sx={{ mr: 'auto' }}
+          >
+            Regenerate
+          </Button>
           <Button onClick={onClose} color="inherit">
             Cancel
           </Button>

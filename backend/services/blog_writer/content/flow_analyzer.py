@@ -7,10 +7,9 @@ Uses Gemini API for intelligent analysis while minimizing API calls through cach
 from typing import Dict, Optional
 from loguru import logger
 import hashlib
-import json
 
-# Import the common gemini provider
-from services.llm_providers.gemini_provider import gemini_structured_json_response
+# Provider-agnostic LLM dispatcher (respects GPT_PROVIDER env var)
+from services.llm_providers.main_text_generation import llm_text_gen
 
 
 class FlowAnalyzer:
@@ -21,7 +20,7 @@ class FlowAnalyzer:
         self._rule_cache: Dict[str, Dict[str, float]] = {}
         logger.info("✅ FlowAnalyzer initialized with LLM-based analysis")
 
-    def assess_flow(self, previous_text: str, current_text: str, use_llm: bool = True) -> Dict[str, float]:
+    def assess_flow(self, previous_text: str, current_text: str, use_llm: bool = True, user_id: str = None) -> Dict[str, float]:
         """
         Return flow metrics in range 0..1.
         
@@ -29,6 +28,7 @@ class FlowAnalyzer:
             previous_text: Previous section content
             current_text: Current section content  
             use_llm: Whether to use LLM analysis (default: True for significant content)
+            user_id: Clerk user ID for subscription checking
         """
         if not current_text:
             return {"flow": 0.0, "consistency": 0.0, "progression": 0.0}
@@ -46,7 +46,7 @@ class FlowAnalyzer:
         
         if should_use_llm:
             try:
-                metrics = self._llm_flow_analysis(previous_text, current_text)
+                metrics = self._llm_flow_analysis(previous_text, current_text, user_id=user_id)
                 self._cache[cache_key] = metrics
                 logger.info("LLM-based flow analysis completed")
                 return metrics
@@ -71,8 +71,8 @@ class FlowAnalyzer:
         # Use LLM if: substantial content (>100 words) OR has meaningful previous context
         return word_count > 100 or has_previous
 
-    def _llm_flow_analysis(self, previous_text: str, current_text: str) -> Dict[str, float]:
-        """Use Gemini API for intelligent flow analysis."""
+    def _llm_flow_analysis(self, previous_text: str, current_text: str, user_id: str = None) -> Dict[str, float]:
+        """Use LLM for intelligent flow analysis (provider-agnostic)."""
         
         # Truncate content to minimize tokens while keeping context
         prev_truncated = (previous_text[-300:] if previous_text else "") if previous_text else ""
@@ -103,22 +103,20 @@ Return ONLY a JSON object with these exact keys: flow, consistency, progression
         }
 
         try:
-            result = gemini_structured_json_response(
+            result = llm_text_gen(
                 prompt=prompt,
-                schema=schema,
-                temperature=0.2,  # Low temperature for consistent scoring
-                max_tokens=1000   # Increased tokens for better analysis
+                json_struct=schema,
+                system_prompt=None,
+                user_id=user_id,
+                temperature=0.2,
+                max_tokens=1000
             )
             
-            if result.parsed:
-                return {
-                    "flow": float(result.parsed.get("flow", 0.6)),
-                    "consistency": float(result.parsed.get("consistency", 0.6)),
-                    "progression": float(result.parsed.get("progression", 0.6))
-                }
-            else:
-                logger.warning("LLM response parsing failed, using fallback")
-                return self._rule_based_analysis(previous_text, current_text)
+            return {
+                "flow": float(result.get("flow", 0.6)),
+                "consistency": float(result.get("consistency", 0.6)),
+                "progression": float(result.get("progression", 0.6))
+            }
                 
         except Exception as e:
             logger.error(f"LLM flow analysis error: {e}")

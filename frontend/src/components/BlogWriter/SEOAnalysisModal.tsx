@@ -142,6 +142,8 @@ interface SEOAnalysisModalProps {
   blogContent: string;
   blogTitle?: string;
   researchData: any;
+  outline?: any[];
+  competitiveAdvantage?: string;
   onApplyRecommendations?: (recommendations: SEOAnalysisResult['actionable_recommendations']) => Promise<void>;
   onAnalysisComplete?: (analysis: SEOAnalysisResult) => void;
 }
@@ -154,6 +156,8 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
   blogContent,
   blogTitle,
   researchData,
+  outline,
+  competitiveAdvantage,
   onApplyRecommendations,
   onAnalysisComplete
 }) => {
@@ -246,7 +250,9 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
       const responsePromise = apiClient.post('/api/blog-writer/seo/analyze', {
         blog_content: blogContent,
         blog_title: blogTitle,
-        research_data: researchData
+        research_data: researchData,
+        outline: outline || undefined,
+        competitive_advantage: competitiveAdvantage || undefined,
       }, { timeout: 120000 });
 
       // Simulated progress runs alongside the API call to keep the user informed.
@@ -293,13 +299,13 @@ export const SEOAnalysisModal: React.FC<SEOAnalysisModalProps> = ({
           ai_insights: result.category_scores?.ai_insights || 0
         },
         analysis_summary: result.analysis_summary || {
-          overall_grade: result.overall_score >= 80 ? 'A' : result.overall_score >= 60 ? 'B' : 'C',
-          status: result.overall_score >= 80 ? 'Excellent' : result.overall_score >= 60 ? 'Good' : 'Needs Improvement',
-          strongest_category: 'structure',
-          weakest_category: 'keywords',
-          key_strengths: ['Good content structure', 'Appropriate length'],
-          key_weaknesses: ['Keyword optimization needs work'],
-          ai_summary: 'Content provides good value with room for SEO improvements.'
+          overall_grade: result.overall_score >= 90 ? 'A' : result.overall_score >= 80 ? 'B' : result.overall_score >= 70 ? 'C' : result.overall_score >= 60 ? 'D' : 'F',
+          status: result.overall_score >= 90 ? 'Excellent' : result.overall_score >= 80 ? 'Good' : result.overall_score >= 70 ? 'Fair' : result.overall_score >= 60 ? 'Needs Improvement' : 'Poor',
+          strongest_category: result.category_scores ? Object.entries(result.category_scores).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'structure' : 'structure',
+          weakest_category: result.category_scores ? Object.entries(result.category_scores).sort((a: any, b: any) => a[1] - b[1])[0]?.[0] || 'keywords' : 'keywords',
+          key_strengths: [],
+          key_weaknesses: [],
+          ai_summary: ''
         },
         actionable_recommendations: (result.actionable_recommendations || []).map((rec: any) => ({
           category: rec.category || 'General',

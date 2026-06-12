@@ -92,6 +92,17 @@ PLATFORM_SPECS: List[PlatformSpec] = [
         description="Square video format for LinkedIn",
     ),
     PlatformSpec(
+        platform=Platform.LINKEDIN,
+        name="LinkedIn Video (Portrait)",
+        aspect_ratio="9:16",
+        width=1080,
+        height=1920,
+        max_duration=600.0,  # 10 minutes
+        max_file_size_mb=5000.0,  # 5GB
+        formats=["mp4"],
+        description="Portrait video format for LinkedIn mobile feed",
+    ),
+    PlatformSpec(
         platform=Platform.FACEBOOK,
         name="Facebook Video",
         aspect_ratio="16:9",

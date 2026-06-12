@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, Typography, Box, Chip, IconButton, Divider
+  Button, Typography, Box, Chip, IconButton, Checkbox, FormControlLabel, Divider
 } from '@mui/material';
 import { Close as CloseIcon, Check as CheckIcon } from '@mui/icons-material';
 import type { DiffPreviewData, DiffSegment } from '../../../utils/getSectionDiffs';
@@ -11,6 +11,7 @@ interface DiffPreviewModalProps {
   diffData: DiffPreviewData | null;
   onAccept: () => void;
   onReject: () => void;
+  onAcceptSelected?: (selectedSectionIds: Record<string, boolean>, acceptIntroduction: boolean) => void;
   loading?: boolean;
 }
 
@@ -60,11 +61,51 @@ export const DiffPreviewModal: React.FC<DiffPreviewModalProps> = ({
   diffData,
   onAccept,
   onReject,
+  onAcceptSelected,
   loading = false,
 }) => {
+  // Per-section selection state — default: select all changed sections
+  const [sectionSelection, setSectionSelection] = useState<Record<string, boolean>>({});
+  const [acceptIntroduction, setAcceptIntroduction] = useState(true);
+
+  // Initialize defaults when diffData changes
+  React.useEffect(() => {
+    if (!diffData) return;
+    const initial: Record<string, boolean> = {};
+    diffData.sectionDiffs.forEach(s => {
+      initial[s.id] = s.changed;
+    });
+    setSectionSelection(initial);
+    setAcceptIntroduction(diffData.introductionChanged);
+  }, [diffData]);
+
   if (!diffData) return null;
 
   const hasAnyChange = diffData.introductionChanged || diffData.sectionDiffs.some(s => s.changed);
+  const selectedCount = Object.values(sectionSelection).filter(Boolean).length;
+  const hasAnySelected = selectedCount > 0 || acceptIntroduction;
+
+  const toggleSection = (id: string) => {
+    setSectionSelection(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleAcceptSelected = () => {
+    if (onAcceptSelected) {
+      onAcceptSelected(sectionSelection, acceptIntroduction);
+    } else {
+      onAccept();
+    }
+  };
+
+  const allSelected = diffData.sectionDiffs.every(s => sectionSelection[s.id]);
+  const toggleAll = () => {
+    const newVal = !allSelected;
+    const updated: Record<string, boolean> = {};
+    diffData.sectionDiffs.forEach(s => {
+      updated[s.id] = newVal;
+    });
+    setSectionSelection(updated);
+  };
 
   return (
     <Dialog open={isOpen} maxWidth="lg" fullWidth fullScreen>
@@ -91,6 +132,12 @@ export const DiffPreviewModal: React.FC<DiffPreviewModalProps> = ({
             size="small"
             variant="outlined"
           />
+          <Chip
+            label={`${selectedCount} of ${diffData.sectionDiffs.length} selected`}
+            color={selectedCount > 0 ? 'primary' : 'default'}
+            size="small"
+            variant="outlined"
+          />
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 'auto' }}>
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', fontSize: '0.75rem', color: '#166534' }}>
               <Box sx={{ width: 14, height: 14, bgcolor: '#dcfce7', border: '1px solid #86efac', borderRadius: '2px' }} />
@@ -111,25 +158,53 @@ export const DiffPreviewModal: React.FC<DiffPreviewModalProps> = ({
           </Typography>
         )}
 
+        {/* Introduction — toggle */}
         {diffData.introductionChanged && (
           <Box sx={{ mb: 4 }}>
-            <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569', mb: 1 }}>
-              Introduction
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Checkbox
+                checked={acceptIntroduction}
+                onChange={() => setAcceptIntroduction(!acceptIntroduction)}
+                size="small"
+                sx={{ p: 0, mr: 1 }}
+              />
+              <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: acceptIntroduction ? '#475569' : '#94a3b8' }}>
+                Introduction
+              </Typography>
+            </Box>
             <Box sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: 2.5, fontFamily: 'Georgia, serif', fontSize: '1rem', lineHeight: 1.8, color: '#1e293b' }}>
               {renderDiffSegments(diffData.introductionDiff!)}
             </Box>
           </Box>
         )}
 
+        {/* Select / Deselect All */}
+        {diffData.sectionDiffs.some(s => s.changed) && (
+          <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button size="small" variant="text" onClick={toggleAll} sx={{ textTransform: 'none', fontSize: '0.8rem', minWidth: 'auto', p: 0 }}>
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </Button>
+          </Box>
+        )}
+
+        {/* Per-section diffs with checkbox */}
         {diffData.sectionDiffs.map((section, idx) => {
           if (!section.changed) return null;
+          const isSelected = sectionSelection[section.id] ?? true;
           return (
-            <Box key={section.heading || idx} sx={{ mb: 3 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#475569', mb: 0.5 }}>
-                {section.heading}
-              </Typography>
-              <Box sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: 2.5, fontFamily: 'Georgia, serif', fontSize: '1rem', lineHeight: 1.8, color: '#1e293b' }}>
+            <Box key={section.id || idx} sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                <Checkbox
+                  checked={isSelected}
+                  onChange={() => toggleSection(section.id)}
+                  size="small"
+                  sx={{ p: 0, mr: 1 }}
+                />
+                <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: isSelected ? '#475569' : '#94a3b8' }}>
+                  {section.heading}
+                </Typography>
+              </Box>
+              <Box sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: 2.5, fontFamily: 'Georgia, serif', fontSize: '1rem', lineHeight: 1.8, color: '#1e293b', opacity: isSelected ? 1 : 0.5 }}>
                 {renderDiffSegments(section.segments)}
               </Box>
             </Box>
@@ -137,7 +212,7 @@ export const DiffPreviewModal: React.FC<DiffPreviewModalProps> = ({
         })}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid #e2e8f0', bgcolor: 'white' }}>
+      <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid #e2e8f0', bgcolor: 'white', justifyContent: 'space-between' }}>
         <Button
           onClick={onReject}
           disabled={loading}
@@ -145,17 +220,28 @@ export const DiffPreviewModal: React.FC<DiffPreviewModalProps> = ({
           color="error"
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
-          Reject Changes
+          Reject All Changes
         </Button>
-        <Button
-          onClick={onAccept}
-          disabled={loading}
-          variant="contained"
-          color="primary"
-          sx={{ textTransform: 'none', fontWeight: 600 }}
-        >
-          Accept Changes
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            onClick={onAccept}
+            disabled={loading}
+            variant="outlined"
+            color="inherit"
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Accept All
+          </Button>
+          <Button
+            onClick={handleAcceptSelected}
+            disabled={loading || !hasAnySelected}
+            variant="contained"
+            color="primary"
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Accept Selected ({selectedCount + (acceptIntroduction && diffData.introductionChanged ? 1 : 0)})
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );

@@ -66,19 +66,20 @@ class WixAuthService:
         response.raise_for_status()
         return response.json()
 
-    def get_site_info(self, access_token: str, meta_site_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_site_info(self, access_token: str) -> Dict[str, Any]:
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
         }
         if self.client_id:
             headers['wix-client-id'] = self.client_id
-        if meta_site_id:
-            headers['wix-site-id'] = meta_site_id
         response = requests.get(f"{self.base_url}/sites/v1/site", headers=headers)
         if response.status_code == 404:
             logger.warning("Wix site info not found (404) — user may not have a published site or token lacks sites scope")
             return {"_no_site": True, "error": "No Wix site found for this account"}
+        if response.status_code == 401:
+            logger.warning("Wix site info request unauthorized (401) — token expired or invalid")
+            return {"_auth_failed": True, "error": "Token expired or invalid — reconnect required"}
         response.raise_for_status()
         return response.json()
 

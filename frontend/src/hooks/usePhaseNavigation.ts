@@ -54,7 +54,6 @@ export const usePhaseNavigation = (
     const outlineCompleted = outline.length > 0;
     const contentCompleted = hasContent && contentConfirmed;
     const seoCompleted = !!seoAnalysis && (seoRecommendationsApplied === true || !!seoMetadata);
-
     return [
       {
         id: 'research',
@@ -149,11 +148,12 @@ export const usePhaseNavigation = (
         core.setCurrentPhase('content');
       }
     } else if (contentConfirmed && !seoAnalysis) {
-      if (core.currentPhase !== 'seo' && canNavigateTo('seo')) {
+      // Only auto-advance to SEO if user is already on/past content phase
+      if ((core.currentPhase === 'content' || core.currentPhase === 'seo') && canNavigateTo('seo')) {
         core.setCurrentPhase('seo');
       }
     } else if (seoAnalysis && !seoRecommendationsApplied && !seoMetadata) {
-      if (core.currentPhase !== 'seo' && canNavigateTo('seo')) {
+      if ((core.currentPhase === 'content' || core.currentPhase === 'seo') && canNavigateTo('seo')) {
         core.setCurrentPhase('seo');
       }
     } else if (seoAnalysis && (seoRecommendationsApplied || seoMetadata)) {

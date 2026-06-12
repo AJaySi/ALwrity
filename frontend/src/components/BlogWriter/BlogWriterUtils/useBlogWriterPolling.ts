@@ -52,18 +52,20 @@ export const useBlogWriterPolling = ({
           });
           onSectionsUpdate(newSections);
           
-          // Skip auto-confirm and navigation when Re-Content was used
+          // Skip auto-navigation when Re-Content was used
           // (user already had content and chose to regenerate — stay on content phase to review)
           const skipAutoConfirm = skipContentAutoConfirmRef?.current === true;
           if (skipContentAutoConfirmRef) skipContentAutoConfirmRef.current = false; // reset flag
+
+          // Always confirm content so the check mark shows on the chip
+          if (onContentConfirmed) {
+            onContentConfirmed();
+          }
+
           if (skipAutoConfirm) {
-            debug.log('[BlogWriter] Re-Content: skipping auto-confirm and navigation (user stays on content phase)');
+            debug.log('[BlogWriter] Re-Content: content confirmed, user stays on content phase to review');
           } else {
-            // Auto-confirm content and navigate to SEO phase when content generation completes
-            // This happens for initial content generation (first time)
-            if (onContentConfirmed) {
-              onContentConfirmed();
-            }
+            // Auto-navigate to SEO phase when content generation completes (first time)
             if (navigateToPhase) {
               navigateToPhase('seo');
             }

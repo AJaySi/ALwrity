@@ -16,6 +16,7 @@ import time
 
 from services.wix_service import WixService
 from services.integrations.wix_oauth import WixOAuthService
+from services.integrations.wix.utils import extract_meta_from_token
 from services.integrations.oauth_callback_utils import (
     build_oauth_callback_html,
     sanitize_error,
@@ -102,6 +103,38 @@ def _map_wix_error(exc: Exception, fallback: str = "Wix API request failed") -> 
             detail="Network error connecting to Wix. Please check your connection and try again."
         )
     
+    # Handle WixAPIError from our retry/API layer
+    from services.integrations.wix.retry import WixAPIError
+    if isinstance(exc, WixAPIError):
+        status = exc.status_code
+        msg = exc.response_body or str(exc)
+        if status == 401:
+            return HTTPException(
+                status_code=401,
+                detail="Wix authorization failed. Please reconnect your Wix account."
+            )
+        if status == 403:
+            return HTTPException(
+                status_code=403,
+                detail="Wix permission denied. Ensure your OAuth app has blog permissions (BLOG.CREATE-DRAFT)."
+            )
+        if status == 404:
+            return HTTPException(
+                status_code=502,
+                detail="Wix API endpoint not found. Ensure the site ID is correct and the blog feature is enabled."
+            )
+        if status == 429:
+            return HTTPException(
+                status_code=429,
+                detail="Wix rate limit exceeded. Please wait a moment and try again."
+            )
+        if status in (500, 502, 503, 504):
+            return HTTPException(
+                status_code=502,
+                detail="Wix service temporarily unavailable. Please try again in a moment."
+            )
+        return HTTPException(status_code=status or 502, detail=msg or fallback)
+    
     # For validation errors from blog_publisher
     error_str = str(exc)
     if "validation failed" in error_str.lower():
@@ -150,12 +183,16 @@ def _resolve_valid_wix_token(current_user: dict) -> Dict[str, Any]:
             expires_in=refreshed.get("expires_in"),
             token_id=token_id,
         )
+        site_id = candidate.get("site_id")
+        if not site_id:
+            meta_info = extract_meta_from_token(refreshed.get("access_token"))
+            site_id = meta_info.get('metaSiteId') or site_id
         logger.info(f"Wix token refreshed successfully on attempt {attempt} for user {user_id[:8]}...")
         return {
             "access_token": refreshed.get("access_token"),
             "refresh_token": refreshed.get("refresh_token", refresh_token),
             "member_id": candidate.get("member_id"),
-            "site_id": candidate.get("site_id"),
+            "site_id": site_id,
         }
 
     raise HTTPException(status_code=401, detail="Wix token expired and cannot be refreshed")
@@ -315,6 +352,9 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
             try:
                 site_info = wix_service.get_site_info(access_token)
                 site_id = site_info.get('siteId') or site_info.get('site_id')
+                if not site_id and site_info.get('_no_site'):
+                    meta_info = extract_meta_from_token(access_token)
+                    site_id = meta_info.get('metaSiteId')
             except Exception as e:
                 logger.warning(f"get_site_info failed (non-fatal): {e}")
             try:
@@ -322,7 +362,7 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
             except Exception:
                 pass
             try:
-                permissions = wix_service.check_blog_permissions(access_token)
+                permissions = wix_service.check_blog_permissions(access_token, site_id=site_id)
             except Exception as e:
                 logger.warning(f"check_blog_permissions failed (non-fatal): {e}")
         
@@ -351,11 +391,14 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
             try:
                 site_info = wix_service.get_site_info(access_token)
                 site_id = site_info.get('siteId') or site_info.get('site_id')
+                if not site_id and site_info.get('_no_site'):
+                    meta_info = extract_meta_from_token(access_token)
+                    site_id = meta_info.get('metaSiteId') or site_id
             except Exception as e:
                 logger.warning(f"get_site_info failed (non-fatal): {e}")
             try:
-                from services.integrations.wix.utils import extract_meta_from_token
-                site_id = extract_meta_from_token(access_token) or site_id
+                meta_info = extract_meta_from_token(access_token)
+                site_id = meta_info.get('metaSiteId') or site_id
             except Exception:
                 pass
             try:
@@ -363,7 +406,7 @@ async def handle_oauth_callback(request: WixAuthRequest, current_user: dict = De
             except Exception:
                 pass
             try:
-                permissions = wix_service.check_blog_permissions(access_token)
+                permissions = wix_service.check_blog_permissions(access_token, site_id=site_id)
             except Exception as e:
                 logger.warning(f"check_blog_permissions failed (non-fatal): {e}")
         else:
@@ -425,10 +468,13 @@ async def handle_oauth_callback_get(code: str, state: Optional[str] = None, requ
         try:
             site_info = wix_service.get_site_info(tokens['access_token'])
             site_id = site_info.get('siteId') or site_info.get('site_id')
+            if not site_id and site_info.get('_no_site'):
+                meta_info = extract_meta_from_token(tokens['access_token'])
+                site_id = meta_info.get('metaSiteId')
         except Exception as e:
             logger.warning(f"GET callback: get_site_info non-fatal: {e}")
         try:
-            permissions = wix_service.check_blog_permissions(tokens['access_token'])
+            permissions = wix_service.check_blog_permissions(tokens['access_token'], site_id=site_id)
         except Exception as e:
             logger.warning(f"GET callback: check_blog_permissions non-fatal: {e}")
         
@@ -499,17 +545,34 @@ async def get_connection_status(current_user: dict = Depends(get_current_user)) 
     try:
         token_info = _resolve_valid_wix_token(current_user)
         access_token = token_info["access_token"]
+        site_id = token_info.get("site_id")
+        
+        # Check site info — distinguish "no site" from "token expired"
         site_info = wix_service.get_site_info(access_token)
-        permissions = wix_service.check_blog_permissions(access_token)
+        if site_info.get("_auth_failed"):
+            return {
+                "connected": False,
+                "has_permissions": False,
+                "error": "Wix token expired — please reconnect",
+                "reconnect_required": True
+            }
+        
+        # If get_site_info returned _no_site, try extracting metaSiteId from token
+        if site_info.get("_no_site") and not site_id:
+            meta_info = extract_meta_from_token(access_token)
+            site_id = meta_info.get('metaSiteId')
+        
+        permissions = wix_service.check_blog_permissions(access_token, site_id=site_id)
         return {
             "connected": True,
             "has_permissions": permissions.get("has_permissions", False),
             "site_info": site_info,
-            "permissions": permissions
+            "permissions": permissions,
+            "site_id": site_id,
         }
     except HTTPException as e:
         if e.status_code == 401:
-            return {"connected": False, "has_permissions": False, "error": "Wix account not connected"}
+            return {"connected": False, "has_permissions": False, "error": "Wix account not connected", "reconnect_required": True}
         raise
     except Exception as e:
         logger.error(f"Failed to check connection status: {e}")
@@ -557,6 +620,9 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
                 access_token = token_info["access_token"]
                 if not site_id:
                     site_id = token_info.get("site_id")
+                if not site_id:
+                    meta_info = extract_meta_from_token(access_token)
+                    site_id = meta_info.get('metaSiteId')
                 logger.info(f"Wix publish: using backend DB token for user {_get_current_user_id(current_user)[:8]}...")
             except HTTPException:
                 access_token = None
@@ -641,12 +707,14 @@ async def publish_to_wix(request: WixPublishRequest, current_user: dict = Depend
             post_url = raw_url
         else:
             post_url = None
+        publish_warnings = result.get("_warnings", [])
+        all_warnings = [w for w in [content_warning] + publish_warnings if w]
         return {
             "success": True,
             "post_id": str(post.get("id", "")),
             "url": post_url,
             "publish_state": "PUBLISHED" if request.publish else "DRAFT",
-            **({"warning": content_warning} if content_warning else {}),
+            **({"warning": " | ".join(all_warnings)} if all_warnings else {}),
         }
     except Exception as e:
         logger.error(f"Failed to publish to Wix: {e}")
@@ -930,11 +998,13 @@ async def test_publish_real(payload: Dict[str, Any], _: Dict[str, Any] = Depends
             seo_metadata=seo_metadata,
         )
 
+        publish_warnings = result.get("_warnings", [])
         return {
             "success": True,
             "post_id": (result.get("draftPost") or result.get("post") or {}).get("id"),
             "url": (result.get("draftPost") or result.get("post") or {}).get("url"),
             "message": "Blog post published to Wix",
+            **({"warning": " | ".join(publish_warnings)} if publish_warnings else {}),
         }
     except HTTPException:
         raise

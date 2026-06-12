@@ -43,6 +43,8 @@ interface PhaseContentProps {
   onContentGenerationStart?: (taskId: string) => void;
   buildFullMarkdown?: () => string;
   convertMarkdownToHTML?: (md: string) => string;
+  onOpenSEOMetadata?: () => void;
+  onRunFlowAnalysis?: () => void;
   brainstormResult?: import('../../../api/gscBrainstorm').BrainstormResult;
   onBrainstormResult?: (result: import('../../../api/gscBrainstorm').BrainstormResult) => void;
   onResearchWithKeywords?: (keywords: string) => void;
@@ -99,6 +101,8 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
   onCompetitiveAdvantageSelect,
   introduction,
   onIntroductionUpdate,
+  onOpenSEOMetadata,
+  onRunFlowAnalysis,
 }) => {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -249,6 +253,10 @@ export const PhaseContent: React.FC<PhaseContentProps> = ({
             seoMetadata={seoMetadata}
             seoAnalysis={seoAnalysis}
             blogTitle={selectedTitle ?? undefined}
+            sectionImages={sectionImages}
+            onOpenSEOMetadata={onOpenSEOMetadata}
+            flowAnalysisResults={flowAnalysisResults}
+            onRunFlowAnalysis={onRunFlowAnalysis}
           />
         )}
       </div>

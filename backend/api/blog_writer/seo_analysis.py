@@ -28,6 +28,8 @@ class SEOAnalysisRequest(BaseModel):
     blog_content: str
     blog_title: Optional[str] = None
     research_data: Dict[str, Any]
+    outline: Optional[List[Dict[str, Any]]] = None
+    competitive_advantage: Optional[str] = None
     user_id: Optional[str] = None
     session_id: Optional[str] = None
 
@@ -109,7 +111,9 @@ async def analyze_blog_seo(
             blog_content=request.blog_content,
             research_data=request.research_data,
             blog_title=request.blog_title,
-            user_id=user_id
+            user_id=user_id,
+            outline=request.outline,
+            competitive_advantage=request.competitive_advantage,
         )
         
         # Check for errors

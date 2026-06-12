@@ -8,6 +8,8 @@ export interface WixStatus {
   connected: boolean;
   has_permissions: boolean;
   site_info?: any;
+  error?: string;
+  reconnect_required?: boolean;
 }
 
 export interface WixPublishResult {
@@ -117,25 +119,14 @@ export function useWixPublish() {
         setWixStatus({ connected: false, has_permissions: false });
         return;
       } catch (err: any) {
-        // Backend error (network, 500, etc.) — can't determine status
-        // Fall through to localStorage hint only if we have no other info
-        console.warn('[Wix] Backend connection check failed:', err?.message || err);
+        // Backend error (network, 500, etc.) — can't validate token
+        // Show disconnected rather than stale cached state — user should reconnect
+        console.warn('[Wix] Backend connection check failed (showing disconnected):', err?.message || err);
       }
 
-      // 3. FALLBACK: localStorage is only a hint, never authoritative
-      const localConnected = localStorage.getItem(WIX_CONNECTED_KEY) === 'true';
-      const sessionConnected = sessionStorage.getItem(WIX_CONNECTED_KEY) === 'true';
-      const urlConnected = new URLSearchParams(window.location.search).get('wix_connected') === 'true';
-
-      if (localConnected || sessionConnected || urlConnected) {
-        // We have a hint that user was connected, but backend couldn't confirm
-        // Show as connected but with warning — user may need to reconnect
-        console.warn('[Wix] Showing cached connection state — backend validation failed. User may need to reconnect.');
-        setWixStatus({ connected: true, has_permissions: true });
-        return;
-      }
-
-      setWixStatus({ connected: false, has_permissions: false });
+      // 3. Network error fallback — never trust local cache over backend
+      clearStaleWixState();
+      setWixStatus({ connected: false, has_permissions: false, error: 'Unable to verify connection' });
     } catch {
       setWixStatus({ connected: false, has_permissions: false });
     } finally {
@@ -192,10 +183,13 @@ export function useWixPublish() {
       || 'Blog Post';
 
     let coverImageUrl: string | undefined;
+    let coverImageWarning: string | undefined;
     if (metadata?.open_graph?.image) {
       const img = metadata.open_graph.image;
       if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
         coverImageUrl = img;
+      } else if (typeof img === 'string' && img.startsWith('data:image/')) {
+        coverImageWarning = 'Cover image is a data URI (base64) and will not be included in Wix publish. Wix requires a public image URL.';
       }
     }
 
@@ -260,7 +254,8 @@ export function useWixPublish() {
 
       if (response.data.success) {
         const url = response.data.url;
-        const warning = response.data.warning;
+        const apiWarning = response.data.warning;
+        const warnings = [apiWarning, coverImageWarning].filter(Boolean);
         return {
           success: true,
           url,
@@ -268,7 +263,7 @@ export function useWixPublish() {
           message: url
             ? `Blog post published to Wix! View it here: ${url}`
             : 'Blog post published successfully to Wix!',
-          ...(warning ? { warning } : {}),
+          ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
         };
       }
       return {

@@ -188,6 +188,7 @@ export interface BlogSEOApplyRecommendationsRequest {
   outline: BlogOutlineSection[];
   research: Record<string, any>;
   recommendations: BlogSEOActionableRecommendation[];
+  competitive_advantage?: string;
   persona?: Record<string, any>;
   tone?: string;
   audience?: string;
@@ -463,7 +464,7 @@ export const blogWriterApi = {
     return data;
   },
 
-  async generateSection(payload: { section: BlogOutlineSection; keywords?: string[]; tone?: string; persona?: PersonaInfo; mode?: 'draft' | 'polished' }): Promise<BlogSectionResponse> {
+  async generateSection(payload: { section: BlogOutlineSection; keywords?: string[]; tone?: string; persona?: PersonaInfo; mode?: 'draft' | 'polished'; research?: BlogResearchResponse; competitive_advantage?: string }): Promise<BlogSectionResponse> {
     const { data } = await apiClient.post("/api/blog/section/generate", payload);
     return data;
   },
@@ -471,7 +472,7 @@ export const blogWriterApi = {
   // Removed old seoAnalyze - now using comprehensive SEO analysis through modal
 
   async seoMetadata(payload: { content: string; title?: string; keywords?: string[] }): Promise<BlogSEOMetadataResponse> {
-    const { data } = await apiClient.post("/api/blog/seo/metadata", payload);
+    const { data } = await aiApiClient.post("/api/blog/seo/metadata", payload);
     return data;
   },
 

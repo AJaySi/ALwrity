@@ -20,10 +20,6 @@ import {
   Tooltip,
   InputAdornment,
   Alert,
-  Card,
-  CardContent,
-  Divider,
-  Chip,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -137,7 +133,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
         <CodeIcon sx={{ color: 'primary.main' }} />
         Structured Data (JSON-LD)
       </Typography>
@@ -145,16 +141,16 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
       <Grid container spacing={3}>
         {/* Article Information */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 2, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <CodeIcon />
               Article Schema
             </Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Headline
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -189,7 +185,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Description
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -204,7 +200,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
                 <TextField
                   fullWidth
                   multiline
-                  rows={2}
+                  rows={1}
                   value={jsonLdSchema.description || ''}
                   onChange={handleSchemaFieldChange('description')}
                   placeholder="Article description"
@@ -226,7 +222,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Main Entity URL
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -255,8 +251,8 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Word Count
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -286,16 +282,16 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Author Information */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 2, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <PersonIcon />
               Author Information
             </Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Author Name
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -318,7 +314,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Author Type
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -344,16 +340,16 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Publisher Information */}
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 2, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <BusinessIcon />
               Publisher Information
             </Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Publisher Name
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -376,7 +372,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Publisher Logo
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -402,16 +398,16 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Publication Dates */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 2, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <CalendarIcon />
               Publication Dates
             </Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12} md={6}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Date Published
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -435,7 +431,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
               <Grid item xs={12} md={6}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Date Modified
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -462,16 +458,16 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
 
         {/* Keywords */}
         <Grid item xs={12}>
-          <Paper sx={{ p: 3, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Paper sx={{ p: 2, background: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#202124' }}>
               <CodeIcon />
               Keywords & Categories
             </Typography>
 
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Keywords
                   </Typography>
                   <Tooltip title="Copy to clipboard">
@@ -507,7 +503,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CodeIcon />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#202124' }}>
                   Raw JSON-LD Schema
                 </Typography>
               </Box>
@@ -515,7 +511,7 @@ export const StructuredDataTab: React.FC<StructuredDataTabProps> = ({
             <AccordionDetails>
               <Box sx={{ position: 'relative' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#202124' }}>
                     Complete JSON-LD Schema
                   </Typography>
                   <Button

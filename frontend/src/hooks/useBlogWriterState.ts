@@ -28,6 +28,14 @@ const readLSString = (key: string, fallback: string): string => {
   }
 };
 
+// Compute a content fingerprint from the outline to detect stale SEO metadata.
+// The fingerprint changes whenever the blog structure (outline IDs + title) changes,
+// which means any previously cached SEO metadata is no longer valid.
+const computeMetadataFingerprint = (outline: BlogOutlineSection[], selectedTitle: string): string => {
+  const ids = outline.map(s => String(s.id)).sort().join(',');
+  return `${ids}|${selectedTitle}`;
+};
+
 const readLSBool = (key: string, fallback: boolean): boolean => {
   try {
     const raw = localStorage.getItem(key);
@@ -85,15 +93,33 @@ const restoreInitialState = () => {
 
     // Restore confirmation flags
     outlineConfirmed = readLSBool('blog_outline_confirmed', false);
-    // Backward compatibility: if outline exists but confirmation wasn't saved, assume confirmed
-    if (!outlineConfirmed && outline.length > 0) {
-      outlineConfirmed = true;
-    }
     contentConfirmed = readLSBool('blog_content_confirmed', false);
+    // Only restore outline/content confirmation from explicit flags.
+    // Previously, backward compat assumed confirmed if data existed, but this
+    // caused premature phase advancement (e.g. jumping to SEO phase on page load)
+    // when restoring stale cached data from a prior session.
 
     // Restore SEO data
     seoAnalysis = readLS<BlogSEOAnalyzeResponse | null>('blog_seo_analysis', null);
     seoMetadata = readLS<BlogSEOMetadataResponse | null>('blog_seo_metadata', null);
+
+    // Validate SEO metadata against current outline — discard if stale
+    if (seoMetadata) {
+      if (outline.length === 0) {
+        // No outline context — metadata is meaningless for a fresh blog
+        seoMetadata = null;
+        try { localStorage.removeItem('blog_seo_metadata'); } catch {}
+      } else {
+        const savedFingerprint = readLS<string | null>('blog_seo_metadata_fingerprint', null);
+        const currentFingerprint = computeMetadataFingerprint(outline, selectedTitle);
+        if (savedFingerprint !== currentFingerprint) {
+          // Outline or title changed since metadata was generated — discard stale data
+          seoMetadata = null;
+          try { localStorage.removeItem('blog_seo_metadata'); } catch {}
+          try { localStorage.removeItem('blog_seo_metadata_fingerprint'); } catch {}
+        }
+      }
+    }
 
     // Restore section images (log only once per session, not on every hook mount)
     const savedSectionImages = readLS<Record<string, string> | null>('blog_section_images', null);
@@ -237,14 +263,21 @@ export const useBlogWriterState = () => {
     } catch {}
   }, [seoAnalysis]);
 
-  // Persist seoMetadata to localStorage whenever it changes
+  // Persist seoMetadata + content fingerprint to localStorage whenever they change
   useEffect(() => {
     try {
       if (seoMetadata) {
         localStorage.setItem('blog_seo_metadata', JSON.stringify(seoMetadata));
+        // Save fingerprint to detect staleness on future page loads
+        const fingerprint = computeMetadataFingerprint(outline, selectedTitle);
+        localStorage.setItem('blog_seo_metadata_fingerprint', fingerprint);
+      } else {
+        // Clear both when metadata is explicitly nulled
+        localStorage.removeItem('blog_seo_metadata');
+        localStorage.removeItem('blog_seo_metadata_fingerprint');
       }
     } catch {}
-  }, [seoMetadata]);
+  }, [seoMetadata, outline, selectedTitle]);
 
   // Persist sectionImages to localStorage whenever they change
   useEffect(() => {
@@ -292,6 +325,9 @@ export const useBlogWriterState = () => {
 
   // Handle research completion
   const handleResearchComplete = useCallback((researchData: BlogResearchResponse) => {
+    // New research topic — any prior SEO metadata is now stale
+    setSeoMetadata(null);
+
     setResearch(researchData);
     const formattedAngles = dedupeTitles(
       (researchData?.suggested_angles || []).map(formatContentAngleToTitle)
@@ -309,6 +345,9 @@ export const useBlogWriterState = () => {
   // Handle outline completion with enhanced metadata
   const handleOutlineComplete = useCallback((result: any) => {
     if (result?.outline) {
+      // New content structure — any prior SEO metadata is now stale
+      setSeoMetadata(null);
+
       setOutline(result.outline);
 
       const aiTitleOptions: string[] = result.title_options || [];
@@ -494,12 +533,12 @@ export const useBlogWriterState = () => {
         localStorage.setItem('blog_publish_completed', 'true');
       }
 
-      // Restore phase
-      const phase = asset.phase || 'research';
-      localStorage.setItem('blogwriter_current_phase', phase);
-      localStorage.setItem('blogwriter_user_selected_phase', 'true');
+      // Note: Intentionally NOT writing the asset's phase to localStorage here.
+      // The user's actual phase from their previous session (persisted by
+      // usePhaseNavigationCore) is more reliable. Writing 'research' here would
+      // overwrite it and cause usePhaseRestoration to restore the stale phase.
 
-      console.log('[BlogWriterState] Restored from asset:', asset.id, 'phase:', phase);
+      console.log('[BlogWriterState] Restored from asset:', asset.id, 'phase:', asset.phase || 'research');
     } catch (e) {
       console.error('[BlogWriterState] Failed to restore from asset:', e);
     }

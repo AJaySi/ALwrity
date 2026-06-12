@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -47,7 +48,9 @@ import {
   Timeline as TimelineIcon,
   Lightbulb as LightbulbIcon,
   CheckCircle as CheckCircleIcon,
-  AutoAwesome as AutoAwesomeIcon
+  AutoAwesome as AutoAwesomeIcon,
+  LinkedIn as LinkedInIcon,
+  Description as DescriptionIcon
 } from '@mui/icons-material';
 import { useContentPlanningStore } from '../../../stores/contentPlanningStore';
 
@@ -74,6 +77,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const CalendarTab: React.FC = () => {
+  const navigate = useNavigate();
   const { 
     calendarEvents, 
     createEvent, 
@@ -539,6 +543,44 @@ const CalendarTab: React.FC = () => {
                             <Typography variant="caption" color="text.secondary">
                               Scheduled: {new Date(event.scheduled_date || event.date || '').toLocaleDateString()}
                             </Typography>
+                            {event.status !== 'published' && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                              {(event.platform === 'linkedin') && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="primary"
+                                  startIcon={<LinkedInIcon />}
+                                  onClick={() => navigate('/linkedin', {
+                                    state: { 
+                                      calendarTopic: event.title, 
+                                      calendarDescription: event.description,
+                                      calendarEventId: event.id 
+                                    }
+                                  })}
+                                >
+                                  LinkedIn Post
+                                </Button>
+                              )}
+                              {(event.content_type === 'blog_post' || event.content_type === 'blog') && (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="secondary"
+                                  startIcon={<DescriptionIcon />}
+                                  onClick={() => navigate('/blog', {
+                                    state: { 
+                                      calendarTopic: event.title, 
+                                      calendarDescription: event.description,
+                                      calendarEventId: event.id 
+                                    }
+                                  })}
+                                >
+                                  Blog Post
+                                </Button>
+                              )}
+                            </Box>
+                            )}
                           </CardContent>
                         </Card>
                       </Grid>

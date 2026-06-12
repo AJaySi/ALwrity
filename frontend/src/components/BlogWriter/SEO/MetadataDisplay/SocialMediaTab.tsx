@@ -208,6 +208,27 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                     )
                   }}
                 />
+                {openGraph.image && (
+                  <Box
+                    component="img"
+                    src={openGraph.image}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                      e.currentTarget.style.display = 'none';
+                      (e.currentTarget.nextElementSibling as HTMLElement)?.style.removeProperty('display');
+                    }}
+                    sx={{
+                      mt: 1, height: 120, width: '100%', objectFit: 'cover', borderRadius: 1,
+                      border: '1px solid', borderColor: 'divider', display: 'block'
+                    }}
+                  />
+                )}
+                <Box sx={{
+                  mt: 1, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 1, border: '1px dashed', borderColor: 'divider', bgcolor: 'grey.50',
+                  ...(openGraph.image ? { display: 'none' } : {})
+                }}>
+                  <Typography variant="caption" color="text.secondary">No preview</Typography>
+                </Box>
               </Grid>
 
               <Grid item xs={12} md={6}>
@@ -359,6 +380,27 @@ export const SocialMediaTab: React.FC<SocialMediaTabProps> = ({
                     )
                   }}
                 />
+                {twitterCard.image && (
+                  <Box
+                    component="img"
+                    src={twitterCard.image}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                      e.currentTarget.style.display = 'none';
+                      (e.currentTarget.nextElementSibling as HTMLElement)?.style.removeProperty('display');
+                    }}
+                    sx={{
+                      mt: 1, height: 120, width: '100%', objectFit: 'cover', borderRadius: 1,
+                      border: '1px solid', borderColor: 'divider', display: 'block'
+                    }}
+                  />
+                )}
+                <Box sx={{
+                  mt: 1, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 1, border: '1px dashed', borderColor: 'divider', bgcolor: 'grey.50',
+                  ...(twitterCard.image ? { display: 'none' } : {})
+                }}>
+                  <Typography variant="caption" color="text.secondary">No preview</Typography>
+                </Box>
               </Grid>
 
               <Grid item xs={12} md={6}>

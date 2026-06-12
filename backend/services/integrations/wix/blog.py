@@ -3,6 +3,7 @@ import requests
 from loguru import logger
 
 from .retry import wix_api_call_with_retry, WixAPIError
+from .auth_utils import get_wix_headers
 
 
 class WixBlogService:
@@ -14,40 +15,7 @@ class WixBlogService:
 
     def headers(self, access_token: str, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         """Build headers with automatic token type detection."""
-        h: Dict[str, str] = {
-            'Content-Type': 'application/json',
-        }
-        
-        if access_token:
-            # Normalize token to string if needed
-            if not isinstance(access_token, str):
-                from .utils import normalize_token_string
-                normalized = normalize_token_string(access_token)
-                if normalized:
-                    access_token = normalized
-                else:
-                    access_token = str(access_token)
-            
-            token = access_token.strip()
-            if token:
-                if token.startswith('OauthNG.JWS.'):
-                    h['Authorization'] = f'Bearer {token}'
-                    logger.debug("Using Wix OAuth token with Bearer prefix (OauthNG.JWS. format detected)")
-                elif token.startswith('IST.'):
-                    h['Authorization'] = token
-                    logger.debug("Using Wix API key for authorization (IST. format detected)")
-                elif token.count('.') == 2:
-                    h['Authorization'] = f'Bearer {token}'
-                    logger.debug("Using OAuth Bearer token for authorization (JWT: 2 dots)")
-                else:
-                    h['Authorization'] = token
-                    logger.debug("Using token as-is for authorization")
-        
-        if self.client_id:
-            h['wix-client-id'] = self.client_id
-        if extra:
-            h.update(extra)
-        return h
+        return get_wix_headers(access_token, client_id=self.client_id, extra=extra)
 
     def create_draft_post(self, access_token: str, payload: Dict[str, Any], extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Create draft post with retry logic and consolidated logging."""
@@ -144,9 +112,9 @@ class WixBlogService:
         """Create a blog tag with retry logic."""
         url = f"{self.base_url}/blog/v3/tags"
         headers = self.headers(access_token, extra_headers)
-        payload: Dict[str, Any] = {'label': label, 'fieldsets': ['URL']}
+        payload: Dict[str, Any] = {'tag': {'label': label}, 'fieldsets': ['URL']}
         if language:
-            payload['language'] = language
+            payload['tag']['language'] = language
         
         try:
             return wix_api_call_with_retry('POST', url, headers, json_payload=payload, max_attempts=3)

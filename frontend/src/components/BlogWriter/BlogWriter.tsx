@@ -38,6 +38,8 @@ import { BlogWriterLandingSection } from './BlogWriterUtils/BlogWriterLandingSec
 import { CopilotKitComponents } from './BlogWriterUtils/CopilotKitComponents';
 import { useBlogAsset } from '../../hooks/useBlogAsset';
 import { blogAssetAPI } from '../../api/blogAsset';
+import { useContentPlanningStore } from '../../stores/contentPlanningStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 
 const BlogWriter: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -108,6 +110,12 @@ const BlogWriter: React.FC = () => {
     restoreFromAsset
   } = useBlogWriterState();
 
+  // Selected competitive advantage for outline generation — defaults to first
+  const [selectedCompetitiveAdvantage, setSelectedCompetitiveAdvantage] = useState<string>('');
+  const handleCompetitiveAdvantageSelect = useCallback((advantage: string) => {
+    setSelectedCompetitiveAdvantage(advantage);
+  }, []);
+
   // SEO Manager - handles all SEO-related logic
   // Initialize phase navigation with temporary false value for seoRecommendationsApplied
   const [tempSeoRecommendationsApplied] = React.useState(false);
@@ -141,6 +149,7 @@ const BlogWriter: React.FC = () => {
     isDiffModalOpen,
     diffPreviewData,
     acceptDiffChanges,
+    acceptSelectedDiffChanges,
     rejectDiffChanges,
   } = useSEOManager({
     sections,
@@ -148,6 +157,7 @@ const BlogWriter: React.FC = () => {
     research,
     outline,
     selectedTitle,
+    selectedCompetitiveAdvantage,
     contentConfirmed,
     seoAnalysis,
     currentPhase: tempCurrentPhase,
@@ -169,6 +179,7 @@ const BlogWriter: React.FC = () => {
     currentPhase,
     navigateToPhase,
     setCurrentPhase,
+    resetUserSelection: resetUserSelection2,
   } = usePhaseNavigation(
     research,
     outline,
@@ -193,6 +204,7 @@ const BlogWriter: React.FC = () => {
     currentPhase,
     navigateToPhase,
     setCurrentPhase,
+    resetUserSelection: resetUserSelection2,
   });
 
   // All SEO management logic is now in useSEOManager hook above
@@ -234,12 +246,6 @@ const BlogWriter: React.FC = () => {
     }
   }, [research]);
 
-  // Selected competitive advantage for outline generation — defaults to first
-  const [selectedCompetitiveAdvantage, setSelectedCompetitiveAdvantage] = useState<string>('');
-  const handleCompetitiveAdvantageSelect = useCallback((advantage: string) => {
-    setSelectedCompetitiveAdvantage(advantage);
-  }, []);
-
   // Auto-select first competitive advantage when research loads
   React.useEffect(() => {
     const advantages = research?.competitor_analysis?.competitive_advantages;
@@ -280,7 +286,7 @@ const BlogWriter: React.FC = () => {
   } = useBlogAsset();
   // Load blog asset passed via React Router state (from Asset Library)
   const location = useLocation();
-  const locationState = location.state as { restoreBlogAssetId?: number } | null;
+  const locationState = location.state as { restoreBlogAssetId?: number; calendarTopic?: string; calendarDescription?: string; calendarEventId?: string; workflowTaskId?: string } | null;
 
   // Persist last active asset_id across refreshes
   const saveLastAssetId = useCallback((id: number) => {
@@ -623,9 +629,29 @@ const BlogWriter: React.FC = () => {
     navigateToPhase,
   });
 
+  const handleOpenSEOMetadata = React.useCallback(() => {
+    setIsSEOMetadataModalOpen(true);
+  }, [setIsSEOMetadataModalOpen]);
 
-
-
+  const handleRunFlowAnalysis = React.useCallback(async () => {
+    try {
+      const payload = {
+        title: selectedTitle || 'Blog Post',
+        sections: outline.map(s => ({
+          id: s.id,
+          heading: s.heading,
+          content: sections[s.id] || '',
+        })),
+      };
+      const result = await blogWriterApi.analyzeFlowBasic(payload);
+      if (result.success && result.analysis) {
+        setFlowAnalysisResults(result.analysis);
+        setFlowAnalysisCompleted(true);
+      }
+    } catch (err) {
+      console.error('Flow analysis failed:', err);
+    }
+  }, [selectedTitle, outline, sections, setFlowAnalysisResults, setFlowAnalysisCompleted]);
 
   return (
     <div style={{ 
@@ -716,6 +742,23 @@ const BlogWriter: React.FC = () => {
               title: selectedTitle || seoMetadata?.seo_title || '',
             });
             saveLastAssetId(assetId);
+          }
+          // Mark originating calendar event as published
+          const eventId = locationState?.calendarEventId;
+          if (eventId) {
+            const { updateEvent } = useContentPlanningStore.getState();
+            updateEvent(eventId, { status: 'published' }).catch((err: any) =>
+              console.warn('[BlogWriter] Failed to update calendar event:', err)
+            );
+          }
+          // Mark the workflow task as completed and navigate back
+          const taskId = locationState?.workflowTaskId;
+          if (taskId) {
+            const { completeTask } = useWorkflowStore.getState();
+            completeTask(taskId).catch((err: any) =>
+              console.warn('[BlogWriter] Failed to complete workflow task:', err)
+            );
+            setTimeout(() => navigate('/dashboard'), 1500);
           }
         }}
       />
@@ -817,6 +860,8 @@ const BlogWriter: React.FC = () => {
         onAngleSelect={handleAngleSelect}
         selectedCompetitiveAdvantage={selectedCompetitiveAdvantage}
         onCompetitiveAdvantageSelect={handleCompetitiveAdvantageSelect}
+        onOpenSEOMetadata={handleOpenSEOMetadata}
+        onRunFlowAnalysis={handleRunFlowAnalysis}
       />
         </>
       )}
@@ -843,6 +888,8 @@ const BlogWriter: React.FC = () => {
         blogContent={buildFullMarkdown()}
         blogTitle={selectedTitle}
         researchData={research}
+        outline={outline}
+        competitiveAdvantage={selectedCompetitiveAdvantage}
         onApplyRecommendations={handleApplySeoRecommendations}
         onAnalysisComplete={wrappedHandleSEOAnalysisComplete}
       />
@@ -852,6 +899,7 @@ const BlogWriter: React.FC = () => {
         isOpen={isDiffModalOpen}
         diffData={diffPreviewData}
         onAccept={acceptDiffChanges}
+        onAcceptSelected={acceptSelectedDiffChanges}
         onReject={rejectDiffChanges}
       />
 
@@ -864,12 +912,10 @@ const BlogWriter: React.FC = () => {
         researchData={research}
         outline={outline}
         seoAnalysis={seoAnalysis}
+        sectionImages={sectionImages}
         onMetadataGenerated={(metadata) => {
           console.log('SEO metadata generated:', metadata);
           setSeoMetadata(metadata);
-          // Metadata is now saved and will be used when publishing to WordPress/Wix
-          // The metadata includes all SEO fields (title, description, tags, Open Graph, etc.)
-          // Publisher component will use this metadata when calling publish API
         }}
       />
 

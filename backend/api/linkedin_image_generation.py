@@ -1,7 +1,9 @@
+import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-import json
+import base64
 
 # Import our LinkedIn image generation services
 from services.linkedin.image_generation import LinkedInImageGenerator, LinkedInImageStorage
@@ -51,6 +53,23 @@ class ImageGenerationResponse(BaseModel):
     aspect_ratio: Optional[str] = None
     error: Optional[str] = None
 
+class ImageEditRequest(BaseModel):
+    image_base64: Optional[str] = None
+    image_id: Optional[str] = None
+    prompt: str
+    content_context: Dict[str, Any]
+
+class ImageEditResponse(BaseModel):
+    success: bool
+    image_data: Optional[str] = None
+    image_id: Optional[str] = None
+    image_url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    error: Optional[str] = None
+
 @router.post("/generate-image-prompts", response_model=List[ImagePromptResponse])
 async def generate_image_prompts(request: ImagePromptRequest):
     """
@@ -89,7 +108,8 @@ async def generate_linkedin_image(
         # Use our LinkedIn image generator service
         image_result = await image_generator.generate_image(
             prompt=request.prompt,
-            content_context=request.content_context
+            content_context=request.content_context,
+            user_id=user_id
         )
         
         if image_result and image_result.get('success'):
@@ -131,6 +151,99 @@ async def generate_linkedin_image(
             error=f"Failed to generate image: {str(e)}"
         )
 
+@router.post("/edit-image", response_model=ImageEditResponse)
+async def edit_linkedin_image(
+    request: ImageEditRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Edit a LinkedIn-optimized image using natural language.
+    Provide the image as base64 and describe the desired edits.
+    """
+    try:
+        user_id = current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        if not request.prompt or not request.prompt.strip():
+            raise HTTPException(status_code=400, detail="Prompt is required for image editing")
+
+        logger.info(f"Editing LinkedIn image with prompt: {request.prompt[:100]}... for user {user_id}")
+
+        # Get input image bytes — from image_id (fetch from storage) or image_base64 (direct decode)
+        input_image_bytes = None
+        if request.image_id:
+            stored = await image_storage.retrieve_image(request.image_id, user_id)
+            if not stored or not stored.get('success'):
+                raise HTTPException(status_code=404, detail=f"Image not found: {request.image_id}")
+            input_image_bytes = stored['image_data']
+            logger.info(f"Fetched image {request.image_id} from storage ({len(input_image_bytes)} bytes)")
+        elif request.image_base64:
+            input_image_bytes = base64.b64decode(request.image_base64)
+        else:
+            raise HTTPException(status_code=400, detail="Either image_id or image_base64 is required")
+
+        # Use LinkedIn image generator with common editing infrastructure
+        image_result = await image_generator.edit_image(
+            input_image_bytes=input_image_bytes,
+            edit_prompt=request.prompt,
+            content_context=request.content_context,
+            user_id=user_id,
+        )
+
+        if image_result and image_result.get('success'):
+            image_b64 = base64.b64encode(image_result['image_data']).decode("utf-8")
+
+            # Store the edited image — log but don't fail if storage has issues
+            new_image_id = None
+            stored_result = await image_storage.store_image(
+                image_data=image_result['image_data'],
+                metadata={
+                    'prompt': request.prompt,
+                    'style': request.content_context.get('style', 'Edited'),
+                    'content_type': request.content_context.get('content_type'),
+                    'topic': request.content_context.get('topic'),
+                    'industry': request.content_context.get('industry'),
+                    'is_edit': True,
+                    'original_prompt': request.prompt,
+                    'source_image_id': request.image_id,
+                },
+                user_id=user_id
+            )
+            if stored_result and stored_result.get('success'):
+                new_image_id = stored_result.get('image_id')
+                logger.info(f"Edited image stored with ID: {new_image_id}")
+            else:
+                logger.warning(f"Edited image not stored: {stored_result.get('error', 'unknown reason')}")
+
+            return ImageEditResponse(
+                success=True,
+                image_data=image_b64,
+                image_id=new_image_id,
+                image_url=image_result.get('image_url'),
+                width=image_result.get('width'),
+                height=image_result.get('height'),
+                provider=image_result.get('provider'),
+                model=image_result.get('model'),
+            )
+        else:
+            error_msg = image_result.get('error', 'Unknown error during image editing')
+            logger.error(f"Image editing failed: {error_msg}")
+            return ImageEditResponse(
+                success=False,
+                error=error_msg
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error editing LinkedIn image: {str(e)}", exc_info=True)
+        return ImageEditResponse(
+            success=False,
+            error=f"Failed to edit image: {str(e)}"
+        )
+
+
 @router.get("/image-status/{image_id}")
 async def get_image_status(
     image_id: str,
@@ -169,42 +282,23 @@ async def get_generated_image(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Retrieve a generated image by ID
+    Retrieve a generated image by ID.
+    Returns the image file directly as a PNG response.
     """
     try:
         user_id = current_user.get("id")
         image_result = await image_storage.retrieve_image(image_id, user_id)
         
-        if image_result.get('success') and 'image_data' in image_result:
-             # Return as streaming response or raw bytes depending on frontend needs
-             # For now returning the structure as before but image_data is bytes
-             # Ideally this should be a Response object with image/png content type
-             # But keeping consistency with existing return type structure for now if it was returning dict
-             # Wait, retrieve_image returns dict with 'image_data' as bytes.
-             # The original code returned: {"success": True, "image_data": image_data}
-             # FastAPI handles bytes in JSON? No, it will fail serialization.
-             # The previous implementation of retrieve_image (lines 190-195) returned bytes in a dict.
-             # Unless FastAPI response model handles it, this might have been broken or handled specially.
-             # Let's check imports.
-             # It uses APIRouter.
-             # If I return a dict with bytes, json serialization fails.
-             # Maybe the original code expected base64 or it was just broken?
-             # Or maybe image_data was not bytes? 
-             # In retrieve_image: with open(..., 'rb') as f: image_data = f.read() -> bytes.
-             # So returning it in a dict will definitely fail JSON serialization.
-             # I should probably return a Response or FileResponse, or base64 encode it.
-             # But for now, I will just match the signature and pass user_id.
-             # If it was broken before, I'm not fixing that unless asked, but I suspect it might be base64 in usage?
-             # Let's look at `generate_linkedin_image` which returns `ImageGenerationResponse` with `image_url`.
-             # `get_generated_image` returns a dict.
-             # I will stick to passing user_id.
-             
-            return {
-                "success": True,
-                "image_data": image_result['image_data'] # This might need base64 encoding if it's for JSON
-            }
+        if image_result.get('success') and image_result.get('image_path'):
+            return FileResponse(
+                path=image_result['image_path'],
+                media_type="image/png",
+                filename=f"{image_id}.png"
+            )
         else:
             raise HTTPException(status_code=404, detail="Image not found")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error retrieving image: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve image: {str(e)}")
@@ -232,25 +326,42 @@ async def delete_generated_image(
 @router.get("/image-generation-health")
 async def health_check():
     """
-    Health check for image generation services
+    Lightweight health check for image generation services.
+    Verifies configuration and service availability without making API calls.
     """
     try:
-        # Test basic service functionality
-        test_prompts = await prompt_generator.generate_three_prompts({
-            'content_type': 'post',
-            'topic': 'Test',
-            'industry': 'Technology',
-            'content': 'Test content for health check'
-        })
-        
+        services = {}
+        all_healthy = True
+
+        # Check API key configuration (no actual API call)
+        image_api_key = api_key_manager.get_api_key("image_generation") or os.getenv("WAVESPEED_API_KEY") or os.getenv("HF_TOKEN")
+        services["image_api_key_configured"] = bool(image_api_key)
+
+        # Check storage accessibility
+        stats = await image_storage.get_storage_stats()
+        storage_ok = stats.get('success', False)
+        services["image_storage"] = "operational" if storage_ok else "unavailable"
+        if storage_ok:
+            services["storage_stats"] = {
+                "total_images": stats.get('total_files', 0),
+                "total_size_gb": stats.get('total_size_gb', 0),
+                "limit_gb": stats.get('storage_limit_gb', 0),
+            }
+
+        # Check prompt generator initialization
+        prompt_ok = prompt_generator is not None and hasattr(prompt_generator, 'generate_three_prompts')
+        services["prompt_generator"] = "operational" if prompt_ok else "unavailable"
+
+        # Check image generator initialization
+        gen_ok = image_generator is not None and hasattr(image_generator, 'generate_image')
+        services["image_generator"] = "operational" if gen_ok else "unavailable"
+
+        if not all(v == "operational" or v is True for v in services.values()):
+            all_healthy = False
+
         return {
-            "status": "healthy",
-            "services": {
-                "prompt_generator": "operational",
-                "image_generator": "operational",
-                "image_storage": "operational"
-            },
-            "test_prompts_generated": len(test_prompts)
+            "status": "healthy" if all_healthy else "degraded",
+            "services": services
         }
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")

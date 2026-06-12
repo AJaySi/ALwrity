@@ -37,27 +37,60 @@ class PromptBuilder:
         opportunity_text = ', '.join(research.competitor_analysis.get('opportunities', [])) if research and research.competitor_analysis else "Not available"
         advantages_text = ', '.join(research.competitor_analysis.get('competitive_advantages', [])) if research and research.competitor_analysis else "Not available"
         competitor_headings_text = ', '.join(research.competitor_analysis.get('competitor_headings', [])[:3]) if research and research.competitor_analysis and research.competitor_analysis.get('competitor_headings') else ""
+        content_gaps_text = ', '.join(research.competitor_analysis.get('content_gaps', [])) if research and research.competitor_analysis and research.competitor_analysis.get('content_gaps') else ""
+        industry_leaders_text = ', '.join(research.competitor_analysis.get('industry_leaders', [])) if research and research.competitor_analysis and research.competitor_analysis.get('industry_leaders') else ""
         
         # Extract additional UI-mapped context fields
         analysis_insights_text = (research.keyword_analysis.get('analysis_insights', '') or '') if research and research.keyword_analysis else ''
         market_positioning_text = (research.competitor_analysis.get('market_positioning', '') or '') if research and research.competitor_analysis else ''
         difficulty_score = research.keyword_analysis.get('difficulty', None) if research and research.keyword_analysis else None
+        
+        # Extract search queries as intent signals
+        search_queries_text = ', '.join(research.search_queries) if research and hasattr(research, 'search_queries') and research.search_queries else ""
 
-        # Extract top 3 authoritative source excerpts as factual data points
+        # Build numbered source list — all sources with index, title, excerpt, and highlights
+        # The LLM will reference these indices when assigning sources to sections
+        source_list_text = ""
+        if sources:
+            source_lines = []
+            for i, src in enumerate(sources, 1):
+                title = getattr(src, 'title', '') or ''
+                excerpt = getattr(src, 'excerpt', '') or ''
+                highlights = getattr(src, 'highlights', []) or []
+                summary = getattr(src, 'summary', '') or ''
+                source_type = getattr(src, 'source_type', '') or ''
+                author = getattr(src, 'author', '') or ''
+                
+                line = f"  [{i}] {title}"
+                if source_type:
+                    line += f" [{source_type}]"
+                if author:
+                    line += f" by {author}"
+                if summary:
+                    line += f" — {summary[:1000]}"
+                elif excerpt:
+                    line += f" — {excerpt[:1000]}"
+                if highlights:
+                    line += f" | Key findings: {'; '.join(h[:250] for h in highlights[:3])}"
+                source_lines.append(line)
+            if source_lines:
+                source_list_text = "RESEARCH SOURCES (numbered for reference):\n" + "\n".join(source_lines)
+        
+        # Top factual excerpts for depth (keep as supplement)
         source_excerpts_text = ""
         if sources:
             sorted_sources = sorted(
                 [s for s in sources if (s.excerpt or s.summary)],
                 key=lambda s: s.credibility_score or 0.8, reverse=True
-            )[:3]
+            )[:5]
             excerpts = []
             for i, src in enumerate(sorted_sources, 1):
                 excerpt = src.excerpt or src.summary or ""
-                if len(excerpt) > 300:
-                    excerpt = excerpt[:297] + "..."
+                if len(excerpt) > 500:
+                    excerpt = excerpt[:497] + "..."
                 excerpts.append(f"  {i}. \"{src.title}\" — {excerpt}")
             if excerpts:
-                source_excerpts_text = "FACTUAL DATA POINTS FROM RESEARCH:\n" + "\n".join(excerpts)
+                source_excerpts_text = "DETAILED FACTS FROM TOP SOURCES:\n" + "\n".join(excerpts)
 
         # Extract recency: newest source publication date
         newest_date_str = ""
@@ -76,12 +109,12 @@ class PromptBuilder:
         grounding_evidence_text = ""
         if research and research.grounding_metadata and research.grounding_metadata.grounding_supports:
             supports = research.grounding_metadata.grounding_supports
-            top_supports = [s for s in supports if s.segment_text and len(s.segment_text) > 20][:3]
+            top_supports = [s for s in supports if s.segment_text and len(s.segment_text) > 20][:5]
             if top_supports:
                 evidence_parts = []
                 for i, s in enumerate(top_supports, 1):
-                    text = s.segment_text[:250]
-                    if len(s.segment_text) > 250:
+                    text = s.segment_text[:400]
+                    if len(s.segment_text) > 400:
                         text += "..."
                     evidence_parts.append(f"  {i}. {text}")
                 grounding_evidence_text = "VERIFIED EVIDENCE (high-confidence snippets):\n" + "\n".join(evidence_parts)
@@ -151,8 +184,11 @@ Market Opportunities: {opportunity_text}
 Competitive Advantages: {advantages_text}
 {f"Market Positioning: {market_positioning_text}" if market_positioning_text else ""}
 {f"Competitor Headings (AVOID duplicating): {competitor_headings_text}" if competitor_headings_text else ""}
+{f"Content Gaps (MUST address these gaps): {content_gaps_text}" if content_gaps_text else ""}
+{f"Industry Leaders: {industry_leaders_text}" if industry_leaders_text else ""}
+{f"Search Intent Signals: {search_queries_text}" if search_queries_text else ""}
 
-RESEARCH SOURCES: {len(sources)} authoritative sources available
+{source_list_text}
 {newest_date_str}
 
 {source_excerpts_text}
@@ -168,8 +204,9 @@ STRATEGIC REQUIREMENTS:
 - Create SEO-optimized headings with natural keyword integration
 - Surface the strongest research-backed angles within the outline
 - Build logical narrative flow from problem to solution
-- Include data-driven insights from research sources
-- Address content gaps and market opportunities
+- Include data-driven insights from research sources — use the numbered sources above
+- For each section, assign the most relevant source indices using the [N] numbers above
+- Address content gaps and market opportunities — if content gaps are listed, dedicate sections to fill those gaps
 - Optimize for search intent and user questions
 - Ensure engaging, actionable content throughout
 
@@ -186,7 +223,8 @@ Return JSON format:
             "subheadings": ["Subheading 1", "Subheading 2", "Subheading 3"],
             "key_points": ["Key point 1", "Key point 2", "Key point 3"],
             "target_words": 300,
-            "keywords": ["keyword 1", "keyword 2"]
+            "keywords": ["keyword 1", "keyword 2"],
+            "source_indices": [1, 3, 5]
         }}
     ]
 }}"""
@@ -220,9 +258,14 @@ Return JSON format:
                             "keywords": {
                                 "type": "array",
                                 "items": {"type": "string"}
+                            },
+                            "source_indices": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": "Indices of research sources (from the numbered list above) that support this section"
                             }
                         },
-                        "required": ["heading", "subheadings", "key_points", "target_words", "keywords"]
+                        "required": ["heading", "subheadings", "key_points", "target_words", "keywords", "source_indices"]
                     }
                 }
             },

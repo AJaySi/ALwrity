@@ -8,6 +8,7 @@ interface UsePhaseRestorationProps {
   currentPhase: string;
   navigateToPhase: (phase: string) => void;
   setCurrentPhase: (phase: string) => void;
+  resetUserSelection?: () => void;
 }
 
 export const usePhaseRestoration = ({
@@ -17,6 +18,7 @@ export const usePhaseRestoration = ({
   currentPhase,
   navigateToPhase,
   setCurrentPhase,
+  resetUserSelection,
 }: UsePhaseRestorationProps) => {
   const hasRestoredRef = useRef(false);
 
@@ -55,7 +57,10 @@ export const usePhaseRestoration = ({
         if (targetPhase && !targetPhase.disabled) {
           console.log('[BlogWriter] Restoring phase from navigation state:', restoredPhase);
           setCurrentPhase(restoredPhase);
-          // Phase restoration complete - the usePhaseNavigation hook will handle persistence
+          // Reset user selection so auto-progression can correct stale phases
+          if (resetUserSelection) {
+            resetUserSelection();
+          }
         } else {
           console.log('[BlogWriter] Restored phase is disabled or not found, keeping current phase:', {
             restoredPhase,

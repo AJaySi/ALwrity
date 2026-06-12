@@ -4,7 +4,7 @@
  * Integrates with existing persona API client and injects data into CopilotKit
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback, useRef } from 'react';
 import { useCopilotReadable } from '@copilotkit/react-core';
 import { useAuth } from '@clerk/clerk-react';
 import { 
@@ -16,6 +16,125 @@ import {
   getUserPersonas, 
   getPlatformPersona 
 } from '../../../api/persona';
+import { shouldSkipOnboarding } from '../../../utils/demoMode';
+
+const LINKEDIN_DEFAULT_CORE_PERSONA: WritingPersona = {
+  id: 0,
+  user_id: 0,
+  persona_name: 'LinkedIn Professional',
+  archetype: 'Thought Leader',
+  core_belief: 'Sharing knowledge drives professional growth',
+  brand_voice_description: 'Clear, authoritative, and approachable',
+  linguistic_fingerprint: {
+    sentence_metrics: {
+      average_sentence_length_words: 15,
+      preferred_sentence_type: 'compound',
+      active_to_passive_ratio: '80:20',
+      sentence_complexity: 'moderate',
+      paragraph_structure: 'standard',
+    },
+    lexical_features: {
+      go_to_words: ['leverage', 'optimize', 'strategic'],
+      go_to_phrases: ["Let's explore", "Here's the thing"],
+      avoid_words: ['utilize', 'synergize'],
+      contractions: 'moderate',
+      vocabulary_level: 'professional',
+      industry_terminology: [],
+      emotional_tone_words: [],
+    },
+    rhetorical_devices: {
+      metaphors: 'tech_mechanics',
+      analogies: 'everyday_to_tech',
+      rhetorical_questions: 'occasional',
+      storytelling_approach: 'case_study',
+      persuasion_techniques: ['logic', 'credibility'],
+    },
+  },
+  platform_adaptations: [],
+  onboarding_session_id: 0,
+  source_website_analysis: {},
+  source_research_preferences: {},
+  ai_analysis_version: '1.0',
+  confidence_score: 0.5,
+  analysis_date: new Date().toISOString(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  is_active: true,
+};
+
+const LINKEDIN_DEFAULT_PLATFORM_PERSONA: PlatformAdaptation = {
+  id: 0,
+  writing_persona_id: 0,
+  platform_type: 'linkedin',
+  sentence_metrics: {
+    optimal_length: '150-300 words',
+    character_limit: 3000,
+    sentence_structure: 'varied',
+    paragraph_breaks: 'frequent',
+    readability_score: 8.5,
+  },
+  lexical_features: {
+    hashtag_strategy: '3-5 relevant hashtags',
+    platform_specific_terms: [],
+    engagement_phrases: ['What do you think?', 'Share your thoughts'],
+    call_to_action_style: 'gentle',
+  },
+  rhetorical_devices: {
+    question_frequency: 'occasional',
+    story_elements: 'personal_anecdotes',
+    visual_descriptions: 'minimal',
+    interactive_elements: 'questions',
+  },
+  tonal_range: {
+    default_tone: 'professional_friendly',
+    permissible_tones: ['inspiring', 'thoughtful'],
+    forbidden_tones: ['salesy', 'academic'],
+    emotional_range: 'moderate',
+    formality_level: 'semi_formal',
+  },
+  stylistic_constraints: {
+    punctuation_preferences: 'standard',
+    formatting_rules: 'clean',
+    emoji_usage: 'minimal',
+    link_placement: 'end',
+    media_integration: 'encouraged',
+  },
+  content_format_rules: {
+    character_limit: 3000,
+    optimal_length: '150-300 words',
+    word_count: '150-300',
+    hashtag_limit: 3,
+    media_requirements: 'optional',
+    link_restrictions: 'unlimited',
+  },
+  engagement_patterns: {
+    posting_frequency: '2-3 times per week',
+    best_timing: '9 AM - 11 AM, 1 PM - 3 PM',
+    interaction_style: 'conversational',
+    response_strategy: 'within 2 hours',
+    community_approach: 'collaborative',
+  },
+  posting_frequency: {
+    frequency: '2-3 times per week',
+    optimal_days: ['Tuesday', 'Wednesday', 'Thursday'],
+    optimal_times: ['9:00 AM', '1:00 PM'],
+    seasonal_adjustments: 'moderate',
+  },
+  content_types: {
+    primary_content: ['thought_leadership', 'industry_insights'],
+    secondary_content: ['personal_stories', 'tips'],
+    content_mix: '70% professional, 30% personal',
+    seasonal_content: ['trending_topics', 'industry_events'],
+  },
+  platform_best_practices: {
+    algorithm_tips: ['post_consistently', 'engage_with_community'],
+    engagement_tactics: ['ask_questions', 'share_stories'],
+    content_strategies: ['value_first', 'authentic_voice'],
+    growth_hacks: ['cross_promotion', 'collaboration'],
+  },
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
 
 // Context interface
 interface PlatformPersonaContextType {
@@ -39,20 +158,118 @@ interface PlatformPersonaProviderProps {
 // Cache duration: 5 minutes (constant outside component to avoid dependency issues)
 const CACHE_DURATION = 5 * 60 * 1000;
 
+/**
+ * Internal component that injects persona data into CopilotKit context.
+ * Rendered only when skipOnboarding is false — when feature-gated,
+ * we skip useCopilotReadable entirely to avoid cascading re-renders
+ * with child components that also call useCopilotReadable.
+ */
+const PersonaCopilotInjector: React.FC<{
+  corePersona: WritingPersona | null;
+  platformPersona: PlatformAdaptation | null;
+  platform: PlatformType;
+  children: ReactNode;
+}> = ({ corePersona, platformPersona, platform, children }) => {
+  const corePersonaCategories = useMemo(() => ["core-persona", "writing-style", "user-preferences"], []);
+  const platformPersonaCategories = useMemo(() => ["platform-persona", platform, "content-optimization"], [platform]);
+  const combinedPersonaCategories = useMemo(() => ["complete-persona", platform, "writing-guidance"], [platform]);
+
+  const corePersonaDescription = useMemo(
+    () => `Core writing persona: ${corePersona?.persona_name || 'Loading...'}`,
+    [corePersona?.persona_name]
+  );
+  const platformPersonaDescription = useMemo(
+    () => `${platform} platform optimization rules and constraints`,
+    [platform]
+  );
+  const combinedPersonaDescription = useMemo(
+    () => `Complete ${platform} writing persona with linguistic fingerprint and platform optimization`,
+    [platform]
+  );
+
+  const corePersonaParentId = useMemo(
+    () => corePersona?.id?.toString(),
+    [corePersona?.id]
+  );
+
+  useCopilotReadable({
+    description: corePersonaDescription,
+    value: corePersona,
+    categories: corePersonaCategories,
+    parentId: corePersonaParentId
+  }, [corePersona]);
+
+  useEffect(() => {
+    if (corePersona) {
+      console.log('🎯 Injected core persona into CopilotKit:', {
+        name: corePersona.persona_name,
+        archetype: corePersona.archetype,
+        confidence: corePersona.confidence_score,
+        hasLinguisticFingerprint: !!(corePersona.linguistic_fingerprint && Object.keys(corePersona.linguistic_fingerprint).length)
+      });
+    }
+  }, [corePersona]);
+
+  useCopilotReadable({
+    description: platformPersonaDescription,
+    value: platformPersona,
+    categories: platformPersonaCategories,
+    parentId: corePersonaParentId
+  }, [platformPersona]);
+
+  useEffect(() => {
+    if (platformPersona) {
+      console.log('🎯 Injected platform persona into CopilotKit:', {
+        platform: platformPersona.platform_type,
+        characterLimit: platformPersona.content_format_rules?.character_limit,
+        optimalLength: platformPersona.content_format_rules?.optimal_length
+      });
+    }
+  }, [platformPersona]);
+
+  const combinedPersonaValue = useMemo(() => ({
+    core: corePersona,
+    platform: platformPersona,
+    combined: {
+      persona_name: corePersona?.persona_name,
+      archetype: corePersona?.archetype,
+      platform: platform,
+      linguistic_fingerprint: corePersona?.linguistic_fingerprint,
+      platform_constraints: platformPersona?.content_format_rules,
+      engagement_patterns: platformPersona?.engagement_patterns
+    }
+  }), [corePersona, platformPersona, platform]);
+
+  useCopilotReadable({
+    description: combinedPersonaDescription,
+    value: combinedPersonaValue,
+    categories: combinedPersonaCategories,
+    parentId: corePersonaParentId
+  }, [corePersona, platformPersona, platform]);
+
+  return <>{children}</>;
+};
+
 // Provider component
 export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = ({ 
   children, 
   platform
 }) => {
+  const skipOnboarding = shouldSkipOnboarding();
+
   // Get Clerk user ID
   const { userId } = useAuth();
   
   // Convert string userId to number for legacy API compatibility
   const numericUserId = userId ? 1 : 1; // Use 1 as placeholder, API uses Clerk ID from auth
-  // State management
-  const [corePersona, setCorePersona] = useState<WritingPersona | null>(null);
-  const [platformPersona, setPlatformPersona] = useState<PlatformAdaptation | null>(null);
-  const [loading, setLoading] = useState(true);
+  // State management — seed defaults immediately in feature-gated mode
+  const [corePersona, setCorePersona] = useState<WritingPersona | null>(
+    skipOnboarding ? LINKEDIN_DEFAULT_CORE_PERSONA : null
+  );
+  const [platformPersona, setPlatformPersona] = useState<PlatformAdaptation | null>(
+    skipOnboarding ? LINKEDIN_DEFAULT_PLATFORM_PERSONA : null
+  );
+  const [loading, setLoading] = useState(!skipOnboarding);
   const [error, setError] = useState<string | null>(null);
 
   // Add request throttling
@@ -62,6 +279,12 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
 
   // Fetch persona data function
   const fetchPersonas = useCallback(async () => {
+    // In feature-gated mode, skip API calls entirely — defaults already seeded
+    if (skipOnboarding) {
+      setLoading(false);
+      return;
+    }
+
     const now = Date.now();
     
     // Prevent multiple simultaneous requests
@@ -86,8 +309,6 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
       setLoading(true);
       setError(null);
       
-      // Fetch both core persona and platform-specific data
-      // Note: APIs use Clerk auth, so user ID is extracted from JWT
       let userPersonasResponse;
       let platformPersonaResponse = null;
       
@@ -95,7 +316,6 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
         const results = await Promise.all([
           getUserPersonas(),
           getPlatformPersona(platform).catch(err => {
-            // Handle 404 gracefully - platform persona doesn't exist yet
             if (err.message && err.message.includes('No persona found')) {
               console.warn(`⚠️ No ${platform} persona found - user can still generate content`);
               return null;
@@ -106,10 +326,11 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
         userPersonasResponse = results[0];
         platformPersonaResponse = results[1];
       } catch (error) {
-        // If platform persona fetch fails, continue with core persona only
-        console.warn(`⚠️ Platform persona unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        userPersonasResponse = await getUserPersonas();
-        platformPersonaResponse = null;
+        console.warn(`⚠️ Persona API unavailable, using defaults: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setCorePersona(LINKEDIN_DEFAULT_CORE_PERSONA);
+        setPlatformPersona(LINKEDIN_DEFAULT_PLATFORM_PERSONA);
+        setError(null);
+        return;
       }
 
       // Handle core persona data
@@ -299,12 +520,18 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
 
     } catch (error) {
       console.error('❌ Error fetching personas:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch persona data');
       
-      // Set fallback data if available
-      if (corePersona) {
-        console.log('🔄 Using existing core persona data');
+      // Provide fallback defaults so children always render
+      if (!corePersona) {
+        console.log('🔄 Using default LinkedIn persona as fallback');
+        setCorePersona(LINKEDIN_DEFAULT_CORE_PERSONA);
       }
+      if (!platformPersona) {
+        console.log('🔄 Using default LinkedIn platform persona as fallback');
+        setPlatformPersona(LINKEDIN_DEFAULT_PLATFORM_PERSONA);
+      }
+      // Clear error state — with defaults available, consumers should function normally
+      setError(null);
     } finally {
       setLoading(false);
       lastRequestTime.current = Date.now();
@@ -319,116 +546,31 @@ export const PlatformPersonaProvider: React.FC<PlatformPersonaProviderProps> = (
   }, [fetchPersonas]);
 
   // Refresh function for manual updates
-  const refreshPersonas = async () => {
+  const refreshPersonas = useCallback(async () => {
     await fetchPersonas();
-  };
+  }, [fetchPersonas]);
 
-  // Inject core persona into CopilotKit context
-  useCopilotReadable({
-    description: `Core writing persona: ${corePersona?.persona_name || 'Loading...'}`,
-    value: corePersona,
-    categories: ["core-persona", "writing-style", "user-preferences"],
-    parentId: corePersona?.id?.toString()
-  });
+  // Memoize context value to prevent unnecessary re-renders of consumers
+  const contextValue = useMemo(() => ({
+    corePersona,
+    platformPersona,
+    platform,
+    loading,
+    error,
+    refreshPersonas
+  }), [corePersona, platformPersona, platform, loading, error, refreshPersonas]);
 
-  // Debug: Log when persona data is available for CopilotKit
-  useEffect(() => {
-    if (corePersona) {
-      console.log('🎯 Injected core persona into CopilotKit:', {
-        name: corePersona.persona_name,
-        archetype: corePersona.archetype,
-        confidence: corePersona.confidence_score,
-        hasLinguisticFingerprint: !!(corePersona.linguistic_fingerprint && Object.keys(corePersona.linguistic_fingerprint).length)
-      });
-    }
-  }, [corePersona]);
+  // No blocking spinner/error states — children always render.
+  // Loading/error states are still exposed via context so consumers
+  // can show non-blocking indicators if they want.
 
-  // Inject platform-specific persona into CopilotKit context
-  useCopilotReadable({
-    description: `${platform} platform optimization rules and constraints`,
-    value: platformPersona,
-    categories: ["platform-persona", platform, "content-optimization"],
-    parentId: corePersona?.id?.toString()
-  });
-
-  // Debug: Log when platform persona is available for CopilotKit
-  useEffect(() => {
-    if (platformPersona) {
-      console.log('🎯 Injected platform persona into CopilotKit:', {
-        platform: platformPersona.platform_type,
-        characterLimit: platformPersona.content_format_rules?.character_limit,
-        optimalLength: platformPersona.content_format_rules?.optimal_length
-      });
-    }
-  }, [platformPersona]);
-
-  // Inject combined persona context for comprehensive understanding
-  useCopilotReadable({
-    description: `Complete ${platform} writing persona with linguistic fingerprint and platform optimization`,
-    value: {
-      core: corePersona,
-      platform: platformPersona,
-      combined: {
-        persona_name: corePersona?.persona_name,
-        archetype: corePersona?.archetype,
-        platform: platform,
-        linguistic_fingerprint: corePersona?.linguistic_fingerprint,
-        platform_constraints: platformPersona?.content_format_rules,
-        engagement_patterns: platformPersona?.engagement_patterns
-      }
-    },
-    categories: ["complete-persona", platform, "writing-guidance"],
-    parentId: corePersona?.id?.toString()
-  });
-
-  // Loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <p className="text-sm text-gray-600">Loading {platform} persona...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error && !corePersona) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <div className="flex items-center">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">Failed to load persona data</h3>
-            <p className="text-sm text-red-700 mt-1">{error}</p>
-            <button
-              onClick={refreshPersonas}
-              className="mt-2 text-sm text-red-600 hover:text-red-500 underline"
-            >
-              Try again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Success state - provide context
   return (
-    <PlatformPersonaContext.Provider value={{ 
-      corePersona, 
-      platformPersona, 
-      platform,
-      loading,
-      error,
-      refreshPersonas
-    }}>
-      {children}
+    <PlatformPersonaContext.Provider value={contextValue}>
+      {skipOnboarding ? children : (
+        <PersonaCopilotInjector corePersona={corePersona} platformPersona={platformPersona} platform={platform}>
+          {children}
+        </PersonaCopilotInjector>
+      )}
     </PlatformPersonaContext.Provider>
   );
 };

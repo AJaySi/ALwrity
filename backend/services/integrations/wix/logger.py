@@ -75,7 +75,10 @@ class WixLogger:
                     logger.debug(f"   Payload: {', '.join(parts)}")
         
         if error_body and status_code >= 400:
-            error_msg = error_body.get('message', 'Unknown error')
+            if isinstance(error_body, dict):
+                error_msg = error_body.get('message', 'Unknown error')
+            else:
+                error_msg = str(error_body)
             logger.error(f"   Error: {error_msg}")
             if status_code == 500:
                 logger.error("   ⚠️ Internal server error - check Wix API status")

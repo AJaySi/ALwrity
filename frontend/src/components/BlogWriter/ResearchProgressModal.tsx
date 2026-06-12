@@ -533,229 +533,155 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
       <div
         style={{
           width: '100%',
-          maxWidth: 940,
-          maxHeight: '82vh',
+          maxWidth: 700,
+          maxHeight: '85vh',
           background: '#ffffff',
-          borderRadius: 18,
-          boxShadow: '0 28px 80px rgba(15, 23, 42, 0.25)',
+          borderRadius: 16,
+          boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)',
           border: '1px solid #e2e8f0',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden'
         }}
       >
+        {/* Compact header */}
         <div
           style={{
-            padding: '28px 32px 24px 32px',
+            padding: '16px 20px',
             background: '#f8fafc',
             borderBottom: '1px solid #e2e8f0',
-            position: 'relative'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              backgroundImage: 'url(/blog-writer-bg.png)',
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'left center',
-              backgroundSize: '35% auto',
-              opacity: 0.12,
-              pointerEvents: 'none'
-            }}
-          />
-          <div
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: 16
-            }}
-          >
-            <div>
-              <h3 id="research-progress-title" style={{ margin: 0, fontSize: 22, color: '#0f172a' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+            {isRunning && <CircularProgress size={18} thickness={4} sx={{ color: '#2563eb', flexShrink: 0 }} />}
+            <div style={{ minWidth: 0 }}>
+              <h3 id="research-progress-title" style={{ margin: 0, fontSize: 16, color: '#0f172a' }}>
                 {title}
               </h3>
-              <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>
-                Research takes 40–60 seconds. We search multiple engines (Exa, Tavily), extract key insights, 
-                and assemble a structured research brief. After this, you will move to the <strong>Outline phase</strong> 
-                where AI generates a blog structure, then <strong>Content</strong> writes each section, followed by 
-                <strong> SEO</strong> optimization and <strong>Publish</strong>.
-              </p>
               <div
                 style={{
-                  marginTop: 14,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 16px 8px 14px',
+                  gap: 6,
+                  marginTop: 4,
+                  padding: '2px 8px',
                   borderRadius: 999,
                   background: statusInfo.background,
                   color: statusInfo.color,
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 600,
-                  border: `1px solid ${statusInfo.color}33`,
-                  animation: isRunning ? 'researchPulse 2s ease-in-out infinite' : undefined
                 }}
               >
-                {isRunning && (
-                  <CircularProgress
-                    size={14}
-                    thickness={6}
-                    sx={{ color: statusInfo.color }}
-                  />
-                )}
-                <span>{statusInfo.label}</span>
-                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{statusInfo.description}</span>
+                {statusInfo.label}
+                {statusInfo.description && <span style={{ fontWeight: 400, fontSize: 11, color: '#64748b' }}>— {statusInfo.description}</span>}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5f5',
-                borderRadius: 12,
-                padding: '10px 14px',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#1f2937',
-                boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Close
-            </button>
           </div>
-        </div>
-
-        <div style={{ padding: '24px 32px', overflow: 'auto' }}>
-          <div style={{ marginBottom: 20 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                marginBottom: 8
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  height: 6,
-                  borderRadius: 3,
-                  background: '#e5e7eb',
-                  overflow: 'hidden',
-                  position: 'relative'
-                }}
-              >
-                <div
-                  style={{
-                    width: `${Math.round((stagesWithState.filter(s => s.state === 'done').length / stagesWithState.length) * 100)}%`,
-                    height: '100%',
-                    borderRadius: 3,
-                    background: 'linear-gradient(90deg, #3b82f6, #2563eb)',
-                    transition: 'width 0.5s ease'
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
-                {stagesWithState.filter(s => s.state === 'done').length}/{stagesWithState.length}
-              </span>
-            </div>
-          <div
+          <button
+            onClick={onClose}
             style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 12
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              padding: '6px 12px',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 500,
+              color: '#475569',
+              flexShrink: 0
             }}
           >
+            Close
+          </button>
+        </div>
+
+        <div style={{ padding: '12px 20px', overflow: 'auto', flex: 1 }}>
+          {/* Progress bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1, height: 4, borderRadius: 2, background: '#e5e7eb', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${Math.round((stagesWithState.filter(s => s.state === 'done').length / stagesWithState.length) * 100)}%`,
+                  height: '100%',
+                  borderRadius: 2,
+                  background: 'linear-gradient(90deg, #3b82f6, #2563eb)',
+                  transition: 'width 0.5s ease'
+                }}
+              />
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+              {stagesWithState.filter(s => s.state === 'done').length}/{stagesWithState.length}
+            </span>
+          </div>
+
+          {/* Compact stage indicators */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             {stagesWithState.map(stage => {
               const copy = stageStateCopy[stage.state];
-              const isActive = stage.state === 'active';
               return (
                 <div
                   key={stage.id}
                   style={{
-                    flex: '1 1 180px',
-                    minWidth: 180,
-                    borderRadius: 14,
-                    padding: '14px 16px',
+                    flex: 1,
+                    padding: '6px 4px',
+                    borderRadius: 8,
                     background: copy.background,
                     border: `1px solid ${copy.border}`,
-                    boxShadow: isActive
-                      ? '0 0 0 1px rgba(37, 99, 235, 0.08), inset 0 1px 0 rgba(255,255,255,0.6)'
-                      : 'inset 0 1px 0 rgba(255,255,255,0.6)',
-                    animation: isActive ? 'researchPulse 2s ease-in-out infinite' : undefined,
+                    textAlign: 'center',
+                    animation: stage.state === 'active' ? 'researchPulse 2s ease-in-out infinite' : undefined,
                     transition: 'all 0.3s ease'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, color: '#0f172a' }}>
-                    <span style={{ fontSize: 22 }}>{stage.icon}</span>
-                    <span>{stage.label}</span>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12.5, color: '#475569' }}>{stage.description}</div>
-                  <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: copy.color, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {isActive && (
-                      <CircularProgress size={10} thickness={6} sx={{ color: copy.color }} />
-                    )}
-                    {copy.label}
+                  <div style={{ fontSize: 16, lineHeight: 1 }}>{stage.icon}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: copy.color, marginTop: 2, lineHeight: 1.2 }}>
+                    {stage.state === 'active' ? 'Working…' : stage.state === 'done' ? 'Done' : stage.state === 'error' ? 'Error' : stage.label.split('(')[0].trim()}
                   </div>
                 </div>
               );
             })}
           </div>
-          </div>
 
+          {/* Latest message card — compact */}
           {latestMessage && (
             <div
               style={{
-                borderRadius: 16,
-                padding: '18px 20px',
+                borderRadius: 10,
+                padding: '10px 14px',
                 border: `1px solid ${toneStyles[latestMessage.tone].border}`,
                 background: toneStyles[latestMessage.tone].bg,
-                marginBottom: 20,
-                boxShadow: '0 4px 16px rgba(15, 23, 42, 0.08)'
+                marginBottom: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                <div style={{ fontSize: 28 }}>{latestMessage.icon}</div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'baseline',
-                      gap: 16
-                    }}
-                  >
-                    <div style={{ fontSize: 17, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {latestMessage.tone === 'active' && isRunning && (
-                        <CircularProgress size={14} thickness={6} sx={{ color: '#1d4ed8', flexShrink: 0 }} />
-                      )}
-                      {latestMessage.title}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{latestMessage.timeLabel}</div>
+              <div style={{ fontSize: 20, flexShrink: 0 }}>{latestMessage.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {latestMessage.tone === 'active' && isRunning && (
+                      <CircularProgress size={12} thickness={5} sx={{ color: '#1d4ed8', flexShrink: 0 }} />
+                    )}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestMessage.title}</span>
                   </div>
-                  {latestMessage.subtitle && (
-                    <div style={{ marginTop: 6, fontSize: 13.5, color: '#334155' }}>{latestMessage.subtitle}</div>
-                  )}
-                  {latestMessage.raw && (
-                    <div style={{ marginTop: 10, fontSize: 12.5, color: '#64748b' }}>{latestMessage.raw}</div>
-                  )}
+                  <div style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{latestMessage.timeLabel}</div>
                 </div>
+                {latestMessage.subtitle && (
+                  <div style={{ marginTop: 2, fontSize: 12, color: '#64748b', lineHeight: 1.3 }}>{latestMessage.subtitle}</div>
+                )}
               </div>
             </div>
           )}
 
+          {/* Scrollable message log — compact rows */}
           <div
             style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: 16,
-              padding: '18px 0',
-              maxHeight: '32vh',
+              border: '1px solid #e5e7eb',
+              borderRadius: 10,
+              maxHeight: '28vh',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column'
@@ -765,15 +691,15 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
               ref={scrollRef}
               style={{
                 overflowY: 'auto',
-                padding: '0 20px',
+                padding: '6px 10px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 12
+                gap: 4
               }}
             >
               {processedMessages.length === 0 && (
-                <div style={{ padding: '10px 0', color: '#6b7280', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isRunning && <CircularProgress size={12} thickness={6} sx={{ color: '#6b7280' }} />}
+                <div style={{ padding: '8px 0', color: '#9ca3af', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isRunning && <CircularProgress size={10} thickness={5} sx={{ color: '#9ca3af' }} />}
                   Awaiting progress updates…
                 </div>
               )}
@@ -784,33 +710,18 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
                     key={`${meta.timestamp}-${index}`}
                     style={{
                       display: 'flex',
-                      gap: 14,
-                      padding: '12px 14px',
-                      borderRadius: 12,
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '4px 8px',
+                      borderRadius: 6,
                       background: styles.bg,
-                      border: `1px solid ${styles.border}`
+                      border: `1px solid ${styles.border}`,
+                      fontSize: 12
                     }}
                   >
-                    <div style={{ fontSize: 22 }}>{meta.icon}</div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'baseline',
-                          gap: 12
-                        }}
-                      >
-                        <div style={{ fontWeight: 600, color: styles.text, fontSize: 14 }}>{meta.title}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{meta.timeLabel}</div>
-                      </div>
-                      {meta.subtitle && (
-                        <div style={{ marginTop: 4, fontSize: 13, color: '#475569' }}>{meta.subtitle}</div>
-                      )}
-                      {meta.raw && (
-                        <div style={{ marginTop: 6, fontSize: 12.5, color: '#6b7280' }}>{meta.raw}</div>
-                      )}
-                    </div>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{meta.icon}</span>
+                    <span style={{ fontWeight: 600, color: styles.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.title}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 10, flexShrink: 0 }}>{meta.timeLabel}</span>
                   </div>
                 );
               })}
@@ -820,13 +731,13 @@ const ResearchProgressModal: React.FC<ResearchProgressModalProps> = ({
           {error && (
             <div
               style={{
-                marginTop: 18,
-                padding: '12px 16px',
-                borderRadius: 12,
+                marginTop: 10,
+                padding: '8px 12px',
+                borderRadius: 8,
                 border: '1px solid #fecaca',
                 background: '#fef2f2',
                 color: '#b91c1c',
-                fontSize: 13.5
+                fontSize: 13
               }}
             >
               Error: {error}

@@ -41,10 +41,33 @@ class SourceToSectionMapper:
             'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
             'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
             'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
-            'how', 'what', 'when', 'where', 'why', 'who', 'which', 'how', 'much', 'many', 'more', 'most',
+            'how', 'what', 'when', 'where', 'why', 'who', 'which', 'much', 'many', 'more', 'most',
             'some', 'any', 'all', 'each', 'every', 'other', 'another', 'such', 'no', 'not', 'only', 'own',
             'same', 'so', 'than', 'too', 'very', 'just', 'now', 'here', 'there', 'up', 'down', 'out', 'off',
-            'over', 'under', 'again', 'further', 'then', 'once'
+            'over', 'under', 'again', 'further', 'then', 'once', 'also', 'into', 'about', 'between',
+            'through', 'during', 'before', 'after', 'above', 'below', 'from', 'since', 'until', 'while',
+            'because', 'however', 'therefore', 'thus', 'hence', 'yet', 'still', 'already', 'even'
+        }
+        
+        # Common abbreviation/synonym pairs for fuzzy matching
+        self._synonym_map = {
+            'ai': ['artificial intelligence', 'machine intelligence'],
+            'ml': ['machine learning'],
+            'dl': ['deep learning'],
+            'nlp': ['natural language processing'],
+            'iot': ['internet of things'],
+            'saas': ['software as a service'],
+            'b2b': ['business to business'],
+            'b2c': ['business to consumer'],
+            'cx': ['customer experience'],
+            'ux': ['user experience'],
+            'roi': ['return on investment'],
+            'kpi': ['key performance indicator'],
+            'crm': ['customer relationship management'],
+            'erp': ['enterprise resource planning'],
+            'seo': ['search engine optimization'],
+            'cto': ['chief technology officer'],
+            'vp': ['vice president'],
         }
         
         logger.info("✅ SourceToSectionMapper initialized with intelligent mapping algorithms")
@@ -53,15 +76,21 @@ class SourceToSectionMapper:
         self, 
         sections: List[BlogOutlineSection], 
         research_data: BlogResearchResponse,
-        user_id: str
+        user_id: str,
+        competitive_advantage: str = ""
     ) -> List[BlogOutlineSection]:
         """
         Map research sources to outline sections using intelligent algorithms.
+        
+        Sections that already have LLM-assigned references (from source_indices
+        in the outline prompt) are preserved. Algorithmic mapping fills gaps
+        for sections without LLM-assigned sources.
         
         Args:
             sections: List of outline sections to map sources to
             research_data: Research data containing sources and metadata
             user_id: User ID (required for subscription checks and usage tracking)
+            competitive_advantage: Selected competitive advantage to preferentially match
             
         Returns:
             List of outline sections with intelligently mapped sources
@@ -76,16 +105,39 @@ class SourceToSectionMapper:
             logger.warning("No sections or sources to map")
             return sections
         
-        logger.info(f"Mapping {len(research_data.sources)} sources to {len(sections)} sections")
+        # Separate sections with LLM-assigned references from those without
+        sections_with_refs = [s for s in sections if s.references]
+        sections_without_refs = [s for s in sections if not s.references]
         
-        # Step 1: Algorithmic mapping
-        mapping_results = self._algorithmic_source_mapping(sections, research_data)
+        logger.info(
+            f"Mapping {len(research_data.sources)} sources to {len(sections)} sections "
+            f"({len(sections_with_refs)} with LLM-assigned references, "
+            f"{len(sections_without_refs)} need algorithmic mapping)"
+        )
         
-        # Step 2: AI validation and improvement (single prompt, user_id required for subscription checks)
-        validated_mapping = self._ai_validate_mapping(mapping_results, research_data, user_id)
+        if sections_without_refs:
+            # Step 1: Algorithmic mapping for sections without LLM-assigned references
+            mapping_results = self._algorithmic_source_mapping(sections_without_refs, research_data, competitive_advantage)
+            
+            # Step 2: AI validation and improvement
+            validated_mapping = self._ai_validate_mapping(mapping_results, research_data, user_id)
+            
+            # Step 3: Apply mapping only to sections that need it
+            mapped_sections_with = self._apply_mapping_to_sections(sections_without_refs, validated_mapping)
+        else:
+            mapped_sections_with = []
         
-        # Step 3: Apply validated mapping to sections
-        mapped_sections = self._apply_mapping_to_sections(sections, validated_mapping)
+        # Combine: keep LLM-assigned sections as-is, add algorithmically mapped ones
+        mapped_sections = list(sections_with_refs) + mapped_sections_with
+        
+        # Preserve original ordering
+        original_ids = [s.id for s in sections]
+        mapped_sections.sort(key=lambda s: original_ids.index(s.id) if s.id in original_ids else 999)
+        
+        # Warn if any section still has zero references
+        for s in mapped_sections:
+            if not s.references:
+                logger.warning(f"Section '{s.heading}' (id={s.id}) has ZERO sources — content generator will use keyword-based fallback")
         
         logger.info("✅ Source-to-section mapping completed successfully")
         return mapped_sections
@@ -93,7 +145,8 @@ class SourceToSectionMapper:
     def _algorithmic_source_mapping(
         self, 
         sections: List[BlogOutlineSection], 
-        research_data: BlogResearchResponse
+        research_data: BlogResearchResponse,
+        competitive_advantage: str = ""
     ) -> Dict[str, List[Tuple[ResearchSource, float]]]:
         """
         Perform algorithmic mapping of sources to sections.
@@ -101,6 +154,7 @@ class SourceToSectionMapper:
         Args:
             sections: List of outline sections
             research_data: Research data with sources
+            competitive_advantage: Selected competitive advantage to boost matching
             
         Returns:
             Dictionary mapping section IDs to list of (source, score) tuples
@@ -114,7 +168,7 @@ class SourceToSectionMapper:
                 # Calculate multi-dimensional relevance score
                 semantic_score = self._calculate_semantic_similarity(section, source)
                 keyword_score = self._calculate_keyword_relevance(section, source, research_data)
-                contextual_score = self._calculate_contextual_relevance(section, source, research_data)
+                contextual_score = self._calculate_contextual_relevance(section, source, research_data, competitive_advantage)
                 
                 # Weighted total score
                 total_score = (
@@ -140,38 +194,54 @@ class SourceToSectionMapper:
     def _calculate_semantic_similarity(self, section: BlogOutlineSection, source: ResearchSource) -> float:
         """
         Calculate semantic similarity between section and source.
-        
-        Args:
-            section: Outline section
-            source: Research source
-            
-        Returns:
-            Semantic similarity score (0.0 to 1.0)
+        Uses word overlap, stem matching, bigram overlap, title-boost, and synonym expansion.
         """
-        # Extract text content for comparison
         section_text = self._extract_section_text(section)
         source_text = self._extract_source_text(source)
         
-        # Calculate word overlap
         section_words = self._extract_meaningful_words(section_text)
         source_words = self._extract_meaningful_words(source_text)
         
         if not section_words or not source_words:
             return 0.0
         
-        # Calculate Jaccard similarity
-        intersection = len(set(section_words) & set(source_words))
-        union = len(set(section_words) | set(source_words))
+        section_set = set(section_words)
+        source_set = set(source_words)
         
-        jaccard_similarity = intersection / union if union > 0 else 0.0
+        # 1. Jaccard similarity on raw words
+        intersection = len(section_set & source_set)
+        union = len(section_set | source_set)
+        jaccard = intersection / union if union > 0 else 0.0
         
-        # Boost score for exact phrase matches
-        phrase_boost = self._calculate_phrase_similarity(section_text, source_text)
+        # 2. Stem matching — catches word variants (e.g., "running" vs "runs")
+        section_stems = set(self._stem_word(w) for w in section_words)
+        source_stems = set(self._stem_word(w) for w in source_words)
+        stem_intersection = len(section_stems & source_stems)
+        stem_union = len(section_stems | source_stems)
+        stem_similarity = stem_intersection / stem_union if stem_union > 0 else 0.0
         
-        # Combine Jaccard similarity with phrase boost
-        semantic_score = min(1.0, jaccard_similarity + phrase_boost)
+        # 3. Bigram overlap — catches multi-word concepts (e.g., "machine learning")
+        section_bigrams = set(self._extract_bigrams(section_text))
+        source_bigrams = set(self._extract_bigrams(source_text))
+        bigram_overlap = len(section_bigrams & source_bigrams)
+        bigram_score = min(0.3, bigram_overlap * 0.1) if (section_bigrams or source_bigrams) else 0.0
         
-        return semantic_score
+        # 4. Title-boost — section heading matching source title is a strong signal
+        heading = (section.heading or '').lower()
+        source_title = (source.title or '').lower()
+        heading_words = set(self._extract_meaningful_words(heading))
+        title_words = set(self._extract_meaningful_words(source_title))
+        title_overlap = len(heading_words & title_words) / len(heading_words | title_words) if (heading_words or title_words) else 0.0
+        title_boost = min(0.3, title_overlap * 0.5)
+        
+        # 5. Synonym expansion — expand abbreviations and match across synonym pairs
+        synonym_score = self._calculate_synonym_overlap(section_words, source_words)
+        
+        # Combine: Jaccard + stem give base, bigram + title + synonyms boost
+        base_similarity = max(jaccard, stem_similarity)
+        combined = min(1.0, base_similarity + bigram_score + title_boost + synonym_score + 0.0)
+        
+        return combined
     
     def _calculate_keyword_relevance(
         self, 
@@ -219,7 +289,8 @@ class SourceToSectionMapper:
         self, 
         section: BlogOutlineSection, 
         source: ResearchSource, 
-        research_data: BlogResearchResponse
+        research_data: BlogResearchResponse,
+        competitive_advantage: str = ""
     ) -> float:
         """
         Calculate contextual relevance based on section content and source context.
@@ -228,6 +299,7 @@ class SourceToSectionMapper:
             section: Outline section
             source: Research source
             research_data: Research data with context
+            competitive_advantage: Selected competitive advantage to boost matching
             
         Returns:
             Contextual relevance score (0.0 to 1.0)
@@ -263,6 +335,15 @@ class SourceToSectionMapper:
             industry_words = self._extract_meaningful_words(research_data.industry.lower())
             industry_score = sum(1 for word in industry_words if word in source_text) / len(industry_words) if industry_words else 0.0
             contextual_score += industry_score * 0.2
+        
+        # 4. Competitive advantage boost — sources that match the advantage get a score lift
+        if competitive_advantage:
+            advantage_words = set(self._extract_meaningful_words(competitive_advantage.lower()))
+            if advantage_words:
+                advantage_in_section = sum(1 for w in advantage_words if w in section_text) / len(advantage_words)
+                advantage_in_source = sum(1 for w in advantage_words if w in source_text) / len(advantage_words)
+                if advantage_in_section > 0.3 and advantage_in_source > 0.3:
+                    contextual_score += 0.25 * (advantage_in_section + advantage_in_source)
         
         return min(1.0, contextual_score)
     
@@ -360,10 +441,15 @@ class SourceToSectionMapper:
         return " ".join(text_parts)
     
     def _extract_source_text(self, source: ResearchSource) -> str:
-        """Extract all text content from a source."""
+        """Extract all text content from a source, including full text for better matching."""
         text_parts = [source.title]
+        if source.summary:
+            text_parts.append(source.summary)
         if source.excerpt:
             text_parts.append(source.excerpt)
+        content = getattr(source, 'content', '') or ''
+        if content:
+            text_parts.append(content[:500])
         return " ".join(text_parts)
     
     def _extract_meaningful_words(self, text: str) -> List[str]:
@@ -381,6 +467,41 @@ class SourceToSectionMapper:
         ]
         
         return meaningful_words
+    
+    def _stem_word(self, word: str) -> str:
+        """Rudimentary suffix-stripping stemmer for English words."""
+        if len(word) <= 3:
+            return word
+        for suffix in ['ization', 'ation', 'tion', 'sion', 'ment', 'ness', 'ity', 'ing', 'able', 'ible', 'ful', 'less', 'ous', 'ive', 'ally', 'ly', 'er', 'ed', 'es', 's']:
+            if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+                return word[:-len(suffix)]
+        return word
+    
+    def _extract_bigrams(self, text: str) -> List[str]:
+        """Extract meaningful two-word phrases from text."""
+        words = self._extract_meaningful_words(text)
+        if len(words) < 2:
+            return []
+        return [f"{words[i]} {words[i+1]}" for i in range(len(words) - 1)]
+    
+    def _calculate_synonym_overlap(self, section_words: List[str], source_words: List[str]) -> float:
+        """Score overlap via abbreviation/synonym expansion."""
+        section_set = set(section_words)
+        source_set = set(source_words)
+        extra_matches = 0
+        total_terms = len(section_set | source_set) or 1
+        
+        for abbr, expansions in self._synonym_map.items():
+            abbr_in_section = abbr in section_set
+            abbr_in_source = abbr in source_set
+            for expansion in expansions:
+                exp_words = set(expansion.split())
+                exp_in_section = exp_words.issubset(section_set)
+                exp_in_source = exp_words.issubset(source_set)
+                if (abbr_in_section and exp_in_source) or (abbr_in_source and exp_in_section):
+                    extra_matches += 1
+        
+        return min(0.2, extra_matches * 0.05)
     
     def _calculate_phrase_similarity(self, text1: str, text2: str) -> float:
         """Calculate phrase similarity boost score."""

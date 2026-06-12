@@ -17,7 +17,7 @@ class ParallelProcessor:
         self.source_mapper = source_mapper
         self.grounding_engine = grounding_engine
     
-    async def run_parallel_processing(self, outline_sections, research, user_id: str, task_id: str = None) -> Tuple[Any, Any]:
+    async def run_parallel_processing(self, outline_sections, research, user_id: str, task_id: str = None, competitive_advantage: str = "") -> Tuple[Any, Any]:
         """
         Run source mapping and grounding insights extraction in parallel.
         
@@ -26,6 +26,7 @@ class ParallelProcessor:
             research: Research data object
             user_id: User ID (required for subscription checks and usage tracking)
             task_id: Optional task ID for progress updates
+            competitive_advantage: Selected competitive advantage for preferential source matching
             
         Returns:
             Tuple of (mapped_sections, grounding_insights)
@@ -44,7 +45,7 @@ class ParallelProcessor:
         
         # Run these tasks in parallel to save time
         source_mapping_task = asyncio.create_task(
-            self._run_source_mapping(outline_sections, research, task_id, user_id)
+            self._run_source_mapping(outline_sections, research, task_id, user_id, competitive_advantage)
         )
         
         grounding_insights_task = asyncio.create_task(
@@ -59,7 +60,7 @@ class ParallelProcessor:
         
         return mapped_sections, grounding_insights
     
-    async def run_parallel_processing_async(self, outline_sections, research, user_id: str) -> Tuple[Any, Any]:
+    async def run_parallel_processing_async(self, outline_sections, research, user_id: str, competitive_advantage: str = "") -> Tuple[Any, Any]:
         """
         Run parallel processing without progress updates (for non-progress methods).
         
@@ -67,6 +68,7 @@ class ParallelProcessor:
             outline_sections: List of outline sections to process
             research: Research data object
             user_id: User ID (required for subscription checks and usage tracking)
+            competitive_advantage: Selected competitive advantage for preferential source matching
             
         Returns:
             Tuple of (mapped_sections, grounding_insights)
@@ -81,7 +83,7 @@ class ParallelProcessor:
         
         # Run these tasks in parallel to save time
         source_mapping_task = asyncio.create_task(
-            self._run_source_mapping_async(outline_sections, research, user_id)
+            self._run_source_mapping_async(outline_sections, research, user_id, competitive_advantage)
         )
         
         grounding_insights_task = asyncio.create_task(
@@ -96,12 +98,12 @@ class ParallelProcessor:
         
         return mapped_sections, grounding_insights
     
-    async def _run_source_mapping(self, outline_sections, research, task_id, user_id: str):
+    async def _run_source_mapping(self, outline_sections, research, task_id, user_id: str, competitive_advantage: str = ""):
         """Run source mapping in parallel."""
         if task_id:
             from api.blog_writer.task_manager import task_manager
             await task_manager.update_progress(task_id, "🔗 Applying intelligent source-to-section mapping...")
-        return self.source_mapper.map_sources_to_sections(outline_sections, research, user_id)
+        return self.source_mapper.map_sources_to_sections(outline_sections, research, user_id, competitive_advantage=competitive_advantage)
     
     async def _run_grounding_insights_extraction(self, research, task_id):
         """Run grounding insights extraction in parallel."""
@@ -110,10 +112,10 @@ class ParallelProcessor:
             await task_manager.update_progress(task_id, "🧠 Extracting grounding metadata insights...")
         return self.grounding_engine.extract_contextual_insights(research.grounding_metadata)
     
-    async def _run_source_mapping_async(self, outline_sections, research, user_id: str):
+    async def _run_source_mapping_async(self, outline_sections, research, user_id: str, competitive_advantage: str = ""):
         """Run source mapping in parallel (async version without progress updates)."""
         logger.info("Applying intelligent source-to-section mapping...")
-        return self.source_mapper.map_sources_to_sections(outline_sections, research, user_id)
+        return self.source_mapper.map_sources_to_sections(outline_sections, research, user_id, competitive_advantage=competitive_advantage)
     
     async def _run_grounding_insights_extraction_async(self, research):
         """Run grounding insights extraction in parallel (async version without progress updates)."""

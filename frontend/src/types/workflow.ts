@@ -5,7 +5,7 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type ActionType = 'navigate' | 'modal' | 'external';
 export type WorkflowStatus = 'not_started' | 'in_progress' | 'completed' | 'paused' | 'stopped';
-export type WorkflowGenerationMode = 'agent_committee' | 'llm_generation' | 'llm_pillar_backfill' | 'controlled_fallback';
+export type WorkflowGenerationMode = 'agent_committee' | 'llm_generation' | 'llm_pillar_backfill' | 'controlled_fallback' | 'calendar_driven';
 
 export interface WorkflowProvenanceSummary {
   generationMode: WorkflowGenerationMode;

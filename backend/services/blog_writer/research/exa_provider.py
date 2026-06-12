@@ -7,6 +7,8 @@ Neural search implementation using Exa API for high-quality, citation-rich resea
 from exa_py import Exa
 import os
 import asyncio
+from datetime import datetime
+from urllib.parse import urlparse
 from typing import List, Dict, Any
 from loguru import logger
 from models.subscription_models import APIProvider
@@ -355,6 +357,125 @@ class ExaResearchProvider(BaseProvider):
         
         return None
     
+    def _calculate_credibility_score(self, result) -> float:
+        """Dynamic credibility score based on domain authority, recency, and content substance."""
+        scores = []
+        weights = []
+
+        # Domain authority (weight: 3) — most important signal
+        url = result.url if hasattr(result, 'url') else ''
+        domain_score = self._score_domain_authority(url)
+        scores.append(domain_score)
+        weights.append(3)
+
+        # Recency (weight: 2) — fresher content is more valuable
+        recency_score = self._score_recency(result)
+        scores.append(recency_score)
+        weights.append(2)
+
+        # Content substance (weight: 2) — richer content = more substantive source
+        substance_score = self._score_substance(result)
+        scores.append(substance_score)
+        weights.append(2)
+
+        # Exa relevance score (weight: 2) — Exa's own relevance ranking
+        exa_score = 0.5
+        if hasattr(result, 'score') and result.score is not None:
+            exa_score = float(result.score)
+        scores.append(exa_score)
+        weights.append(2)
+
+        total = sum(s * w for s, w in zip(scores, weights))
+        total_weight = sum(weights)
+        return round(total / total_weight, 3)
+
+    @staticmethod
+    def _score_domain_authority(url: str) -> float:
+        if not url:
+            return 0.5
+        try:
+            domain = urlparse(url).netloc.lower()
+        except Exception:
+            return 0.5
+        if domain.startswith('www.'):
+            domain = domain[4:]
+
+        # Tier 1: Government, educational, major research
+        if domain.endswith('.gov') or domain.endswith('.edu'):
+            return 0.95
+        if domain in ('arxiv.org', 'pubmed.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov',
+                      'scholar.google.com', 'researchgate.net', 'sciencedaily.com',
+                      'nature.com', 'science.org', 'pnas.org'):
+            return 0.92
+
+        # Tier 2: Major established news and professional publications
+        tier2 = {
+            'reuters.com', 'apnews.com', 'bbc.com', 'bbc.co.uk', 'npr.org',
+            'wsj.com', 'nytimes.com', 'economist.com', 'bloomberg.com',
+            'theguardian.com', 'ft.com', 'washingtonpost.com',
+            'forbes.com', 'hbr.org', 'techcrunch.com', 'wired.com',
+            'cnn.com', 'nbcnews.com', 'cbsnews.com', 'abcnews.go.com',
+        }
+        # Extract base domain
+        parts = domain.split('.')
+        base = '.'.join(parts[-2:]) if len(parts) >= 2 else domain
+        if base in tier2:
+            return 0.88
+
+        # Tier 3: Industry research and established .org
+        tier3 = {
+            'statista.com', 'pewresearch.org', 'gartner.com', 'mckinsey.com',
+            'deloitte.com', 'pwc.com', 'ey.com', 'kpmg.com',
+            'hubspot.com', 'moz.com', 'searchengineland.com',
+            'neilpatel.com', 'backlinko.com', 'copyblogger.com',
+        }
+        if base in tier3:
+            return 0.80
+        if domain.endswith('.org'):
+            return 0.75
+
+        return 0.60
+
+    def _score_recency(self, result) -> float:
+        if not hasattr(result, 'publishedDate') or not result.publishedDate:
+            return 0.70
+        try:
+            published = datetime.strptime(result.publishedDate[:10], '%Y-%m-%d')
+            days_old = (datetime.now() - published).days
+            if days_old < 30:
+                return 1.0
+            elif days_old < 180:
+                return 0.90
+            elif days_old < 365:
+                return 0.80
+            elif days_old < 730:
+                return 0.65
+            elif days_old < 1825:
+                return 0.45
+            else:
+                return 0.25
+        except Exception:
+            return 0.70
+
+    def _score_substance(self, result) -> float:
+        total_chars = 0
+        if hasattr(result, 'highlights') and result.highlights:
+            total_chars += sum(len(h or '') for h in result.highlights)
+        if hasattr(result, 'summary') and result.summary:
+            total_chars += len(result.summary)
+        if hasattr(result, 'text') and result.text:
+            total_chars += len(result.text)
+
+        if total_chars > 2000:
+            return 0.95
+        elif total_chars > 1000:
+            return 0.85
+        elif total_chars > 500:
+            return 0.75
+        elif total_chars > 100:
+            return 0.60
+        return 0.40
+
     def _transform_sources(self, results):
         """Transform Exa results to ResearchSource format."""
         sources = []
@@ -368,7 +489,7 @@ class ExaResearchProvider(BaseProvider):
                 'title': result.title if hasattr(result, 'title') else '',
                 'url': result.url if hasattr(result, 'url') else '',
                 'excerpt': self._get_excerpt(result),
-                'credibility_score': 0.85,  # Exa results are high quality
+                'credibility_score': self._calculate_credibility_score(result),
                 'published_at': result.publishedDate if hasattr(result, 'publishedDate') else None,
                 'index': idx,
                 'source_type': source_type,
@@ -388,7 +509,7 @@ class ExaResearchProvider(BaseProvider):
         if hasattr(result, 'summary') and result.summary:
             return result.summary
         if hasattr(result, 'text') and result.text:
-            return result.text[:500]
+            return result.text[:1000]
         return ''
     
     def _determine_source_type(self, url):

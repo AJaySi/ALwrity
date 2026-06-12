@@ -84,14 +84,14 @@ class BlogSEOMetadataGenerator:
             raise e
     
     def _extract_keywords_from_research(self, research_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract keywords and context from research data"""
+        """Extract keywords and context from research data, including competitor analysis and content gaps."""
         try:
             keyword_analysis = research_data.get('keyword_analysis', {})
             
             # Handle both 'semantic' and 'semantic_keywords' field names
             semantic_keywords = keyword_analysis.get('semantic', []) or keyword_analysis.get('semantic_keywords', [])
             
-            return {
+            result = {
                 'primary_keywords': keyword_analysis.get('primary', []),
                 'long_tail_keywords': keyword_analysis.get('long_tail', []),
                 'semantic_keywords': semantic_keywords,
@@ -100,6 +100,30 @@ class BlogSEOMetadataGenerator:
                 'target_audience': research_data.get('target_audience', 'general'),
                 'industry': research_data.get('industry', 'general')
             }
+            
+            # Extract competitor analysis context
+            competitor_analysis = research_data.get('competitor_analysis', {})
+            if competitor_analysis:
+                result['content_gaps'] = competitor_analysis.get('content_gaps', [])
+                result['industry_leaders'] = competitor_analysis.get('industry_leaders', [])
+                result['opportunities'] = competitor_analysis.get('opportunities', [])
+                result['competitive_advantages'] = competitor_analysis.get('competitive_advantages', [])
+            else:
+                result['content_gaps'] = []
+                result['industry_leaders'] = []
+                result['opportunities'] = []
+                result['competitive_advantages'] = []
+            
+            # Extract search queries
+            search_queries = research_data.get('search_queries', [])
+            result['search_queries'] = search_queries if isinstance(search_queries, list) else []
+            
+            # Extract suggested angles
+            suggested_angles = research_data.get('suggested_angles', [])
+            result['suggested_angles'] = suggested_angles if isinstance(suggested_angles, list) else []
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Failed to extract keywords from research: {e}")
             return {
@@ -109,7 +133,13 @@ class BlogSEOMetadataGenerator:
                 'all_keywords': [],
                 'search_intent': 'informational',
                 'target_audience': 'general',
-                'industry': 'general'
+                'industry': 'general',
+                'content_gaps': [],
+                'industry_leaders': [],
+                'opportunities': [],
+                'competitive_advantages': [],
+                'search_queries': [],
+                'suggested_angles': []
             }
     
     async def _generate_core_metadata(
@@ -194,18 +224,20 @@ class BlogSEOMetadataGenerator:
             # Check if we got a valid response
             if not ai_response or not isinstance(ai_response, dict):
                 logger.error("Core metadata generation failed: Invalid response from LLM")
-                # Return fallback response
-                primary_keywords = ', '.join(keywords_data.get('primary_keywords', ['content']))
+                # Return fallback response using content-derived values
+                primary_kw = keywords_data.get('primary_keywords', ['content'])
+                primary_kw_first = primary_kw[0] if primary_kw else 'content'
                 word_count = len(blog_content.split())
+                slug = re.sub(r'[^a-z0-9]+', '-', blog_title.lower())[:50].strip('-')
                 return {
                     'seo_title': blog_title,
-                    'meta_description': f'Learn about {primary_keywords.split(", ")[0] if primary_keywords else "this topic"}.',
-                    'url_slug': blog_title.lower().replace(' ', '-').replace(':', '').replace(',', '')[:50],
-                    'blog_tags': primary_keywords.split(', ') if primary_keywords else ['content'],
-                    'blog_categories': ['Content Marketing', 'Technology'],
-                    'social_hashtags': ['#content', '#marketing', '#technology'],
+                    'meta_description': f'Discover insights about {primary_kw_first}. Comprehensive guide with practical tips and expert analysis.',
+                    'url_slug': slug,
+                    'blog_tags': primary_kw[:5] if isinstance(primary_kw, list) else [primary_kw_first],
+                    'blog_categories': [primary_kw_first.title(), 'Guide'],
+                    'social_hashtags': [f'#{primary_kw_first.replace(" ", "")}', '#guide', '#tips'],
                     'reading_time': max(1, word_count // 200),
-                    'focus_keyword': primary_keywords.split(', ')[0] if primary_keywords else 'content'
+                    'focus_keyword': primary_kw_first
                 }
             
             logger.info(f"Core metadata generation completed. Response keys: {list(ai_response.keys())}")
@@ -302,36 +334,41 @@ class BlogSEOMetadataGenerator:
             # Check if we got a valid response
             if not ai_response or not isinstance(ai_response, dict) or not ai_response.get('open_graph') or not ai_response.get('twitter_card') or not ai_response.get('json_ld_schema'):
                 logger.error("Social metadata generation failed: Invalid or empty response from LLM")
-                # Return fallback response
+                # Return fallback response using content-derived values
+                primary_kw = keywords_data.get('primary_keywords', ['content'])
+                primary_kw_first = primary_kw[0] if primary_kw else 'content'
+                slug = re.sub(r'[^a-z0-9]+', '-', blog_title.lower())[:50].strip('-')
+                word_count = len(blog_content.split())
+                current_date = datetime.now().isoformat()
                 return {
                     'open_graph': {
                         'title': blog_title,
-                        'description': f'Learn about {keywords_data.get("primary_keywords", ["this topic"])[0] if keywords_data.get("primary_keywords") else "this topic"}.',
-                        'image': 'https://example.com/image.jpg',
+                        'description': f'Discover insights about {primary_kw_first}. Comprehensive guide with practical tips.',
+                        'image': '',
                         'type': 'article',
-                        'site_name': 'Your Website',
-                        'url': 'https://example.com/blog'
+                        'site_name': '',
+                        'url': f'https://example.com/blog/{slug}'
                     },
                     'twitter_card': {
                         'card': 'summary_large_image',
                         'title': blog_title,
-                        'description': f'Learn about {keywords_data.get("primary_keywords", ["this topic"])[0] if keywords_data.get("primary_keywords") else "this topic"}.',
-                        'image': 'https://example.com/image.jpg',
-                        'site': '@yourwebsite',
-                        'creator': '@author'
+                        'description': f'Explore our guide on {primary_kw_first}.',
+                        'image': '',
+                        'site': '',
+                        'creator': ''
                     },
                     'json_ld_schema': {
                         '@context': 'https://schema.org',
                         '@type': 'Article',
                         'headline': blog_title,
-                        'description': f'Learn about {keywords_data.get("primary_keywords", ["this topic"])[0] if keywords_data.get("primary_keywords") else "this topic"}.',
-                        'author': {'@type': 'Person', 'name': 'Author Name'},
-                        'publisher': {'@type': 'Organization', 'name': 'Your Website'},
-                        'datePublished': '2025-01-01T00:00:00Z',
-                        'dateModified': '2025-01-01T00:00:00Z',
-                        'mainEntityOfPage': 'https://example.com/blog',
-                        'keywords': keywords_data.get('primary_keywords', ['content']),
-                        'wordCount': len(blog_content.split())
+                        'description': f'Comprehensive guide about {primary_kw_first}.',
+                        'author': {'@type': 'Person', 'name': ''},
+                        'publisher': {'@type': 'Organization', 'name': ''},
+                        'datePublished': current_date,
+                        'dateModified': current_date,
+                        'mainEntityOfPage': f'https://example.com/blog/{slug}',
+                        'keywords': primary_kw[:5] if isinstance(primary_kw, list) else [primary_kw_first],
+                        'wordCount': word_count
                     }
                 }
             
@@ -408,20 +445,52 @@ OUTLINE STRUCTURE:
 - Content hierarchy: Well-structured with {len(outline)} main sections
 """
         
-        # Extract SEO analysis insights
+        # Extract SEO analysis insights with weakness-aware guidance
         seo_context = ""
         if seo_analysis:
             overall_score = seo_analysis.get('overall_score', seo_analysis.get('seo_score', 0))
             category_scores = seo_analysis.get('category_scores', {})
-            applied_recs = seo_analysis.get('applied_recommendations', [])
+            applied_recs = seo_analysis.get('applied_recommendations') or []
+            
+            # Build weakness-specific guidance for metadata
+            weakness_guidance = []
+            kw_score = category_scores.get('keywords', category_scores.get('Keywords', 0))
+            if kw_score < 70:
+                weakness_guidance.append("Keyword optimization is weak — ensure title and description prominently feature primary keywords")
+            read_score = category_scores.get('readability', category_scores.get('Readability', 0))
+            if read_score < 70:
+                weakness_guidance.append("Readability needs improvement — use clear, accessible language in the meta description")
+            struct_score = category_scores.get('structure', category_scores.get('Structure', 0))
+            if struct_score < 70:
+                weakness_guidance.append("Content structure needs improvement — the title should clearly signal the content structure")
             
             seo_context = f"""
 SEO ANALYSIS RESULTS:
 - Overall SEO Score: {overall_score}/100
-- Category Scores: Structure {category_scores.get('structure', category_scores.get('Structure', 0))}, Keywords {category_scores.get('keywords', category_scores.get('Keywords', 0))}, Readability {category_scores.get('readability', category_scores.get('Readability', 0))}
+- Category Scores: Structure {struct_score}, Keywords {kw_score}, Readability {read_score}
 - Applied Recommendations: {len(applied_recs)} SEO optimizations have been applied
 - Content Quality: Optimized for search engines with keyword focus
+{f"- WEAKNESS GUIDANCE: {'; '.join(weakness_guidance)}" if weakness_guidance else ""}
 """
+        
+        # Build research context block
+        research_block = ""
+        content_gaps = keywords_data.get('content_gaps', [])
+        competitive_advantages = keywords_data.get('competitive_advantages', [])
+        search_queries = keywords_data.get('search_queries', [])
+        suggested_angles = keywords_data.get('suggested_angles', [])
+        industry_leaders = keywords_data.get('industry_leaders', [])
+        
+        if content_gaps:
+            research_block += f"\nCONTENT GAPS (from competitor analysis): {', '.join(content_gaps[:5])}"
+        if competitive_advantages:
+            research_block += f"\nOUR KEY DIFFERENTIATORS: {', '.join(competitive_advantages[:3])}"
+        if search_queries:
+            research_block += f"\nORIGINAL SEARCH QUERIES: {', '.join(search_queries[:5])}"
+        if suggested_angles:
+            research_block += f"\nCONTENT ANGLES: {', '.join(suggested_angles[:3])}"
+        if industry_leaders:
+            research_block += f"\nINDUSTRY LEADERS: {', '.join(industry_leaders[:3])}"
         
         # Get more content context (key sections instead of just first 1000 chars)
         content_preview = self._extract_content_highlights(blog_content)
@@ -443,6 +512,7 @@ SEMANTIC KEYWORDS: {semantic_keywords}
 SEARCH INTENT: {search_intent}
 TARGET AUDIENCE: {target_audience}
 INDUSTRY: {industry}
+{research_block}
 
 {seo_context}
 
@@ -525,6 +595,18 @@ Generate metadata that is personalized, compelling, and SEO-optimized.
             overall_score = seo_analysis.get('overall_score', seo_analysis.get('seo_score', 0))
             seo_context = f"\nSEO SCORE: {overall_score}/100 (optimized content)\n"
         
+        # Build research context for social metadata
+        research_block = ""
+        content_gaps = keywords_data.get('content_gaps', [])
+        competitive_advantages = keywords_data.get('competitive_advantages', [])
+        search_queries = keywords_data.get('search_queries', [])
+        if content_gaps:
+            research_block += f"\nCONTENT GAPS: {', '.join(content_gaps[:3])}"
+        if competitive_advantages:
+            research_block += f"\nDIFFERENTIATORS: {', '.join(competitive_advantages[:3])}"
+        if search_queries:
+            research_block += f"\nSEARCH QUERIES: {', '.join(search_queries[:4])}"
+        
         content_preview = self._extract_content_highlights(blog_content, 1500)
         
         prompt = f"""
@@ -539,6 +621,7 @@ KEYWORDS: {primary_keywords}
 TARGET AUDIENCE: {target_audience}
 INDUSTRY: {industry}
 CURRENT DATE: {current_date}
+{research_block}
 
 === GENERATION REQUIREMENTS ===
 
@@ -551,20 +634,20 @@ CURRENT DATE: {current_date}
    - url: Generate canonical URL structure
 
 2. TWITTER CARD:
-   - card: "summary_large_image"
-   - title: 70 chars max, optimized for Twitter audience
-   - description: 200 chars max with relevant hashtags inline
-   - image: Match Open Graph image
-   - site: @yourwebsite (placeholder, user should update)
-   - creator: @author (placeholder, user should update)
+    - card: "summary_large_image"
+    - title: 70 chars max, optimized for Twitter audience
+    - description: 200 chars max with relevant hashtags inline
+    - image: Match Open Graph image
+    - site: Leave empty string (user will add their Twitter handle)
+    - creator: Leave empty string (user will add author Twitter handle)
 
 3. JSON-LD SCHEMA (Article):
-   - @context: "https://schema.org"
-   - @type: "Article"
-   - headline: Article title (optimized)
-   - description: Article description (150-200 chars)
-   - author: {{"@type": "Person", "name": "Author Name"}} (placeholder)
-   - publisher: {{"@type": "Organization", "name": "Site Name", "logo": {{"@type": "ImageObject", "url": "logo-url"}}}}
+    - @context: "https://schema.org"
+    - @type: "Article"
+    - headline: Article title (optimized)
+    - description: Article description (150-200 chars)
+    - author: {{"@type": "Person", "name": ""}} (leave empty, user will add author name)
+    - publisher: {{"@type": "Organization", "name": ""}} (leave empty, user will add site name)
    - datePublished: {current_date}
    - dateModified: {current_date}
    - mainEntityOfPage: {{"@type": "WebPage", "@id": "canonical-url"}}
@@ -633,35 +716,109 @@ Make it engaging, personalized for {target_audience}, and optimized for {industr
             raise e
     
     def _calculate_optimization_score(self, core_metadata: Dict[str, Any], social_metadata: Dict[str, Any]) -> int:
-        """Calculate overall optimization score for the generated metadata"""
+        """Calculate metadata quality score based on content relevance and adherence to best practices.
+        
+        Unlike the old completeness-based score (which just checked field existence),
+        this assigns quality-weighted points based on how well each field is optimized.
+        """
         try:
             score = 0
             
-            # Check core metadata completeness
-            if core_metadata.get('seo_title'):
-                score += 15
-            if core_metadata.get('meta_description'):
-                score += 15
-            if core_metadata.get('url_slug'):
-                score += 10
-            if core_metadata.get('blog_tags'):
-                score += 10
-            if core_metadata.get('blog_categories'):
-                score += 10
-            if core_metadata.get('social_hashtags'):
-                score += 10
-            if core_metadata.get('focus_keyword'):
-                score += 10
+            # Title quality (0-15): Length in 50-60 chars is optimal
+            seo_title = core_metadata.get('seo_title', '')
+            if seo_title:
+                title_len = len(seo_title)
+                if 50 <= title_len <= 60:
+                    score += 15
+                elif 40 <= title_len <= 70:
+                    score += 10
+                elif title_len > 0:
+                    score += 5
             
-            # Check social metadata completeness
-            if social_metadata.get('open_graph'):
+            # Meta description quality (0-15): Length in 150-160 chars is optimal, has CTA
+            meta_desc = core_metadata.get('meta_description', '')
+            if meta_desc:
+                desc_len = len(meta_desc)
+                desc_lower = meta_desc.lower()
+                has_cta = any(phrase in desc_lower for phrase in ['learn', 'discover', 'find', 'get', 'explore', 'how to', 'why', 'tips', 'guide', 'try', 'start'])
+                if 150 <= desc_len <= 160 and has_cta:
+                    score += 15
+                elif 120 <= desc_len <= 170:
+                    score += 10 if has_cta else 7
+                elif desc_len > 0:
+                    score += 4
+            
+            # URL slug quality (0-10): Short, keyword-rich, no stop words
+            url_slug = core_metadata.get('url_slug', '')
+            if url_slug:
+                slug_parts = url_slug.strip('/').split('/')
+                slug_words = slug_parts[-1].split('-') if slug_parts else []
+                if 2 <= len(slug_words) <= 5:
+                    score += 10
+                elif len(slug_words) > 0:
+                    score += 5
+            
+            # Tags and categories quality (0-20)
+            blog_tags = core_metadata.get('blog_tags', [])
+            blog_categories = core_metadata.get('blog_categories', [])
+            if blog_tags and len(blog_tags) >= 3:
                 score += 10
-            if social_metadata.get('twitter_card'):
+            elif blog_tags:
                 score += 5
-            if social_metadata.get('json_ld_schema'):
+            if blog_categories and len(blog_categories) >= 1:
+                score += 10
+            elif blog_categories:
                 score += 5
             
-            return min(score, 100)  # Cap at 100
+            # Social hashtags (0-10): Relevant and non-spammy
+            social_hashtags = core_metadata.get('social_hashtags', [])
+            if social_hashtags and 3 <= len(social_hashtags) <= 8:
+                score += 10
+            elif social_hashtags:
+                score += 5
+            
+            # Focus keyword (0-10): Present and relevant
+            focus_keyword = core_metadata.get('focus_keyword', '')
+            if focus_keyword and seo_title and focus_keyword.lower() in seo_title.lower():
+                score += 10
+            elif focus_keyword:
+                score += 4
+            
+            # Open Graph quality (0-10): Has title, description, correct type
+            og = social_metadata.get('open_graph', {})
+            if og:
+                og_score = 0
+                if og.get('title') and len(og.get('title', '')) > 10:
+                    og_score += 4
+                if og.get('description') and 100 <= len(og.get('description', '')) <= 200:
+                    og_score += 4
+                if og.get('type') == 'article':
+                    og_score += 2
+                score += og_score
+            
+            # Twitter Card quality (0-5)
+            twitter = social_metadata.get('twitter_card', {})
+            if twitter:
+                tw_score = 0
+                if twitter.get('title') and len(twitter.get('title', '')) > 10:
+                    tw_score += 3
+                if twitter.get('card') == 'summary_large_image':
+                    tw_score += 2
+                score += tw_score
+            
+            # JSON-LD quality (0-5): Has headline, description, datePublished
+            json_ld = social_metadata.get('json_ld_schema', {})
+            if json_ld:
+                jl_score = 0
+                if json_ld.get('headline'):
+                    jl_score += 2
+                if json_ld.get('description'):
+                    jl_score += 2
+                if json_ld.get('datePublished'):
+                    jl_score += 1
+                score += jl_score
+            
+            return min(score, 100)
             
         except Exception as e:
             logger.error(f"Failed to calculate optimization score: {e}")

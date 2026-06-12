@@ -18,7 +18,7 @@ class CompetitorAnalyzer:
         Analyze the following research content and extract competitor insights:
         
         Research Content:
-        {content[:3000]}
+        {content[:8000]}
         
         Extract and analyze:
         1. Top competitors mentioned (companies, brands, platforms)

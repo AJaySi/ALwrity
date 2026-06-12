@@ -88,12 +88,49 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
     }
   } as const;
 
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return '#16a34a';
+    if (score >= 60) return '#ca8a04';
+    return '#dc2626';
+  };
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    try {
+      return new Date(dateStr).toLocaleString();
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <Box>
-      <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: '#202124', fontWeight: 600 }}>
-        <SearchIcon sx={{ color: 'primary.main' }} />
-        Core SEO Metadata
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#202124', fontWeight: 600 }}>
+          <SearchIcon sx={{ color: 'primary.main' }} />
+          Core SEO Metadata
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {metadata.optimization_score != null && (
+            <Tooltip title="AI-generated metadata quality score">
+              <Chip
+                label={`Score: ${metadata.optimization_score}/100`}
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  color: '#fff',
+                  bgcolor: getScoreColor(metadata.optimization_score),
+                }}
+              />
+            </Tooltip>
+          )}
+          {metadata.generated_at && (
+            <Typography variant="caption" sx={{ color: '#5f6368' }}>
+              Generated: {formatDate(metadata.generated_at)}
+            </Typography>
+          )}
+        </Box>
+      </Box>
 
       <Grid container spacing={3}>
         {/* SEO Title */}
@@ -113,6 +150,34 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 </IconButton>
               </Tooltip>
             </Box>
+
+            {/* Title options selector */}
+            {metadata.title_options && metadata.title_options.length > 1 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ color: '#5f6368', mb: 1, display: 'block', fontWeight: 500 }}>
+                  Choose a title option:
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {metadata.title_options.map((opt: string, idx: number) => (
+                    <Chip
+                      key={idx}
+                      label={opt}
+                      size="small"
+                      variant={metadata.seo_title === opt ? 'filled' : 'outlined'}
+                      onClick={() => onMetadataEdit('seo_title', opt)}
+                      sx={{
+                        justifyContent: 'flex-start',
+                        height: 'auto',
+                        py: 0.5,
+                        '& .MuiChip-label': { whiteSpace: 'normal', display: 'block' },
+                        ...(metadata.seo_title === opt ? { bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 600 } : {}),
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+
             <TextField
               fullWidth
               multiline
@@ -157,6 +222,34 @@ export const CoreMetadataTab: React.FC<CoreMetadataTabProps> = ({
                 </IconButton>
               </Tooltip>
             </Box>
+
+            {/* Meta description options selector */}
+            {metadata.meta_descriptions && metadata.meta_descriptions.length > 1 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ color: '#5f6368', mb: 1, display: 'block', fontWeight: 500 }}>
+                  Choose a description option:
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  {metadata.meta_descriptions.map((opt: string, idx: number) => (
+                    <Chip
+                      key={idx}
+                      label={opt}
+                      size="small"
+                      variant={metadata.meta_description === opt ? 'filled' : 'outlined'}
+                      onClick={() => onMetadataEdit('meta_description', opt)}
+                      sx={{
+                        justifyContent: 'flex-start',
+                        height: 'auto',
+                        py: 0.5,
+                        '& .MuiChip-label': { whiteSpace: 'normal', display: 'block' },
+                        ...(metadata.meta_description === opt ? { bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 600 } : {}),
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+
             <TextField
               fullWidth
               multiline

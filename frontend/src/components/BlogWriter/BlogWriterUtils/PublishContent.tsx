@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../../api/client';
 import { wordpressAPI, WordPressSite, WordPressPublishRequest } from '../../../api/wordpress';
-import { BlogSEOMetadataResponse } from '../../../services/blogWriterApi';
+import { blogWriterApi, BlogSEOMetadataResponse } from '../../../services/blogWriterApi';
+import hallucinationDetectorService from '../../../services/hallucinationDetectorService';
 import WixConnectModal from './WixConnectModal';
 import { useWixPublish } from '../../../hooks/useWixPublish';
 import { useTextToSpeech } from '../../../hooks/useTextToSpeech';
@@ -9,12 +10,18 @@ import { useTextToSpeech } from '../../../hooks/useTextToSpeech';
 const saveCompleteBlogAsset = async (
   title: string,
   content: string,
-  seoMetadata: BlogSEOMetadataResponse | null
+  seoMetadata: BlogSEOMetadataResponse | null,
+  platform?: string,
+  post_url?: string,
+  post_id?: string,
 ) => {
   try {
     await apiClient.post('/api/blog/save-complete-asset', {
       title,
       content,
+      platform: platform || null,
+      post_url: post_url || null,
+      post_id: post_id || null,
       seo_title: seoMetadata?.seo_title,
       meta_description: seoMetadata?.meta_description,
       focus_keyword: seoMetadata?.focus_keyword,
@@ -32,13 +39,22 @@ interface PublishContentProps {
   seoMetadata: BlogSEOMetadataResponse | null;
   seoAnalysis?: any;
   blogTitle?: string;
+  sectionImages?: Record<string, string>;
+  onOpenSEOMetadata?: () => void;
+  flowAnalysisResults?: any;
+  onRunFlowAnalysis?: () => void;
 }
 
 export const PublishContent: React.FC<PublishContentProps> = ({
   buildFullMarkdown,
   convertMarkdownToHTML,
   seoMetadata,
+  seoAnalysis,
   blogTitle,
+  sectionImages,
+  onOpenSEOMetadata,
+  flowAnalysisResults,
+  onRunFlowAnalysis,
 }) => {
   const {
     wixStatus,
@@ -58,6 +74,16 @@ export const PublishContent: React.FC<PublishContentProps> = ({
   const [publishResult, setPublishResult] = useState<{ platform: string; success: boolean; message: string; url?: string } | null>(null);
   const [copyDone, setCopyDone] = useState(false);
   const [wixContentWarning, setWixContentWarning] = useState<string | null>(null);
+  const [flowRunning, setFlowRunning] = useState(false);
+  const [hallucinationResults, setHallucinationResults] = useState<any>(null);
+  const [hallucinationRunning, setHallucinationRunning] = useState(false);
+  const [publishHistory, setPublishHistory] = useState<{ entries: any[]; total: number } | null>(null);
+  const [showPublishHistory, setShowPublishHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (flowRunning && flowAnalysisResults) setFlowRunning(false);
+  }, [flowAnalysisResults, flowRunning]);
 
   // Audio / TTS
   const { speak, stop, isSpeaking, isSupported } = useTextToSpeech();
@@ -140,6 +166,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
       const result = await wordpressAPI.publishContent(request);
       if (result.success) {
         setPublishResult({ platform: 'wordpress', success: true, message: `Published to "${activeSite.site_name}"!`, url: result.post_url });
+        saveCompleteBlogAsset(blogTitle || seoMetadata?.seo_title || 'Blog Post', md, seoMetadata, 'wordpress', result.post_url, String(result.post_id ?? ''));
         try { localStorage.setItem('blog_publish_completed', 'true'); } catch {}
       } else {
         setPublishResult({ platform: 'wordpress', success: false, message: result.error || 'Publish failed' });
@@ -151,11 +178,13 @@ export const PublishContent: React.FC<PublishContentProps> = ({
     }
   };
 
-  // Inject section images from localStorage into markdown so Wix can publish them
+  // Inject section images from state (or localStorage fallback) into markdown
   const enrichMarkdownWithImages = (markdown: string): string => {
     try {
+      const images = sectionImages && Object.keys(sectionImages).length > 0
+        ? sectionImages
+        : JSON.parse(localStorage.getItem('blog_section_images') || '{}');
       const outline = JSON.parse(localStorage.getItem('blog_outline') || '[]');
-      const images = JSON.parse(localStorage.getItem('blog_section_images') || '{}');
       if (!outline.length || !Object.keys(images).length) return markdown;
 
       let enriched = markdown;
@@ -195,7 +224,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
       setWixContentWarning(result.warning);
     }
     if (result.success) {
-      saveCompleteBlogAsset(blogTitle || seoMetadata?.seo_title || 'Blog Post', md, seoMetadata);
+      saveCompleteBlogAsset(blogTitle || seoMetadata?.seo_title || 'Blog Post', md, seoMetadata, 'wix', result.url, result.post_id);
       try { localStorage.setItem('blog_publish_completed', 'true'); } catch {}
     }
   };
@@ -238,6 +267,37 @@ export const PublishContent: React.FC<PublishContentProps> = ({
     transition: 'all 0.2s',
   };
 
+  const handleOpenPublishHistory = async () => {
+    setShowPublishHistory(true);
+    if (!publishHistory) {
+      setHistoryLoading(true);
+      try {
+        const { data } = await apiClient.get('/api/blog/publish-history?limit=50');
+        if (data.success) {
+          setPublishHistory({ entries: data.entries, total: data.total });
+        }
+      } catch (err) {
+        console.error('Failed to load publish history:', err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
+  const handleRunHallucinationCheck = async () => {
+    setHallucinationRunning(true);
+    try {
+      const text = buildFullMarkdown();
+      const result = await hallucinationDetectorService.detectHallucinations({ text });
+      setHallucinationResults(result);
+    } catch (err) {
+      console.error('Hallucination check failed:', err);
+      setHallucinationResults({ success: false, error: 'Check failed' });
+    } finally {
+      setHallucinationRunning(false);
+    }
+  };
+
   return (
     <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
       <h2 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>Publish Your Blog</h2>
@@ -246,6 +306,134 @@ export const PublishContent: React.FC<PublishContentProps> = ({
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* SEO Metadata card */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a' }}>SEO Metadata</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                {seoMetadata ? 'Generated' : 'Not generated'}
+              </p>
+            </div>
+            <button
+              onClick={onOpenSEOMetadata}
+              style={{
+                ...btnStyle,
+                background: seoMetadata ? '#f1f5f9' : 'linear-gradient(135deg, #059669, #047857)',
+                color: seoMetadata ? '#334155' : '#fff',
+                border: seoMetadata ? '1px solid #e2e8f0' : 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {seoMetadata ? 'View SEO Metadata' : 'Generate SEO Metadata'}
+            </button>
+          </div>
+          {seoMetadata && (
+            <div style={{ marginTop: 8, fontSize: '0.85rem', color: '#334155' }}>
+              <div style={{ fontWeight: 600 }}>{seoMetadata.seo_title}</div>
+              <div style={{ color: '#64748b', marginTop: 2, lineHeight: 1.4 }}>{seoMetadata.meta_description}</div>
+              {seoMetadata.focus_keyword && (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 500 }}>
+                    {seoMetadata.focus_keyword}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Pre-Publish Readiness Check */}
+        <div style={cardStyle}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a' }}>Pre-Publish Readiness Check</h3>
+          <p style={{ margin: '4px 0 12px 0', fontSize: '0.85rem', color: '#64748b' }}>
+            Verify your content is ready before publishing
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* SEO Metadata check */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: seoMetadata ? '#f0fdf4' : '#fef2f2', borderRadius: 8, border: `1px solid ${seoMetadata ? '#86efac' : '#fecaca'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '1rem' }}>{seoMetadata ? '✅' : '❌'}</span>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: '0.85rem', color: '#0f172a' }}>SEO Metadata</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    {seoMetadata ? `Generated (Score: ${seoAnalysis?.overall_score ?? 'N/A'}/100)` : 'Not generated'}
+                  </div>
+                </div>
+              </div>
+              {seoMetadata && (
+                <button onClick={onOpenSEOMetadata} style={{ ...btnStyle, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0', padding: '4px 12px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  View
+                </button>
+              )}
+            </div>
+
+            {/* Flow Analysis check */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: flowAnalysisResults ? '#f0fdf4' : '#fafafa', borderRadius: 8, border: `1px solid ${flowAnalysisResults ? '#86efac' : '#e2e8f0'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '1rem' }}>{flowAnalysisResults ? '✅' : '🔲'}</span>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: '0.85rem', color: '#0f172a' }}>Flow Analysis</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    {flowAnalysisResults
+                      ? `Flow: ${(flowAnalysisResults.overall_flow_score * 100).toFixed(0)} | Consistency: ${(flowAnalysisResults.overall_consistency_score * 100).toFixed(0)} | Progression: ${(flowAnalysisResults.overall_progression_score * 100).toFixed(0)}`
+                      : 'Not yet run'}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (onRunFlowAnalysis) {
+                    setFlowRunning(true);
+                    onRunFlowAnalysis();
+                    // Reset loading after a reasonable timeout
+                    setTimeout(() => setFlowRunning(false), 30000);
+                  }
+                }}
+                disabled={flowRunning || !onRunFlowAnalysis}
+                style={{ ...btnStyle, background: flowRunning ? '#e2e8f0' : 'linear-gradient(135deg, #6366f1, #4f46e5)', color: flowRunning ? '#94a3b8' : '#fff', padding: '4px 12px', fontSize: '0.8rem', cursor: flowRunning ? 'not-allowed' : 'pointer' }}
+              >
+                {flowRunning ? 'Analyzing...' : flowAnalysisResults ? 'Re-analyze' : 'Run Analysis'}
+              </button>
+            </div>
+
+            {/* Hallucination Check */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: hallucinationResults?.success ? '#f0fdf4' : hallucinationResults && !hallucinationResults.success ? '#fef2f2' : '#fafafa', borderRadius: 8, border: `1px solid ${hallucinationResults?.success ? '#86efac' : hallucinationResults && !hallucinationResults.success ? '#fecaca' : '#e2e8f0'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '1rem' }}>{hallucinationResults?.success ? '✅' : hallucinationResults && !hallucinationResults.success ? '❌' : '🔲'}</span>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: '0.85rem', color: '#0f172a' }}>Hallucination Check</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    {hallucinationResults?.success
+                      ? `${hallucinationResults.supported_claims ?? 0} supported, ${hallucinationResults.refuted_claims ?? 0} refuted, ${hallucinationResults.insufficient_claims ?? 0} unclear (${(hallucinationResults.overall_confidence * 100).toFixed(0)}% confidence)`
+                      : hallucinationResults?.error
+                        ? hallucinationResults.error
+                        : 'Not yet run'}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleRunHallucinationCheck}
+                disabled={hallucinationRunning}
+                style={{ ...btnStyle, background: hallucinationRunning ? '#e2e8f0' : 'linear-gradient(135deg, #dc2626, #b91c1c)', color: hallucinationRunning ? '#94a3b8' : '#fff', padding: '4px 12px', fontSize: '0.8rem', cursor: hallucinationRunning ? 'not-allowed' : 'pointer' }}
+              >
+                {hallucinationRunning ? 'Checking...' : hallucinationResults ? 'Re-check' : 'Run Check'}
+              </button>
+            </div>
+          </div>
+
+          {/* Overall status */}
+          <div style={{ marginTop: 8, fontSize: '0.8rem', fontWeight: 500, color: (seoMetadata && flowAnalysisResults && hallucinationResults?.success) ? '#166534' : '#92400e' }}>
+            {(seoMetadata && flowAnalysisResults && hallucinationResults?.success)
+              ? '✅ All checks passed — ready to publish!'
+              : seoMetadata && flowAnalysisResults
+                ? '⚠️ Run hallucination check before publishing for best results'
+                : seoMetadata
+                  ? '⚠️ Run flow analysis and hallucination check before publishing'
+                  : '⚠️ Generate SEO metadata and run quality checks before publishing'}
+          </div>
+        </div>
+
         {/* WordPress card */}
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -281,7 +469,7 @@ export const PublishContent: React.FC<PublishContentProps> = ({
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a' }}>Wix</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                {checkingWix ? 'Checking connection...' : wixStatus?.connected ? 'Connected' : 'Not connected'}
+                {checkingWix ? 'Checking connection...' : wixStatus?.connected ? 'Connected' : wixStatus?.error || 'Not connected'}
               </p>
             </div>
             <button
@@ -364,6 +552,46 @@ export const PublishContent: React.FC<PublishContentProps> = ({
               View published post
             </a>
           )}
+
+          {/* Post-publish actions (disabled placeholders for future features) */}
+          {publishResult.success && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#166534', marginBottom: 8 }}>
+                More Actions
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  disabled
+                  title="Coming soon — update the published post with latest edits"
+                  style={{
+                    ...btnStyle, background: '#e2e8f0', color: '#94a3b8',
+                    cursor: 'not-allowed', fontSize: '0.8rem',
+                  }}
+                >
+                  Update Published Post
+                </button>
+                <button
+                  disabled
+                  title="Coming soon — schedule publish for a future date/time"
+                  style={{
+                    ...btnStyle, background: '#e2e8f0', color: '#94a3b8',
+                    cursor: 'not-allowed', fontSize: '0.8rem',
+                  }}
+                >
+                  Schedule Publish
+                </button>
+                <button
+                  onClick={handleOpenPublishHistory}
+                  style={{
+                    ...btnStyle, background: '#f1f5f9', color: '#334155',
+                    border: '1px solid #e2e8f0', cursor: 'pointer', fontSize: '0.8rem',
+                  }}
+                >
+                  Publish History
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -372,6 +600,55 @@ export const PublishContent: React.FC<PublishContentProps> = ({
         onClose={closeWixConnectModal}
         onConnectionSuccess={handleWixConnectionSuccess}
       />
+
+      {/* Publish History modal */}
+      {showPublishHistory && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }} onClick={() => setShowPublishHistory(false)}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: 24,
+            maxWidth: 600, width: '90%', maxHeight: '80vh', overflow: 'auto',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, color: '#0f172a' }}>Publish History</h3>
+              <button onClick={() => setShowPublishHistory(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b' }}>✕</button>
+            </div>
+            {historyLoading ? (
+              <div style={{ textAlign: 'center', padding: 24, color: '#64748b' }}>Loading history...</div>
+            ) : publishHistory && publishHistory.entries.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {publishHistory.entries.map((entry: any) => (
+                  <div key={entry.asset_id} style={{
+                    padding: 12, borderRadius: 8, border: '1px solid #e2e8f0',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: '0.85rem', color: '#0f172a' }}>{entry.title}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
+                        {entry.platform === 'wix' ? 'Wix' : entry.platform === 'wordpress' ? 'WordPress' : entry.platform}
+                        {entry.published_at && ` · ${new Date(entry.published_at).toLocaleDateString()}`}
+                        {entry.word_count > 0 && ` · ${entry.word_count} words`}
+                      </div>
+                    </div>
+                    {entry.post_url && (
+                      <a href={entry.post_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#6366f1', textDecoration: 'none' }}>
+                        View →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>
+                No publish history yet. Publish your blog to see it here.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

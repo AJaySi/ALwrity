@@ -233,9 +233,9 @@ class OutlineService:
         """Enhance a section using AI with research context."""
         return await self.section_enhancer.enhance(section, focus)
     
-    async def optimize_outline_with_ai(self, outline: List[BlogOutlineSection], focus: str = "general optimization") -> List[BlogOutlineSection]:
+    async def optimize_outline_with_ai(self, outline: List[BlogOutlineSection], focus: str = "general optimization", research_context: str = "") -> List[BlogOutlineSection]:
         """Optimize entire outline for better flow, SEO, and engagement."""
-        return await self.outline_optimizer.optimize(outline, focus)
+        return await self.outline_optimizer.optimize(outline, focus, research_context=research_context)
     
     def rebalance_word_counts(self, outline: List[BlogOutlineSection], target_words: int) -> List[BlogOutlineSection]:
         """Rebalance word count distribution across sections."""

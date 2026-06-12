@@ -52,6 +52,44 @@ class OutlineGenerator:
         raw_analysis = research.keyword_analysis if research else {}
         return self.keyword_curator.curate(raw_analysis)
     
+    def _build_optimization_context(self, research) -> str:
+        """Build a compact research context for the outline optimizer.
+        Provides keywords, competitor data, and top source summaries so
+        the optimizer doesn't run blind to the research."""
+        if not research:
+            return ""
+        parts = []
+        kw = research.keyword_analysis if research.keyword_analysis else {}
+        primary = kw.get('primary', [])
+        if primary:
+            parts.append(f"Primary keywords: {', '.join(primary[:5])}")
+        search_intent = kw.get('search_intent', '')
+        if search_intent:
+            parts.append(f"Search intent: {search_intent}")
+        comp = research.competitor_analysis if research.competitor_analysis else {}
+        top_competitors = comp.get('top_competitors', [])
+        if top_competitors:
+            parts.append(f"Top competitors: {', '.join(str(c) for c in top_competitors[:5])}")
+        content_gaps = kw.get('content_gaps', [])
+        if content_gaps:
+            parts.append(f"Content gaps: {'; '.join(str(g) for g in content_gaps[:5])}")
+        opportunities = comp.get('opportunities', [])
+        if opportunities:
+            parts.append(f"Opportunities: {'; '.join(str(o) for o in opportunities[:5])}")
+        sources = research.sources if research.sources else []
+        if sources:
+            top_sources = sorted(sources, key=lambda s: s.credibility_score or 0.8, reverse=True)[:5]
+            source_lines = []
+            for s in top_sources:
+                line = f"- {s.title}"
+                if s.summary:
+                    line += f": {s.summary[:150]}"
+                elif s.excerpt:
+                    line += f": {s.excerpt[:150]}"
+                source_lines.append(line)
+            parts.append("Key research sources:\n" + "\n".join(source_lines))
+        return "\n".join(parts)
+    
     async def generate(self, request: BlogOutlineRequest, user_id: str) -> BlogOutlineResponse:
         """
         Generate AI-powered outline using research results.
@@ -102,7 +140,7 @@ class OutlineGenerator:
         
         # Run parallel processing for speed optimization (user_id required)
         mapped_sections, grounding_insights = await self.parallel_processor.run_parallel_processing_async(
-            outline_sections, research, user_id
+            outline_sections, research, user_id, competitive_advantage=selected_competitive_advantage or ""
         )
         
         # Enhance sections with grounding insights
@@ -113,7 +151,8 @@ class OutlineGenerator:
         
         # Optimize outline for better flow, SEO, and engagement (user_id required)
         logger.info("Optimizing outline for better flow and engagement...")
-        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id)
+        optimization_context = self._build_optimization_context(research)
+        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id, research_context=optimization_context)
         
         # Rebalance word counts for optimal distribution
         target_words = request.word_count or 1500
@@ -202,7 +241,7 @@ class OutlineGenerator:
         
         # Run parallel processing for speed optimization (user_id required for subscription checks)
         mapped_sections, grounding_insights = await self.parallel_processor.run_parallel_processing(
-            outline_sections, research, user_id, task_id
+            outline_sections, research, user_id, task_id, competitive_advantage=selected_competitive_advantage or ""
         )
         
         # Enhance sections with grounding insights (depends on both previous tasks)
@@ -213,7 +252,8 @@ class OutlineGenerator:
         
         # Optimize outline for better flow, SEO, and engagement (user_id required for subscription checks)
         await task_manager.update_progress(task_id, "🎯 Optimizing outline for better flow and engagement...")
-        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id)
+        optimization_context = self._build_optimization_context(research)
+        optimized_sections = await self.outline_optimizer.optimize(grounding_enhanced_sections, "comprehensive optimization", user_id, research_context=optimization_context)
         
         # Rebalance word counts for optimal distribution
         await task_manager.update_progress(task_id, "⚖️ Rebalancing word count distribution...")

@@ -192,6 +192,120 @@ def _make_horizontal_rule_node() -> Dict[str, Any]:
     }
 
 
+def _parse_markdown_table(lines: List[str], start_idx: int) -> tuple:
+    """
+    Parse a markdown table starting at start_idx.
+    Returns (table_rows, alignments, next_idx) where table_rows is a list of lists of cell text,
+    and alignments is a list of column alignments ('left', 'center', 'right', None).
+    
+    Markdown tables look like:
+    | Header 1 | Header 2 |
+    |----------|----------|
+    | Cell 1   | Cell 2   |
+    
+    Alignment is detected from the separator row:
+    |:--------|:--------:|--------:|
+    """
+    rows = []
+    alignments = None
+    i = start_idx
+    
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line or '|' not in line:
+            break
+        
+        cells = [cell.strip() for cell in line.strip('|').split('|')]
+        
+        # Detect separator row (contains only dashes, colons, pipes, spaces)
+        if i > start_idx and all(
+            set(cell.strip()) <= set('-:| ') for cell in cells
+        ):
+            alignments = []
+            for cell in cells:
+                cell = cell.strip()
+                if cell.startswith(':') and cell.endswith(':'):
+                    alignments.append('center')
+                elif cell.endswith(':'):
+                    alignments.append('right')
+                elif cell.startswith(':'):
+                    alignments.append('left')
+                else:
+                    alignments.append(None)
+            i += 1
+            continue
+        
+        rows.append(cells)
+        i += 1
+    
+    return rows, alignments or [None] * (len(rows[0]) if rows else 1), i
+
+
+def _make_table_node(header_row: List[str], body_rows: List[List[str]], alignments: List) -> Dict[str, Any]:
+    """Create a Ricos TABLE node with header and body rows, with formatting."""
+    table_rows = []
+    
+    all_rows = [header_row] + body_rows
+    for row_idx, row_cells in enumerate(all_rows):
+        cell_nodes = []
+        for col_idx, cell_text in enumerate(row_cells):
+            text_nodes = parse_markdown_inline(cell_text)
+            # Bold header row cells
+            if row_idx == 0 and text_nodes:
+                for node in text_nodes:
+                    if node.get('type') == 'TEXT':
+                        decs = node['textData'].get('decorations', [])
+                        if not any(d.get('type') == 'BOLD' for d in decs if isinstance(d, dict)):
+                            decs_copy = decs.copy()
+                            decs_copy.append({'type': 'BOLD'})
+                            node['textData']['decorations'] = decs_copy
+
+            paragraph_node = {
+                'id': str(uuid.uuid4()),
+                'type': 'PARAGRAPH',
+                'nodes': text_nodes if text_nodes else [{
+                    'id': str(uuid.uuid4()),
+                    'type': 'TEXT',
+                    'nodes': [],
+                    'textData': {'text': cell_text or ' ', 'decorations': []}
+                }],
+            }
+
+            cell_style = {'verticalAlign': 'top'}
+            if row_idx == 0:
+                cell_style['borderWidth'] = {'top': 2, 'bottom': 1, 'left': 1, 'right': 1}
+            # Apply column alignment
+            if alignments and col_idx < len(alignments) and alignments[col_idx]:
+                cell_style['textAlign'] = alignments[col_idx]
+
+            cell_node = {
+                'id': str(uuid.uuid4()),
+                'type': 'TABLE_CELL',
+                'nodes': [paragraph_node],
+                'tableCellData': {'style': cell_style},
+            }
+            cell_nodes.append(cell_node)
+
+        row_node = {
+            'id': str(uuid.uuid4()),
+            'type': 'TABLE_ROW',
+            'nodes': cell_nodes,
+        }
+        table_rows.append(row_node)
+
+    num_cols = max(len(row) for row in all_rows) if all_rows else 1
+    return {
+        'id': str(uuid.uuid4()),
+        'type': 'TABLE',
+        'nodes': table_rows,
+        'tableData': {
+            'cols': num_cols,
+            'rows': len(table_rows),
+            'headerRow': 0 if header_row else -1,
+        },
+    }
+
+
 def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str, Any]:
     """
     Convert markdown content into valid Ricos JSON format.
@@ -205,6 +319,7 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
     - Code blocks (```language ... ```)
     - Inline images (![alt](url))
     - Horizontal rules (---, ***, ___)
+    - Tables (| Header | Header |)
     """
     if not content:
         content = "This is a post from ALwrity."
@@ -245,6 +360,16 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
             i += 1
             continue
         
+        # Markdown tables (lines starting with |)
+        if stripped.startswith('|') and i + 1 < len(lines) and '|' in lines[i + 1]:
+            table_rows, alignments, next_idx = _parse_markdown_table(lines, i)
+            if table_rows and len(table_rows) >= 1:
+                header_row = table_rows[0]
+                body_rows = table_rows[1:] if len(table_rows) > 1 else []
+                nodes.append(_make_table_node(header_row, body_rows, alignments))
+                i = next_idx
+                continue
+        
         # Headings
         if stripped.startswith('#'):
             level = len(stripped) - len(stripped.lstrip('#'))
@@ -280,12 +405,11 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
             })
             continue
         
-        # Unordered lists
+        # Unordered lists (including task lists)
         if (stripped.startswith('- ') or stripped.startswith('* ') or 
             (stripped.startswith('-') and len(stripped) > 1 and stripped[1] != '-') or
             (stripped.startswith('*') and len(stripped) > 1 and stripped[1] != '*')):
             list_items = []
-            list_marker = '- ' if stripped.startswith('-') else '* '
             
             while i < len(lines):
                 current_line = lines[i].strip()
@@ -323,7 +447,14 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
             
             list_node_items = []
             for item_text in list_items:
-                text_nodes = parse_markdown_inline(item_text)
+                # Detect task list items: "- [ ] task" or "- [x] task"
+                task_match = re.match(r'^\[([ xX])\]\s*(.*)', item_text)
+                if task_match:
+                    checked = task_match.group(1).lower() == 'x'
+                    prefix = '☑ ' if checked else '☐ '
+                    text_nodes = parse_markdown_inline(prefix + task_match.group(2))
+                else:
+                    text_nodes = parse_markdown_inline(item_text)
                 paragraph_node = {
                     'id': str(uuid.uuid4()),
                     'type': 'PARAGRAPH',
@@ -414,6 +545,7 @@ def convert_content_to_ricos(content: str, images: List[str] = None) -> Dict[str
                 next_line.startswith('>') or
                 next_line.startswith('![') or
                 next_line.startswith('```') or
+                next_line.startswith('|') or
                 re.match(r'^(---+|\*\*\*|___+)$', next_line) or
                 re.match(r'^\d+\.\s+', next_line)):
                 break

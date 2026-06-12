@@ -247,23 +247,20 @@ export const PreviewCard: React.FC<PreviewCardProps> = ({
             }}
           >
             <CardContent sx={{ p: 0 }}>
-              {/* Image placeholder */}
-              <Box sx={{ 
-                height: 262, 
-                bgcolor: '#f2f3f5', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                borderBottom: '1px solid #dadde1'
-              }}>
-                {metadata.open_graph?.image ? (
+              {/* Image */}
+              <Box sx={{ height: 262, bgcolor: '#f2f3f5', borderBottom: '1px solid #dadde1', position: 'relative', overflow: 'hidden' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   <Typography variant="caption" sx={{ color: '#65676b' }}>
-                    Image loaded
+                    {metadata.open_graph?.image ? 'Loading image...' : 'No image set'}
                   </Typography>
-                ) : (
-                  <Typography variant="caption" sx={{ color: '#65676b' }}>
-                    No image set
-                  </Typography>
+                </Box>
+                {metadata.open_graph?.image && (
+                  <Box
+                    component="img"
+                    src={metadata.open_graph.image}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }}
+                    sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 )}
               </Box>
               
@@ -347,23 +344,20 @@ export const PreviewCard: React.FC<PreviewCardProps> = ({
             }}
           >
             <CardContent sx={{ p: 0 }}>
-              {/* Image placeholder */}
-              <Box sx={{ 
-                height: 262, 
-                bgcolor: '#f7f9fa', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                borderBottom: '1px solid #eff3f4'
-              }}>
-                {metadata.twitter_card?.image ? (
+              {/* Image */}
+              <Box sx={{ height: 262, bgcolor: '#f7f9fa', borderBottom: '1px solid #eff3f4', position: 'relative', overflow: 'hidden' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   <Typography variant="caption" sx={{ color: '#536471' }}>
-                    Image loaded
+                    {metadata.twitter_card?.image ? 'Loading image...' : 'No image set'}
                   </Typography>
-                ) : (
-                  <Typography variant="caption" sx={{ color: '#536471' }}>
-                    No image set
-                  </Typography>
+                </Box>
+                {metadata.twitter_card?.image && (
+                  <Box
+                    component="img"
+                    src={metadata.twitter_card.image}
+                    onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; }}
+                    sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 )}
               </Box>
               

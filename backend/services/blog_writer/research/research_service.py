@@ -250,10 +250,32 @@ class ResearchService:
             if 'content' not in locals() or 'sources' not in locals():
                 raise RuntimeError(f"{config.provider.value} research did not return content or sources. Research failed.")
             
+            # Build compact all-source summary for richer analysis
+            analysis_content = self._build_analysis_content(sources)
+            
+            # Run dedicated competitor search for richer competitor intelligence
+            competitor_content = analysis_content
+            try:
+                comp_query = f"top {industry} companies or competitors {topic}"
+                comp_results = await exa_provider.simple_search(
+                    query=comp_query, num_results=5, user_id=user_id,
+                )
+                if comp_results:
+                    comp_lines = ["COMPETITOR SEARCH RESULTS:"]
+                    for r in comp_results:
+                        title = r.get('title', '')
+                        text = (r.get('text', '') or '')[:400]
+                        comp_lines.append(f"- {title}")
+                        if text:
+                            comp_lines.append(f"  {text[:200]}")
+                    competitor_content = "\n".join(comp_lines) + "\n\n" + analysis_content
+            except Exception as e:
+                logger.warning(f"Competitor search failed (non-critical): {e}")
+            
             # Continue with common analysis (same for both providers)
-            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
-            competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
-            suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)
+            keyword_analysis = self.keyword_analyzer.analyze(analysis_content, request.keywords, user_id=user_id)
+            competitor_analysis = self.competitor_analyzer.analyze(competitor_content, user_id=user_id)
+            suggested_angles = self.content_angle_generator.generate(analysis_content, topic, industry, user_id=user_id)
             
             logger.info(f"Research completed successfully with {len(sources)} sources and {len(search_queries)} search queries")
             
@@ -586,9 +608,30 @@ class ResearchService:
             
             # Continue with common analysis (same for both providers)
             await task_manager.update_progress(task_id, "🔍 Analyzing keywords and content angles...")
-            keyword_analysis = self.keyword_analyzer.analyze(content, request.keywords, user_id=user_id)
-            competitor_analysis = self.competitor_analyzer.analyze(content, user_id=user_id)
-            suggested_angles = self.content_angle_generator.generate(content, topic, industry, user_id=user_id)
+            analysis_content = self._build_analysis_content(sources)
+            
+            # Run dedicated competitor search for richer competitor intelligence
+            competitor_content = analysis_content
+            try:
+                comp_query = f"top {industry} companies or competitors {topic}"
+                comp_results = await exa_provider.simple_search(
+                    query=comp_query, num_results=5, user_id=user_id,
+                )
+                if comp_results:
+                    comp_lines = ["COMPETITOR SEARCH RESULTS:"]
+                    for r in comp_results:
+                        title = r.get('title', '')
+                        text = (r.get('text', '') or '')[:400]
+                        comp_lines.append(f"- {title}")
+                        if text:
+                            comp_lines.append(f"  {text[:200]}")
+                    competitor_content = "\n".join(comp_lines) + "\n\n" + analysis_content
+            except Exception as e:
+                logger.warning(f"Competitor search failed (non-critical): {e}")
+            
+            keyword_analysis = self.keyword_analyzer.analyze(analysis_content, request.keywords, user_id=user_id)
+            competitor_analysis = self.competitor_analyzer.analyze(competitor_content, user_id=user_id)
+            suggested_angles = self.content_angle_generator.generate(analysis_content, topic, industry, user_id=user_id)
             
             await task_manager.update_progress(task_id, "💾 Caching results for future use...")
             logger.info(f"Research completed successfully with {len(sources)} sources and {len(search_queries)} search queries")
@@ -779,6 +822,33 @@ class ResearchService:
             citations=citations,
             web_search_queries=search_queries or [],
         )
+
+    def _build_analysis_content(self, sources: List[Dict[str, Any]]) -> str:
+        """Build compact all-source summary for LLM analysis.
+
+        Each source is distilled to one line with title, key content, and highlights.
+        This ensures ALL sources are visible to keyword, competitor, and angle
+        analyzers instead of only the first few (raw content[:3000]).
+        """
+        if not sources:
+            return ""
+        lines = []
+        for src in sources:
+            title = src.get('title', '') or ''
+            summary = src.get('summary', '') or ''
+            highlights = src.get('highlights', []) or []
+            excerpt = src.get('excerpt', '') or ''
+            part = f"• {title}"
+            if summary:
+                part += f" — {summary[:250]}"
+            elif excerpt:
+                part += f" — {excerpt[:250]}"
+            if highlights:
+                findings = [h[:120] for h in highlights[:2] if h]
+                if findings:
+                    part += f" | {'; '.join(findings)}"
+            lines.append(part)
+        return "\n".join(lines)
 
     def _normalize_cached_research_data(self, cached_data: Dict[str, Any]) -> Dict[str, Any]:
         """

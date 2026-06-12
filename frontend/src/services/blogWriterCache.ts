@@ -5,6 +5,8 @@
  * and avoid unnecessary API calls. Shared by both CopilotKit and manual flows.
  */
 
+import { debug } from '../utils/debug';
+
 class BlogWriterCacheService {
   private readonly OUTLINE_CACHE_KEY = 'blog_outline';
   private readonly TITLE_OPTIONS_CACHE_KEY = 'blog_title_options';
@@ -33,7 +35,7 @@ class BlogWriterCacheService {
       // More sophisticated matching could compare research keywords if needed
       const titleOptions = savedTitleOptions ? JSON.parse(savedTitleOptions) : undefined;
 
-      console.log(`Cache hit for outline (${parsedOutline.length} sections)`);
+      debug.log(`Cache hit for outline (${parsedOutline.length} sections)`);
       return {
         outline: parsedOutline,
         title_options: titleOptions
@@ -55,7 +57,7 @@ class BlogWriterCacheService {
       if (titleOptions) {
         localStorage.setItem(this.TITLE_OPTIONS_CACHE_KEY, JSON.stringify(titleOptions));
       }
-      console.log(`Cached outline (${outline.length} sections)`);
+      debug.log(`Cached outline (${outline.length} sections)`);
     } catch (error) {
       console.error('Error caching outline:', error);
     }
@@ -102,11 +104,11 @@ class BlogWriterCacheService {
           normalized[id] = (values[idx] || '') as string;
         });
         this.cacheContent(normalized, outlineIds);
-        console.log(`Cache hit for content after key normalization (${Object.keys(normalized).length} sections)`);
+        debug.log(`Cache hit for content after key normalization (${Object.keys(normalized).length} sections)`);
         return normalized;
       }
 
-      console.log(`Cache hit for content (${Object.keys(parsedSections).length} sections)`);
+      debug.log(`Cache hit for content (${Object.keys(parsedSections).length} sections)`);
       return parsedSections;
     } catch (error) {
       console.error('Error retrieving cached content:', error);
@@ -124,7 +126,7 @@ class BlogWriterCacheService {
 
       const cacheKey = this.generateContentCacheKey(outlineIds);
       localStorage.setItem(cacheKey, JSON.stringify(sections));
-      console.log(`Cached content (${Object.keys(sections).length} sections)`);
+      debug.log(`Cached content (${Object.keys(sections).length} sections)`);
     } catch (error) {
       console.error('Error caching content:', error);
     }

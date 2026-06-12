@@ -34,7 +34,8 @@
     "react-scripts": "5.0.1",
     "recharts": "^3.2.0",
     "zod": "^3.25.76",
-    "zustand": "^5.0.7"
+    "zustand": "^5.0.7",
+    "marked": "^18.0.4"
   },
   "scripts": {
     "start": "node --max_old_space_size=12288 node_modules/react-scripts/scripts/start.js",

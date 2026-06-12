@@ -10,10 +10,11 @@ interface ManualResearchFormProps {
   blogLengthRef?: React.MutableRefObject<string>;
   researchRef?: React.MutableRefObject<((keywords: string, blogLength?: string) => Promise<any>) | null>;
   onBrainstormResult?: (result: import('../../api/gscBrainstorm').BrainstormResult) => void;
+  initialKeywords?: string;
 }
 
-export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onKeywordsChange, blogLengthRef, researchRef, onBrainstormResult }) => {
-  const [keywords, setKeywords] = useState('');
+export const ManualResearchForm: React.FC<ManualResearchFormProps> = ({ onResearchComplete, onKeywordsChange, blogLengthRef, researchRef, onBrainstormResult, initialKeywords }) => {
+  const [keywords, setKeywords] = useState(initialKeywords ?? '');
   const [blogLength, setBlogLength] = useState('1000');
 
   // Sync keywords to parent for header chip label

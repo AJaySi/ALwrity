@@ -28,18 +28,17 @@ class IntroductionGenerator:
     ) -> str:
         """Build a prompt for generating blog introductions."""
         
-        # Extract key research insights
         keyword_analysis = research.keyword_analysis or {}
         content_angles = research.suggested_angles or []
+        competitor_analysis = research.competitor_analysis or {}
+        search_queries = research.search_queries or []
         
-        # Get a summary of the first few sections for context
         section_summaries = []
         for i, section in enumerate(outline[:3], 1):
             section_id = section.id
             content = sections_content.get(section_id, '')
             if content:
-                # Take first 200 chars as summary
-                summary = content[:200] + '...' if len(content) > 200 else content
+                summary = content[:300] + '...' if len(content) > 300 else content
                 section_summaries.append(f"{i}. {section.heading}: {summary}")
         
         sections_text = '\n'.join(section_summaries) if section_summaries else "Content sections are being generated."
@@ -47,13 +46,56 @@ class IntroductionGenerator:
         primary_kw_text = ', '.join(primary_keywords) if primary_keywords else "the topic"
         content_angle_text = ', '.join(content_angles[:3]) if content_angles else "General insights"
         
-        return f"""Generate exactly 3 varied blog introductions for the following blog post.
+        # Build keyword strategy block from actual keyword_analysis
+        keyword_block = ""
+        all_keywords = []
+        if keyword_analysis:
+            primary_kw = keyword_analysis.get('primary', [])
+            secondary_kw = keyword_analysis.get('secondary', [])
+            if primary_kw:
+                all_keywords.extend(primary_kw[:5])
+            if secondary_kw:
+                all_keywords.extend(secondary_kw[:5])
+            si = keyword_analysis.get('search_intent', '')
+            if si:
+                keyword_block += f"\nSearch intent: {si}"
+        if all_keywords:
+            keyword_block = f"Target keywords: {', '.join(all_keywords)}" + keyword_block
+        
+        # Build competitive landscape block
+        competitive_block = ""
+        if competitor_analysis:
+            gaps = competitor_analysis.get('content_gaps', [])
+            leaders = competitor_analysis.get('industry_leaders', [])
+            opportunities = competitor_analysis.get('opportunities', [])
+            advantages = competitor_analysis.get('competitive_advantages', [])
+            comp_lines = []
+            if advantages:
+                comp_lines.append(f"Key differentiators: {', '.join(advantages[:3])}")
+            if gaps:
+                comp_lines.append(f"Content gaps to address: {', '.join(gaps[:3])}")
+            if leaders:
+                comp_lines.append(f"Industry leaders: {', '.join(leaders[:3])}")
+            if opportunities:
+                comp_lines.append(f"Opportunities: {', '.join(opportunities[:3])}")
+            if comp_lines:
+                competitive_block = "\n".join(comp_lines)
+        
+        # Build search intent context
+        search_block = ""
+        if search_queries:
+            search_block = f"Original search queries: {', '.join(search_queries[:5])}"
+        
+        prompt = f"""Generate exactly 3 varied blog introductions for the following blog post.
 
 BLOG TITLE: {blog_title}
 
 PRIMARY KEYWORDS: {primary_kw_text}
 SEARCH INTENT: {search_intent}
 CONTENT ANGLES: {content_angle_text}
+{keyword_block}
+{f"COMPETITIVE LANDSCAPE:\n{competitive_block}" if competitive_block else ""}
+{f"SEARCH CONTEXT:\n{search_block}" if search_block else ""}
 
 BLOG CONTENT SUMMARY:
 {sections_text}
@@ -69,6 +111,7 @@ REQUIREMENTS FOR EACH INTRODUCTION:
   3. Third: Story/statistic-focused (use a compelling fact or narrative hook)
 - Maintain a professional yet engaging tone
 - Avoid generic phrases - be specific and benefit-driven
+- Where possible, incorporate specific insights from the competitive landscape and search intent above
 
 Return ONLY a JSON array of exactly 3 introductions:
 [
@@ -76,6 +119,7 @@ Return ONLY a JSON array of exactly 3 introductions:
   "Second introduction (80-120 words, benefit-focused)",
   "Third introduction (80-120 words, story/statistic-focused)"
 ]"""
+        return prompt
     
     def get_introduction_schema(self) -> Dict[str, Any]:
         """Get the JSON schema for introduction generation."""

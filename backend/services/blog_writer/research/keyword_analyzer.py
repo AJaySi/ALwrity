@@ -19,7 +19,7 @@ class KeywordAnalyzer:
         Analyze the following research content and extract comprehensive keyword insights for: {', '.join(original_keywords)}
         
         Research Content:
-        {content[:3000]}  # Limit to avoid token limits
+        {content[:8000]}
         
         Extract and analyze:
         1. Primary keywords (main topic terms)
