@@ -99,6 +99,19 @@ export function useLinkedInWriter() {
     window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { 
       detail: { id: 'personalize', status: 'active', message: 'Analyzing topic, industry context, and target audience...' } 
     }));
+
+    // Simulate progress advancement during API call
+    const progressStepIds = ['prepare_queries', 'research', 'grounding', 'content_generation', 'citations', 'quality_analysis'];
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressStepIds.length) {
+        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+          detail: { id: progressStepIds[stepIndex], status: 'completed' }
+        }));
+        stepIndex++;
+      }
+    }, 1500);
+
     try {
       const res = await linkedInWriterApi.generatePost({
         topic: params?.topic || prefs.topic || 'AI transformation in business',
@@ -115,14 +128,15 @@ export function useLinkedInWriter() {
         grounding_level: 'enhanced' as GroundingLevel,
         include_citations: true
       });
+      clearInterval(progressInterval);
       if (res.success && res.data) {
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'personalize', status: 'completed', message: 'Topic personalized successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'prepare_queries', status: 'completed', message: `Prepared ${(res.data?.search_queries || []).length} research queries` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'research', status: 'completed', message: `Research completed with ${(res.research_sources || []).length} sources` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'grounding', status: 'completed', message: 'AI grounding applied successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'content_generation', status: 'completed', message: 'Content generated' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'citations', status: 'completed', message: `Extracted ${(res.data?.citations || []).length} citations` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'quality_analysis', status: 'completed', message: 'Quality assessment completed' } }));
+        // Catch up remaining steps
+        while (stepIndex < progressStepIds.length) {
+          window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+            detail: { id: progressStepIds[stepIndex], status: 'completed' }
+          }));
+          stepIndex++;
+        }
         const content = res.data.content;
         const hashtags = res.data.hashtags?.map((h: any) => h.hashtag).join(' ') || '';
         const cta = res.data.call_to_action || '';
@@ -147,6 +161,7 @@ export function useLinkedInWriter() {
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, error: res.error || 'Generation failed' };
     } catch (error: any) {
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: error.message } }));
       return { success: false, error: error.message || 'Generation failed' };
@@ -173,6 +188,18 @@ export function useLinkedInWriter() {
     window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
       detail: { id: 'personalize', status: 'active', message: 'Analyzing topic, industry context, and target audience...' }
     }));
+
+    const progressStepIds = ['prepare_queries', 'research', 'grounding', 'content_generation', 'citations', 'quality_analysis'];
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressStepIds.length) {
+        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+          detail: { id: progressStepIds[stepIndex], status: 'completed' }
+        }));
+        stepIndex++;
+      }
+    }, 1500);
+
     try {
       const res = await linkedInWriterApi.generateArticle({
         topic: params?.topic || prefs.topic || 'Digital transformation strategies',
@@ -188,14 +215,14 @@ export function useLinkedInWriter() {
         grounding_level: 'enhanced' as GroundingLevel,
         include_citations: true
       });
+      clearInterval(progressInterval);
       if (res.success && res.data) {
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'personalize', status: 'completed', message: 'Topic personalized successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'prepare_queries', status: 'completed', message: `Prepared ${(res.data?.search_queries || []).length} research queries` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'research', status: 'completed', message: `Research completed with ${(res.research_sources || []).length} sources` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'grounding', status: 'completed', message: 'AI grounding applied successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'content_generation', status: 'completed', message: 'Article content generated' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'citations', status: 'completed', message: `Extracted ${(res.data?.citations || []).length} citations` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'quality_analysis', status: 'completed', message: 'Quality assessment completed' } }));
+        while (stepIndex < progressStepIds.length) {
+          window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+            detail: { id: progressStepIds[stepIndex], status: 'completed' }
+          }));
+          stepIndex++;
+        }
         const content = `# ${res.data.title}\n\n${res.data.content}`;
         window.dispatchEvent(new CustomEvent('linkedinwriter:updateGroundingData', { detail: {
           researchSources: res.research_sources || [],
@@ -211,10 +238,12 @@ export function useLinkedInWriter() {
         trackActionUsage('generateLinkedInArticle');
         return { success: true, data: res.data };
       }
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, error: res.error || 'Generation failed' };
     } catch (error: any) {
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: error.message } }));
       return { success: false, error: error.message || 'Generation failed' };
@@ -241,6 +270,18 @@ export function useLinkedInWriter() {
     window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
       detail: { id: 'personalize', status: 'active', message: 'Analyzing topic, industry context, and target audience...' }
     }));
+
+    const progressStepIds = ['prepare_queries', 'research', 'grounding', 'content_generation', 'citations', 'quality_analysis'];
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressStepIds.length) {
+        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+          detail: { id: progressStepIds[stepIndex], status: 'completed' }
+        }));
+        stepIndex++;
+      }
+    }, 1500);
+
     try {
       const res = await linkedInWriterApi.generateCarousel({
         topic: params?.topic || prefs.topic || 'Professional development tips',
@@ -253,14 +294,14 @@ export function useLinkedInWriter() {
         include_cta_slide: params?.include_cta_slide ?? (prefs.include_cta_slide ?? true),
         visual_style: params?.visual_style || prefs.visual_style || 'modern'
       });
+      clearInterval(progressInterval);
       if (res.success && res.data) {
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'personalize', status: 'completed', message: 'Topic personalized successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'prepare_queries', status: 'completed', message: 'Prepared research queries' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'research', status: 'completed', message: 'Research completed' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'grounding', status: 'completed', message: 'AI grounding applied' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'content_generation', status: 'completed', message: `Generated ${res.data.slides?.length || 0} slides` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'citations', status: 'completed', message: 'Citations extracted' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'quality_analysis', status: 'completed', message: 'Quality assessment completed' } }));
+        while (stepIndex < progressStepIds.length) {
+          window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+            detail: { id: progressStepIds[stepIndex], status: 'completed' }
+          }));
+          stepIndex++;
+        }
         let content = `# ${res.data.title}\n\n`;
         res.data.slides.forEach((slide: any, index: number) => {
           content += `## Slide ${index + 1}: ${slide.title}\n\n${slide.content}\n\n`;
@@ -272,10 +313,12 @@ export function useLinkedInWriter() {
         trackActionUsage('generateLinkedInCarousel');
         return { success: true, data: res.data };
       }
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, error: res.error || 'Generation failed' };
     } catch (error: any) {
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: error.message } }));
       return { success: false, error: error.message || 'Generation failed' };
@@ -302,6 +345,18 @@ export function useLinkedInWriter() {
     window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
       detail: { id: 'personalize', status: 'active', message: 'Analyzing topic, industry context, and target audience...' }
     }));
+
+    const progressStepIds = ['prepare_queries', 'research', 'grounding', 'content_generation', 'citations', 'quality_analysis'];
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stepIndex < progressStepIds.length) {
+        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+          detail: { id: progressStepIds[stepIndex], status: 'completed' }
+        }));
+        stepIndex++;
+      }
+    }, 1500);
+
     try {
       const res = await linkedInWriterApi.generateVideoScript({
         topic: params?.topic || prefs.topic || 'Professional networking tips',
@@ -313,14 +368,14 @@ export function useLinkedInWriter() {
         include_hook: params?.include_hook ?? (prefs.include_hook ?? true),
         include_captions: params?.include_captions ?? (prefs.include_captions ?? true)
       });
+      clearInterval(progressInterval);
       if (res.success && res.data) {
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'personalize', status: 'completed', message: 'Topic personalized successfully' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'prepare_queries', status: 'completed', message: 'Prepared research queries' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'research', status: 'completed', message: 'Research completed' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'grounding', status: 'completed', message: 'AI grounding applied' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'content_generation', status: 'completed', message: `Generated script with ${res.data.main_content?.length || 0} scenes` } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'citations', status: 'completed', message: 'Citations extracted' } }));
-        window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', { detail: { id: 'quality_analysis', status: 'completed', message: 'Quality assessment completed' } }));
+        while (stepIndex < progressStepIds.length) {
+          window.dispatchEvent(new CustomEvent('linkedinwriter:progressStep', {
+            detail: { id: progressStepIds[stepIndex], status: 'completed' }
+          }));
+          stepIndex++;
+        }
         let content = `# Video Script: ${params?.topic || 'Professional Content'}\n\n`;
         content += `## Hook\n${res.data.hook}\n\n`;
         content += `## Main Content\n`;
@@ -339,10 +394,12 @@ export function useLinkedInWriter() {
         trackActionUsage('generateLinkedInVideoScript');
         return { success: true, data: res.data };
       }
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: res.error } }));
       return { success: false, error: res.error || 'Generation failed' };
     } catch (error: any) {
+      clearInterval(progressInterval);
       window.dispatchEvent(new CustomEvent('linkedinwriter:loadingEnd'));
       window.dispatchEvent(new CustomEvent('linkedinwriter:progressError', { detail: { id: 'finalize', details: error.message } }));
       return { success: false, error: error.message || 'Generation failed' };

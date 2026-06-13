@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LinkedInPreferences } from '../utils/storageUtils';
 import { PersonaChip } from '../../TextEditor/ContentPreviewHeaderComponents';
 import { usePlatformPersonaContext } from '../../shared/PersonaContext/PlatformPersonaProvider';
+import HeaderControls from '../../shared/HeaderControls';
 import BrainstormFlow from './BrainstormFlow';
 // Temporary fix: use require for image import
 const alwrityLogo = require('../../../assets/images/alwrity_logo.png');
@@ -15,6 +16,8 @@ interface HeaderProps {
   onPreferencesChange: (prefs: Partial<LinkedInPreferences>) => void;
   onClearHistory: () => void;
   getHistoryLength: () => number;
+  hasDraft: boolean;
+  onResetDraft: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,7 +27,9 @@ export const Header: React.FC<HeaderProps> = ({
   onPreferencesModalChange,
   onPreferencesChange,
   onClearHistory,
-  getHistoryLength
+  getHistoryLength,
+  hasDraft,
+  onResetDraft
 }) => {
   const navigate = useNavigate();
   const [personaOverride, setPersonaOverride] = useState<any>(null);
@@ -91,9 +96,9 @@ export const Header: React.FC<HeaderProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {/* Left Section - Logo and Title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          {/* Back Button */}
+          {/* Back Button - returns to LinkedIn home (WelcomeMessage) when there's a draft */}
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => hasDraft ? onResetDraft() : navigate('/')}
             style={{
               padding: '8px 12px',
               background: 'rgba(255, 255, 255, 0.1)',
@@ -114,9 +119,9 @@ export const Header: React.FC<HeaderProps> = ({
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
             }}
-            title="Back to Dashboard"
+            title={hasDraft ? 'Back to LinkedIn Home' : 'Back to Home'}
           >
-            ← Back to Dashboard
+            ← {hasDraft ? 'Back' : 'Home'}
           </button>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -485,6 +490,9 @@ export const Header: React.FC<HeaderProps> = ({
           >
             Clear Memory ({getHistoryLength()})
           </button>
+          
+          {/* Shared Header Controls - Usage Stats & User Dropdown */}
+          <HeaderControls colorMode="light" showAlerts={true} showUser={true} />
         </div>
       </div>
       

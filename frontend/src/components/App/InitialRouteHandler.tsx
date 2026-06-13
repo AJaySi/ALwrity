@@ -145,12 +145,14 @@ const InitialRouteHandler: React.FC = () => {
       return navigateAndLog(redirectTo);
     }
 
+    // Feature-only mode (e.g., ALWRITY_ENABLED_FEATURES=linkedin)
     if (shouldSkipOnboarding()) {
       const route = getDefaultLandingRoute();
-      console.log(`InitialRouteHandler: Checkout success in demo mode → ${route}`);
+      console.log(`InitialRouteHandler: Checkout success — feature-only mode → ${route}`);
       return navigateAndLog(route);
     }
 
+    // Full mode: check if onboarding is needed
     if (!isOnboardingComplete) {
       console.log('InitialRouteHandler: Checkout success — onboarding incomplete → Onboarding');
       return navigateAndLog('/onboarding');
@@ -299,9 +301,9 @@ const InitialRouteHandler: React.FC = () => {
     }
 
     if (shouldSkipOnboarding()) {
-      const route = getDefaultLandingRoute();
-      console.log(`InitialRouteHandler: Demo mode - no subscription but allowing access to ${route}`);
-      return navigateAndLog(route);
+      // Feature-only mode still requires subscription
+      console.log('InitialRouteHandler: No subscription data in feature-only mode → Pricing page');
+      return navigateAndLog("/pricing");
     }
 
     console.log('InitialRouteHandler: No subscription data after check → Pricing page');

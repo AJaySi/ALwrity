@@ -91,7 +91,7 @@ const LinkedInWriterContent: React.FC<LinkedInWriterProps> = ({ className = '' }
     // Handlers
     handleDraftChange,
     handleContextChange,
-    // handleClear,
+    handleClear,
     // handleCopy,
     handleClearHistory,
     
@@ -438,6 +438,8 @@ Always use the most appropriate tool for the user's request.`.trim();
         onPreferencesChange={handlePreferencesChange}
         onClearHistory={handleClearHistory}
         getHistoryLength={getHistoryLength}
+        hasDraft={!!draft}
+        onResetDraft={handleClear}
       />
 
       {/* Lightweight progress tracker under header */}

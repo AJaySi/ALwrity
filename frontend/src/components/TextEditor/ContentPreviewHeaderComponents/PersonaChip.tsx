@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PersonaEditorModal from './PersonaEditorModal';
 import { getUserPersonas, getPlatformPersona, updatePersona, updatePlatformPersona } from '../../../api/persona';
+import { shouldSkipOnboarding } from '../../../utils/demoMode';
 
 interface PersonaData {
   id?: number;
@@ -43,31 +44,38 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
 
   // Fetch persona data
   const fetchPersonaData = async () => {
+    // Skip API calls in feature-only mode (no persona data available)
+    if (shouldSkipOnboarding()) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     
     try {
-      // Fetch core persona list (take most recent active) and platform-specific details using authenticated API client
       const [coreList, platformData] = await Promise.all([
         getUserPersonas(),
         getPlatformPersona(platform)
       ]);
 
+      if (!coreList || !platformData) {
+        setPersonaData(null);
+        return;
+      }
+
       if (coreList && platformData) {
-        // Extract core persona from the response
         const corePersona = platformData?.core_persona || {};
         const platformPersona = platformData?.platform_persona || {};
         const qualityMetrics = platformData?.quality_metrics || {};
         
         if (!corePersona || Object.keys(corePersona).length === 0) {
-          setError('No persona found for this platform');
+          setPersonaData(null);
           return;
         }
 
-        // Merge core + platform fields for editor convenience
         setPersonaData({
           id: platformData?.id || 1,
-          user_id: 1, // Placeholder, not used
+          user_id: 1,
           persona_name: corePersona.persona_name || 'Untitled Persona',
           archetype: corePersona.archetype || 'General',
           core_belief: corePersona.core_belief || '',
@@ -212,7 +220,7 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
     );
   }
 
-  if (error || !personaData) {
+  if (error) {
     return (
       <div style={{
         background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
@@ -235,6 +243,35 @@ const PersonaChip: React.FC<PersonaChipProps> = ({
           height: '8px',
           borderRadius: '50%',
           background: '#ef4444'
+        }} />
+        No Persona
+      </div>
+    );
+  }
+
+  if (!personaData) {
+    return (
+      <div style={{
+        background: 'linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)',
+        border: '1px solid #9ca3af',
+        borderRadius: '999px',
+        padding: '6px 14px',
+        fontSize: '11px',
+        fontWeight: '700',
+        color: '#6b7280',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        cursor: 'pointer'
+      }}
+      onClick={() => fetchPersonaData()}
+      title="No persona configured yet. Click to retry."
+      >
+        <div style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          background: '#9ca3af'
         }} />
         No Persona
       </div>

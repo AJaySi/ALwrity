@@ -121,11 +121,12 @@ export const generateWritingPersona = async (userId: number = 1, request: Person
  * Get all writing personas for a user
  * Note: user_id is extracted from Clerk JWT token, no need to pass it
  */
-export const getUserPersonas = async (): Promise<{ personas: PersonaResponse[]; total_count: number }> => {
+export const getUserPersonas = async (): Promise<{ personas: PersonaResponse[]; total_count: number } | null> => {
   try {
     const response = await apiClient.get('/api/personas/user');
     return response.data;
   } catch (error: any) {
+    if (error.response?.status === 404) return null;
     console.error('Error getting user personas:', error);
     throw new Error(error.response?.data?.detail || 'Failed to get user personas');
   }
@@ -155,6 +156,7 @@ export const getPlatformPersona = async (platform: string): Promise<any> => {
     const response = await apiClient.get(`/api/personas/platform/${platform}`);
     return response.data;
   } catch (error: any) {
+    if (error.response?.status === 404) return null;
     console.error('Error getting platform persona:', error);
     throw new Error(error.response?.data?.detail || 'Failed to get platform persona');
   }

@@ -478,8 +478,25 @@ class ContentGenerator:
             
             content_text = raw_response if isinstance(raw_response, str) else str(raw_response or "")
             
+            # Extract title from article content (first markdown heading or first line)
+            title = ""
+            for line in content_text.split('\n'):
+                stripped = line.strip()
+                if stripped.startswith('# '):
+                    title = stripped[2:].strip()
+                    break
+            if not title:
+                for line in content_text.split('\n'):
+                    stripped = line.strip()
+                    if stripped:
+                        title = stripped[:100].strip()
+                        break
+            if not title:
+                title = request.topic or "LinkedIn Article"
+            
             return {
                 'content': content_text,
+                'title': title,
                 'sources': [],
                 'citations': [],
                 'grounding_enabled': bool(research_sources),
